@@ -9,7 +9,7 @@ using System.Collections.Generic;
 public static partial class GameConfig
 {
     // Version information
-    public const string Version = "0.49.6";
+    public const string Version = "0.49.7";
     public const string VersionName = "Swords and Lutes";
     public const string DiscordInvite = "discord.gg/EZhwgDT6Ta";
 

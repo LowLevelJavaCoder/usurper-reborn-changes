@@ -43,6 +43,8 @@ const MUD_MODE = process.env.MUD_MODE !== '0';
 const MUD_HOST = process.env.MUD_HOST || '127.0.0.1';
 const MUD_PORT = parseInt(process.env.MUD_PORT || '4000', 10);
 const CACHE_TTL = 30000; // 30 seconds
+let _ghReleasesCache = null;
+let _ghReleasesCacheTime = 0;
 const FEED_POLL_MS = 5000; // SSE feed polls DB every 5 seconds
 const GITHUB_PAT = process.env.GITHUB_PAT || '';
 const SPONSORS_CACHE_TTL = 3600000; // 1 hour
@@ -2526,6 +2528,44 @@ function handleHttpRequest(req, res) {
       res.writeHead(500);
       res.end(JSON.stringify({ error: 'Failed to fetch sponsors' }));
     });
+    return;
+  } else if (req.method === 'GET' && req.url === '/api/releases/latest') {
+    // Proxy GitHub releases API for clients that can't do TLS 1.2 (e.g. Win7)
+    // Caches for 5 minutes to avoid GitHub rate limits
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Cache-Control', 'public, max-age=300');
+
+    const now = Date.now();
+    if (_ghReleasesCache && (now - _ghReleasesCacheTime) < 300000) {
+      res.writeHead(200);
+      res.end(JSON.stringify(_ghReleasesCache));
+      return;
+    }
+
+    const ghReq = https.get('https://api.github.com/repos/binary-knight/usurper-reborn/releases/latest', {
+      headers: { 'User-Agent': 'usurper-web-proxy', 'Accept': 'application/vnd.github.v3+json' }
+    }, (ghRes) => {
+      let body = '';
+      ghRes.on('data', chunk => body += chunk);
+      ghRes.on('end', () => {
+        try {
+          const data = JSON.parse(body);
+          _ghReleasesCache = { tag_name: data.tag_name, name: data.name, html_url: data.html_url, assets: (data.assets || []).map(a => ({ name: a.name, browser_download_url: a.browser_download_url, size: a.size })) };
+          _ghReleasesCacheTime = now;
+          res.writeHead(200);
+          res.end(JSON.stringify(_ghReleasesCache));
+        } catch (e) {
+          res.writeHead(502);
+          res.end(JSON.stringify({ error: 'Failed to parse GitHub response' }));
+        }
+      });
+    });
+    ghReq.on('error', (e) => {
+      res.writeHead(502);
+      res.end(JSON.stringify({ error: e.message }));
+    });
+    ghReq.end();
     return;
   } else if (req.method === 'GET' && req.url === '/api/stats') {
     res.setHeader('Access-Control-Allow-Origin', '*');

@@ -21,6 +21,10 @@ namespace UsurperRemake.Systems
         private const string GitHubApiUrl = "https://api.github.com/repos/binary-knight/usurper-reborn/releases/latest";
         private const string GitHubReleasesUrl = "https://github.com/binary-knight/usurper-reborn/releases/latest";
 
+        // Plain HTTP fallback for systems that can't do TLS 1.2 (e.g., Windows 7)
+        // This proxies through the game server which fetches from GitHub on behalf of the client
+        private const string FallbackApiUrl = "http://usurper-reborn.net/api/releases/latest";
+
         // Cache file to avoid checking too frequently
         private readonly string cacheFilePath;
         private const int CacheHours = 4; // Only check every 4 hours
@@ -49,6 +53,11 @@ namespace UsurperRemake.Systems
         {
             get
             {
+                // BBS door mode is never a Steam build — stray steam_appid.txt or DLLs
+                // in the BBS game directory shouldn't trigger Steam detection
+                if (UsurperRemake.BBS.DoorMode.IsInDoorMode)
+                    return false;
+
                 var baseDir = AppDomain.CurrentDomain.BaseDirectory;
 
                 // Check for steam_appid.txt (created by Steam or placed for Steamworks)
@@ -111,21 +120,35 @@ namespace UsurperRemake.Systems
 
                 DebugLogger.Instance.LogInfo("UPDATE", $"Fetching from GitHub API: {GitHubApiUrl}");
 
-                // Force TLS 1.2+ — required by GitHub API, not always default on 32-bit Windows
-                var handler = new System.Net.Http.HttpClientHandler();
+                string responseBody;
                 try
                 {
-                    handler.SslProtocols = System.Security.Authentication.SslProtocols.Tls12 |
-                                           System.Security.Authentication.SslProtocols.Tls13;
+                    // Force TLS 1.2+ — required by GitHub API, not always default on 32-bit Windows
+                    var handler = new System.Net.Http.HttpClientHandler();
+                    try
+                    {
+                        handler.SslProtocols = System.Security.Authentication.SslProtocols.Tls12 |
+                                               System.Security.Authentication.SslProtocols.Tls13;
+                    }
+                    catch { /* SslProtocols may be restricted on some platforms — proceed with defaults */ }
+
+                    using var client = new HttpClient(handler);
+                    client.DefaultRequestHeaders.Add("User-Agent", $"UsurperReborn/{GameConfig.Version}");
+                    client.Timeout = TimeSpan.FromSeconds(15);
+
+                    responseBody = await client.GetStringAsync(GitHubApiUrl);
                 }
-                catch { /* SslProtocols may be restricted on some platforms — proceed with defaults */ }
+                catch (Exception ex) when (ex is HttpRequestException || ex is TaskCanceledException)
+                {
+                    // Direct GitHub failed (likely TLS issue on Win7) — try plain HTTP fallback
+                    DebugLogger.Instance.LogInfo("UPDATE", $"Direct GitHub failed ({ex.Message}), trying fallback: {FallbackApiUrl}");
+                    using var fallbackClient = new HttpClient();
+                    fallbackClient.DefaultRequestHeaders.Add("User-Agent", $"UsurperReborn/{GameConfig.Version}");
+                    fallbackClient.Timeout = TimeSpan.FromSeconds(15);
+                    responseBody = await fallbackClient.GetStringAsync(FallbackApiUrl);
+                }
 
-                using var client = new HttpClient(handler);
-                client.DefaultRequestHeaders.Add("User-Agent", $"UsurperReborn/{GameConfig.Version}");
-                client.Timeout = TimeSpan.FromSeconds(15);
-
-                var response = await client.GetStringAsync(GitHubApiUrl);
-                var release = JsonSerializer.Deserialize<GitHubRelease>(response);
+                var release = JsonSerializer.Deserialize<GitHubRelease>(responseBody);
 
                 if (release != null && !string.IsNullOrEmpty(release.tag_name))
                 {
