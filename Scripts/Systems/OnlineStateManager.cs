@@ -88,7 +88,8 @@ namespace UsurperRemake.Systems
             {
                 WriteIndented = false,
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                IncludeFields = true
+                IncludeFields = true,
+                NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString
             };
         }
 

@@ -873,7 +873,8 @@ namespace UsurperRemake.Systems
                     kvp => kvp.Key,
                     kvp => kvp.Value.ResourcePool),
                 ActiveProposedBuildingId = State.ActiveProposedBuildingId,
-                ProposalCooldowns = State.ProposalCooldowns.ToDictionary(kvp => kvp.Key, kvp => kvp.Value),
+                ProposalCooldownsRaw = System.Text.Json.JsonSerializer.SerializeToElement(
+                    State.ProposalCooldowns.ToDictionary(kvp => kvp.Key, kvp => kvp.Value)),
                 ContributionBoostTicks = State.ContributionBoostTicks,
                 // Active proposal
                 ActiveProposalId = State.CurrentProposal?.BuildingId,
@@ -903,7 +904,35 @@ namespace UsurperRemake.Systems
         public Dictionary<string, int> ProposedBuildingTiers { get; set; } = new();
         public Dictionary<string, long> ProposedBuildingPools { get; set; } = new();
         public string ActiveProposedBuildingId { get; set; }
-        public Dictionary<string, int> ProposalCooldowns { get; set; } = new();
+        // NOTE: Was List<string> in v0.49.5, changed to Dictionary<string, int> in v0.49.9.
+        // Using JsonElement to handle both old (array) and new (object) formats from saves.
+        [System.Text.Json.Serialization.JsonPropertyName("proposalCooldowns")]
+        public System.Text.Json.JsonElement? ProposalCooldownsRaw { get; set; }
+        [System.Text.Json.Serialization.JsonIgnore]
+        public Dictionary<string, int> ProposalCooldowns
+        {
+            get
+            {
+                if (ProposalCooldownsRaw == null) return new();
+                var el = ProposalCooldownsRaw.Value;
+                if (el.ValueKind == System.Text.Json.JsonValueKind.Object)
+                {
+                    var dict = new Dictionary<string, int>();
+                    foreach (var prop in el.EnumerateObject())
+                        dict[prop.Name] = prop.Value.GetInt32();
+                    return dict;
+                }
+                if (el.ValueKind == System.Text.Json.JsonValueKind.Array)
+                {
+                    // Legacy v0.49.5 format: array of building IDs — assign default cooldown
+                    var dict = new Dictionary<string, int>();
+                    foreach (var item in el.EnumerateArray())
+                        dict[item.GetString() ?? ""] = GameConfig.SettlementProposalCooldownTicks;
+                    return dict;
+                }
+                return new();
+            }
+        }
         public int ContributionBoostTicks { get; set; }
         // Active proposal deliberation
         public string ActiveProposalId { get; set; }

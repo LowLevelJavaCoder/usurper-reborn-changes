@@ -549,6 +549,17 @@ public partial class CombatEngine
 
         result.CombatLog.Add($"Combat begins against {monsters.Count} monster(s)!");
 
+        // Show grief status at combat start
+        if (GriefSystem.Instance.IsGrieving)
+        {
+            var griefFx = GriefSystem.Instance.GetCurrentEffects();
+            if (!string.IsNullOrEmpty(griefFx.Description))
+            {
+                terminal.SetColor("dark_magenta");
+                terminal.WriteLine($"  {griefFx.Description}");
+            }
+        }
+
         // Log combat start (use max monster level as proxy for floor depth)
         var monsterNames = monsters.Select(m => $"{m.Name}(Lv{m.Level})").ToArray();
         int floorEstimate = monsters.Max(m => m.Level);
@@ -1245,6 +1256,17 @@ public partial class CombatEngine
         await Task.Delay(GetCombatDelay(2000));
 
         result.CombatLog.Add($"Combat begins against {monster.Name}!");
+
+        // Show grief status at combat start
+        if (GriefSystem.Instance.IsGrieving)
+        {
+            var griefFx = GriefSystem.Instance.GetCurrentEffects();
+            if (!string.IsNullOrEmpty(griefFx.Description))
+            {
+                terminal.SetColor("dark_magenta");
+                terminal.WriteLine($"  {griefFx.Description}");
+            }
+        }
     }
 
     /// <summary>
@@ -11519,7 +11541,9 @@ public partial class CombatEngine
     private async Task<CombatAction?> HandleHealAlly(Character player, List<Monster> monsters)
     {
         // Get all living teammates (show all, even if at full health - player can see status)
-        var livingTeammates = currentTeammates?.Where(t => t.IsAlive).ToList() ?? new List<Character>();
+        var livingTeammates = currentTeammates?.Where(t => t.IsAlive)
+            .OrderBy(t => t.MaxHP > 0 ? (double)t.HP / t.MaxHP : 1.0)
+            .ToList() ?? new List<Character>();
         if (livingTeammates.Count == 0)
         {
             terminal.WriteLine("No allies available to heal.", "yellow");
@@ -11827,7 +11851,9 @@ public partial class CombatEngine
     /// </summary>
     private async Task<int?> SelectHealTarget(Character player)
     {
-        var injuredAllies = currentTeammates?.Where(t => t.IsAlive && t.HP < t.MaxHP).ToList() ?? new List<Character>();
+        var injuredAllies = currentTeammates?.Where(t => t.IsAlive && t.HP < t.MaxHP)
+            .OrderBy(t => t.MaxHP > 0 ? (double)t.HP / t.MaxHP : 1.0)
+            .ToList() ?? new List<Character>();
 
         while (true)
         {
@@ -13125,6 +13151,13 @@ public partial class CombatEngine
             npcId,
             npc.DisplayName,
             UsurperRemake.Systems.DeathType.Combat);
+
+        terminal.SetColor("dark_magenta");
+        terminal.WriteLine($"  A wave of grief washes over you. (Stage: Denial)");
+        terminal.SetColor("gray");
+        terminal.WriteLine($"  Your grief will affect your combat performance.");
+        terminal.WriteLine("");
+        await Task.Delay(1500);
 
         // Check relationship type and handle accordingly
         var romanceTracker = UsurperRemake.Systems.RomanceTracker.Instance;

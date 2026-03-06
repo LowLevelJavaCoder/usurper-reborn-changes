@@ -349,9 +349,7 @@ public class MainStreetLocation : BaseLocation
             terminal.SetColor("white"); terminal.WriteLine("rogress");
 
             terminal.SetColor("darkgray");
-            terminal.Write(" ["); terminal.SetColor("bright_yellow"); terminal.Write("R"); terminal.SetColor("darkgray"); terminal.Write("]");
-            terminal.SetColor("white"); terminal.Write("elations   ");
-            terminal.SetColor("darkgray"); terminal.Write("["); terminal.SetColor("bright_yellow"); terminal.Write("Z"); terminal.SetColor("darkgray"); terminal.Write("]");
+            terminal.Write(" ["); terminal.SetColor("bright_yellow"); terminal.Write("Z"); terminal.SetColor("darkgray"); terminal.Write("]");
             terminal.SetColor("white"); terminal.Write("Team Corner");
             if (UsurperRemake.Systems.SettlementSystem.Instance?.State.IsEstablished == true)
             {
@@ -654,7 +652,6 @@ public class MainStreetLocation : BaseLocation
             terminal.Write(" ");
             MI("=", "Stats", "white", C);
             MI("P", "rogress", "white", C);
-            MI("R", "elations", "white", C);
             if (UsurperRemake.Systems.SettlementSystem.Instance?.State.IsEstablished == true)
                 ML(">", "Outskirts", "bright_green");
             else
@@ -992,9 +989,6 @@ public class MainStreetLocation : BaseLocation
                     return true;
                 }
                 
-            case "R":
-                await ShowRelations();
-                return false;
 
             case "*":
                 await ShowInventory();
@@ -1472,34 +1466,6 @@ public class MainStreetLocation : BaseLocation
         }
     }
     
-    private async Task ShowRelations()
-    {
-        terminal.ClearScreen();
-        terminal.SetColor("bright_magenta");
-        terminal.WriteLine("Relations");
-        terminal.WriteLine("=========");
-        terminal.WriteLine("");
-        terminal.SetColor("white");
-        terminal.WriteLine($"Married: {(currentPlayer.Married ? "Yes" : "No")}");
-        terminal.WriteLine($"Children: {currentPlayer.Kids}");
-        terminal.WriteLine($"Team: {(string.IsNullOrEmpty(currentPlayer.Team) ? "None" : currentPlayer.Team)}");
-        terminal.WriteLine("");
-
-        if (currentPlayer.Married)
-        {
-            terminal.WriteLine("Family options:");
-            terminal.WriteLine("1. Visit home");
-            terminal.WriteLine("2. Check on children");
-        }
-        else
-        {
-            terminal.WriteLine("You are single. Visit Love Street to find romance!");
-        }
-
-        terminal.WriteLine("");
-        await terminal.PressAnyKey();
-    }
-
     /// <summary>
     /// Display comprehensive player statistics
     /// </summary>
@@ -3017,6 +2983,31 @@ public class MainStreetLocation : BaseLocation
             : "yellow";
         terminal.SetColor(griefColor);
         terminal.WriteLine($"  Grief: {griefStatus}");
+        if (grief.IsGrieving)
+        {
+            var griefFx = grief.GetCurrentEffects();
+            var parts = new List<string>();
+            if (griefFx.DamageModifier != 0)
+                parts.Add($"Damage {(griefFx.DamageModifier > 0 ? "+" : "")}{griefFx.DamageModifier * 100:0}%");
+            if (griefFx.DefenseModifier != 0)
+                parts.Add($"Defense {(griefFx.DefenseModifier > 0 ? "+" : "")}{griefFx.DefenseModifier * 100:0}%");
+            if (griefFx.CombatModifier != 0)
+                parts.Add($"Combat {(griefFx.CombatModifier > 0 ? "+" : "")}{griefFx.CombatModifier * 100:0}%");
+            if (griefFx.AllStatModifier != 0)
+                parts.Add($"All Stats {(griefFx.AllStatModifier > 0 ? "+" : "")}{griefFx.AllStatModifier * 100:0}%");
+            if (griefFx.PermanentWisdomBonus > 0)
+                parts.Add($"+{griefFx.PermanentWisdomBonus} Wisdom");
+            if (parts.Count > 0)
+            {
+                terminal.SetColor("gray");
+                terminal.WriteLine($"    Combat Effects: {string.Join(", ", parts)}");
+            }
+            if (!string.IsNullOrEmpty(griefFx.Description))
+            {
+                terminal.SetColor("dark_magenta");
+                terminal.WriteLine($"    {griefFx.Description}");
+            }
+        }
         terminal.WriteLine("");
 
         // === ALIGNMENT SECTION ===

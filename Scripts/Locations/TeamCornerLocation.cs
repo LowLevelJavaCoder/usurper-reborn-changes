@@ -1681,7 +1681,8 @@ public class TeamCornerLocation : BaseLocation
             terminal.SetColor("white");
             terminal.WriteLine($"  Level: {target.Level}  Class: {target.Class}  Race: {target.Race}");
             terminal.WriteLine($"  HP: {target.HP}/{target.MaxHP}  Mana: {target.Mana}/{target.MaxMana}");
-            terminal.WriteLine($"  Str: {target.Strength}  Def: {target.Defence}  Agi: {target.Agility}");
+            terminal.WriteLine($"  STR: {target.Strength}  DEX: {target.Dexterity}  AGI: {target.Agility}  CON: {target.Constitution}");
+            terminal.WriteLine($"  INT: {target.Intelligence}  WIS: {target.Wisdom}  CHA: {target.Charisma}  DEF: {target.Defence}");
             terminal.WriteLine("");
 
             // Show current equipment

@@ -1028,6 +1028,15 @@ namespace UsurperRemake.Systems
             // Trigger grief system
             GriefSystem.Instance.BeginGrief(id, companion.Name, type);
 
+            if (terminal != null)
+            {
+                terminal.SetColor("dark_magenta");
+                terminal.WriteLine($"  A wave of grief washes over you. (Stage: Denial)");
+                terminal.SetColor("gray");
+                terminal.WriteLine($"  Your grief will affect your combat performance.");
+                terminal.WriteLine("");
+            }
+
             // Trigger Ocean Philosophy awakening
             if (!OceanPhilosophySystem.Instance.ExperiencedMoments.Contains(AwakeningMoment.FirstCompanionDeath))
             {

@@ -2676,46 +2676,19 @@ public class InnLocation : BaseLocation
         terminal.WriteLine($"\"{dialogueHint}\"");
         terminal.WriteLine("");
 
-        // Show stats (with equipment bonuses if any)
+        // Show stats — always use effective stats (gear included)
+        var tempChar = CreateCompanionCharacterWrapper(companion);
         terminal.SetColor("yellow");
         terminal.WriteLine("Stats:");
         terminal.SetColor("white");
         terminal.WriteLine($"  Level: {companion.Level} | Role: {companion.CombatRole}");
-
+        terminal.WriteLine($"  HP: {tempChar.MaxHP}  |  ATK: {tempChar.Strength}  |  DEF: {tempChar.Defence}");
+        terminal.WriteLine($"  STR: {tempChar.Strength}  DEX: {tempChar.Dexterity}  AGI: {tempChar.Agility}  CON: {tempChar.Constitution}");
+        terminal.WriteLine($"  INT: {tempChar.Intelligence}  WIS: {tempChar.Wisdom}  CHA: {tempChar.Charisma}  STA: {tempChar.Stamina}");
         if (companion.EquippedItems.Count > 0)
         {
-            // Show effective stats with equipment
-            var tempChar = CreateCompanionCharacterWrapper(companion);
-            terminal.Write($"  HP: {companion.BaseStats.HP}");
-            if (tempChar.MaxHP != companion.BaseStats.HP)
-            {
-                terminal.SetColor("bright_green");
-                terminal.Write($" ({tempChar.MaxHP})");
-                terminal.SetColor("white");
-            }
-            terminal.Write($" | ATK: {companion.BaseStats.Attack}");
-            if (tempChar.Strength != companion.BaseStats.Attack)
-            {
-                terminal.SetColor("bright_green");
-                terminal.Write($" ({tempChar.Strength})");
-                terminal.SetColor("white");
-            }
-            terminal.Write($" | DEF: {companion.BaseStats.Defense}");
-            if (tempChar.Defence != companion.BaseStats.Defense)
-            {
-                terminal.SetColor("bright_green");
-                terminal.Write($" ({tempChar.Defence})");
-                terminal.SetColor("white");
-            }
-            terminal.WriteLine("");
-
-            // Show equipped item count
             terminal.SetColor("gray");
-            terminal.WriteLine($"  Equipment: {companion.EquippedItems.Count} item{(companion.EquippedItems.Count != 1 ? "s" : "")} equipped");
-        }
-        else
-        {
-            terminal.WriteLine($"  HP: {companion.BaseStats.HP} | ATK: {companion.BaseStats.Attack} | DEF: {companion.BaseStats.Defense}");
+            terminal.WriteLine($"  ({companion.EquippedItems.Count} item{(companion.EquippedItems.Count != 1 ? "s" : "")} equipped — stats include gear bonuses)");
         }
 
         // Show abilities from class ability system (matches toggle menu)
@@ -3230,7 +3203,8 @@ public class InnLocation : BaseLocation
             terminal.SetColor("white");
             terminal.WriteLine($"  Level: {target.Level}  Class: {target.Class}  Race: {target.Race}");
             terminal.WriteLine($"  HP: {target.HP}/{target.MaxHP}  Mana: {target.Mana}/{target.MaxMana}");
-            terminal.WriteLine($"  Str: {target.Strength}  Def: {target.Defence}  Agi: {target.Agility}");
+            terminal.WriteLine($"  STR: {target.Strength}  DEX: {target.Dexterity}  AGI: {target.Agility}  CON: {target.Constitution}");
+            terminal.WriteLine($"  INT: {target.Intelligence}  WIS: {target.Wisdom}  CHA: {target.Charisma}  DEF: {target.Defence}");
             terminal.WriteLine("");
 
             // Show current equipment

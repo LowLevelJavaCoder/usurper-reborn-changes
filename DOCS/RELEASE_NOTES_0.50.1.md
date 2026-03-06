@@ -20,6 +20,12 @@ Pit fighting bets had no cap — players could bet their entire gold at up to 3x
 ### Temple Menu Spacing
 `[F]The Faith` was missing a space after the bracket — now displays as `[F] The Faith`.
 
+### Relations Menu Removed
+The `[R]elations` option on Main Street was removed from both visual and compact menus — the information is available elsewhere and the menu entry was confusing new players.
+
+### Settlement Deserialization on Legacy Saves
+BBS sysops upgrading from v0.49.5 or earlier hit a JSON deserialization error because `ProposalCooldowns` changed from `List<string>` to `Dictionary<string, int>` in v0.49.9. The field now uses `JsonElement?` to accept both formats gracefully. Also added `AllowReadingFromString` to the online state manager JSON options to handle numeric string coercion.
+
 ## Files Changed
 - `Scripts/Core/GameConfig.cs` — Version 0.50.1
 - `Scripts/Locations/DungeonLocation.cs` — Set `currentPlayer` and `terminal` base class fields at top of `EnterLocation()` override
@@ -27,3 +33,6 @@ Pit fighting bets had no cap — players could bet their entire gold at up to 3x
 - `Scripts/Core/GameEngine.cs` — Login-time dual-worship cleanup guard (elder god + immortal conflict)
 - `Scripts/Locations/DarkAlleyLocation.cs` — Pit fighting bet cap (`level * 500`)
 - `Scripts/Locations/TempleLocation.cs` — `[F] The Faith` spacing fix
+- `Scripts/Locations/MainStreetLocation.cs` — Removed `[R]elations` from visual menu, compact menu, and key handler; removed `ShowRelations()` method
+- `Scripts/Systems/SettlementSystem.cs` — `ProposalCooldowns` uses `JsonElement?` to handle both legacy `List<string>` and current `Dictionary<string, int>` formats
+- `Scripts/Systems/OnlineStateManager.cs` — Added `AllowReadingFromString` to JSON number handling
