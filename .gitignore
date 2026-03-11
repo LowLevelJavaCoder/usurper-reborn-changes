@@ -58,12 +58,6 @@ CLAUDE.md
 # Telemetry config (contains webhook URLs - never commit)
 telemetry_config.txt
 nul
-tools/ans_to_csharp.py
-.gitignore
-tools/wizard_portrait_output.txt
-tools/orc_portrait_output.txt
-tools/bbs_json_to_csharp.py
-tools/balance_audit.py
-tools/npc_audit.py
-tools/retention_audit.py
-tools/png_to_ansi_csharp.py
+
+# Dev/localization tooling scripts (not part of the game)
+tools/
