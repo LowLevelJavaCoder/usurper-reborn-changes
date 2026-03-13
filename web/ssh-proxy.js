@@ -2575,6 +2575,23 @@ function handleHttpRequest(req, res) {
       console.log(`[usurper-web] SSE client disconnected (${sseClients.size} total)`);
     });
     return;
+  } else if (req.method === 'GET' && req.url === '/api/languages') {
+    // Auto-detect available language files in lang/ directory
+    const langDir = path.join(__dirname, 'lang');
+    let langs = ['en'];
+    try {
+      if (fs.existsSync(langDir)) {
+        langs = fs.readdirSync(langDir)
+          .filter(f => f.endsWith('.json'))
+          .map(f => f.replace('.json', ''))
+          .sort((a, b) => a === 'en' ? -1 : b === 'en' ? 1 : a.localeCompare(b));
+      }
+    } catch (e) {}
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Cache-Control', 'public, max-age=60');
+    res.writeHead(200);
+    res.end(JSON.stringify(langs));
+    return;
   } else if (req.method === 'GET' && req.url === '/api/sponsors') {
     getSponsors().then(data => {
       res.setHeader('Access-Control-Allow-Origin', '*');

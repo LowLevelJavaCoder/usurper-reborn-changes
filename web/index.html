@@ -1398,7 +1398,6 @@
             <div class="lang-picker">
                 <select id="lang-select" onchange="switchLanguage(this.value)">
                     <option value="en">English</option>
-                    <option value="es">Español</option>
                 </select>
             </div>
         </nav>
@@ -2153,6 +2152,36 @@
         loadLanguage(lang);
     }
 
+    // Known language display names (add new languages here as they're created)
+    var LANG_NAMES = {
+        en: 'English', es: 'Español', fr: 'Français', de: 'Deutsch',
+        pt: 'Português', it: 'Italiano', nl: 'Nederlands', pl: 'Polski',
+        ru: 'Русский', ja: '日本語', ko: '한국어', zh: '中文',
+        sv: 'Svenska', da: 'Dansk', hu: 'Magyar', ar: 'العربية',
+        tr: 'Türkçe', cs: 'Čeština', ro: 'Română', fi: 'Suomi',
+        nb: 'Norsk', el: 'Ελληνικά', th: 'ไทย', vi: 'Tiếng Việt',
+        uk: 'Українська', hi: 'हिन्दी', he: 'עברית', id: 'Bahasa Indonesia'
+    };
+
+    // Auto-detect available languages from server
+    function populateLanguagePicker() {
+        fetch('/api/languages')
+            .then(function(res) { return res.json(); })
+            .then(function(langs) {
+                var sel = document.getElementById('lang-select');
+                if (!sel || !langs || !langs.length) return;
+                sel.innerHTML = '';
+                langs.forEach(function(code) {
+                    var opt = document.createElement('option');
+                    opt.value = code;
+                    opt.textContent = LANG_NAMES[code] || code;
+                    sel.appendChild(opt);
+                });
+                sel.value = i18nLang;
+            })
+            .catch(function() {});
+    }
+
     // Load saved language on page load
     if (i18nLang !== 'en') {
         loadLanguage(i18nLang);
@@ -2167,6 +2196,7 @@
             })
             .catch(function() {});
     }
+    populateLanguagePicker();
 </script>
 
 <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js"></script>
