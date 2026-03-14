@@ -13033,7 +13033,7 @@
   "dungeon.wounded_choice": "a(Y)udarlo, (R)obarlo, o (D)ejarlo? ",
   "dungeon.wounded_heal_potion": "Usas una poción de curación en el extraño herido.",
   "dungeon.wounded_recovers": "Se recupera lo suficiente para ponerse de pie.",
-  "dungeon.wounded_reward": "Tu caballerosidad aumenta en {0}!",
+  "dungeon.wounded_reward": "Él te recompensa con gratitud con {0} monedas de oro!",
   "dungeon.wounded_bandage": "Intentas vendar sus heridas con tela...",
   "dungeon.wounded_helps": "Parece ayudar un poco.",
   "dungeon.wounded_dies": "Desafortunadamente, muere por sus heridas.",

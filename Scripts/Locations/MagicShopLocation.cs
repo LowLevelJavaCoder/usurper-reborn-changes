@@ -561,7 +561,7 @@ public partial class MagicShopLocation : BaseLocation
         long potionPrice = ApplyAllPriceModifiers(player.Level * GameConfig.HealingPotionLevelMultiplier, player);
         var (_, _, hpPotionUnitWithTax) = CityControlSystem.CalculateTaxedPrice(potionPrice);
         int maxPotionsCanBuy = hpPotionUnitWithTax > 0 ? (int)(player.Gold / hpPotionUnitWithTax) : 0;
-        int maxPotionsCanCarry = GameConfig.MaxHealingPotions - (int)player.Healing;
+        int maxPotionsCanCarry = player.MaxPotions - (int)player.Healing;
         int maxPotions = Math.Min(maxPotionsCanBuy, maxPotionsCanCarry);
 
         if (player.Gold < hpPotionUnitWithTax)
@@ -584,7 +584,7 @@ public partial class MagicShopLocation : BaseLocation
 
         DisplayMessage(Loc.Get("magic_shop.potion_price", $"{potionPrice:N0}"), "gray");
         DisplayMessage(Loc.Get("magic_shop.potion_gold", $"{player.Gold:N0}"), "gray");
-        DisplayMessage(Loc.Get("magic_shop.potion_current", $"{player.Healing}"), "gray");
+        DisplayMessage(Loc.Get("magic_shop.potion_current", $"{player.Healing}", $"{player.MaxPotions}"), "gray");
         DisplayMessage("");
 
         DisplayMessage(Loc.Get("magic_shop.potion_how_many", $"{maxPotions}"), "yellow", false);
@@ -604,7 +604,7 @@ public partial class MagicShopLocation : BaseLocation
                 // Process city tax share from this sale
                 CityControlSystem.Instance.ProcessSaleTax(totalCost);
 
-                DisplayMessage(Loc.Get("magic_shop.potion_deal", $"{quantity}"), "green");
+                DisplayMessage(Loc.Get("magic_shop.potion_deal", "Ravanella", $"{quantity}"), "green");
                 DisplayMessage(Loc.Get("magic_shop.potion_total", $"{hpTotalWithTax:N0}"), "gray");
 
                 player.Statistics?.RecordGoldSpent(hpTotalWithTax);

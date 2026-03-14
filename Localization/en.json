@@ -13503,7 +13503,7 @@
   "dungeon.wounded_choice": "(H)elp him, (R)ob him, or (L)eave him? ",
   "dungeon.wounded_heal_potion": "You use a healing potion on the wounded stranger.",
   "dungeon.wounded_recovers": "He recovers enough to stand.",
-  "dungeon.wounded_reward": "Your chivalry increases by {0}!",
+  "dungeon.wounded_reward": "He gratefully rewards you with {0} gold coins!",
   "dungeon.wounded_bandage": "You try to bandage his wounds with cloth...",
   "dungeon.wounded_helps": "It seems to help a little.",
   "dungeon.wounded_dies": "Unfortunately, he dies from his wounds.",
