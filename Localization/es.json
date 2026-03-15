@@ -8209,6 +8209,7 @@
   "opening.cycle_sta_bonus": "+{0} Resistencia (bonus de ciclo)",
   "opening.cycle_gold_bonus": "+{0} Oro Inicial (bonus de ciclo)",
   "opening.cycle_exp_bonus": "+{0}% Experiencia (bonus de ciclo)",
+  "opening.cycle_level_bonus": "Comenzar en Nivel {0} (bonus de veterano)",
   "opening.cycle_artifacts_revealed": "Ubicaciones de artefactos reveladas",
   "opening.cycle_ancient_key": "Llave Antigua conservada",
   "opening.cycle_ocean_remembers": "El Oceano recuerda tu verdadero final",

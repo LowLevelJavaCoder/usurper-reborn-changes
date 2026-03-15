@@ -14297,11 +14297,8 @@ public partial class CombatEngine
             return;
         }
 
-        terminal.SetColor("red");
-        terminal.WriteLine(Loc.Get("combat.monster_attacks_companion", monster.TheNameOrName, companion.DisplayName));
-        await Task.Delay(GetCombatDelay(500));
-
         // Monster special abilities can also fire against companions
+        bool shownAttackMessage = false;
         if (monster.SpecialAbilities != null && monster.SpecialAbilities.Count > 0)
         {
             int abilityChance = 30 + (monster.Level / 5);
@@ -14311,6 +14308,13 @@ public partial class CombatEngine
                 if (Enum.TryParse<MonsterAbilities.AbilityType>(abilityName, true, out var abilityType))
                 {
                     var abilityResult = MonsterAbilities.ExecuteAbility(abilityType, monster, companion);
+                    // Show "attacks companion!" only if ability targets them (not self-only like Regeneration)
+                    if (!abilityResult.IsSelfOnly)
+                    {
+                        terminal.SetColor("red");
+                        terminal.WriteLine(Loc.Get("combat.monster_attacks_companion", monster.TheNameOrName, companion.DisplayName));
+                        shownAttackMessage = true;
+                    }
                     if (!string.IsNullOrEmpty(abilityResult.Message))
                     {
                         terminal.SetColor(abilityResult.MessageColor ?? "red");
@@ -14391,6 +14395,14 @@ public partial class CombatEngine
 
         // Skip normal attack if companion already died from special ability above
         if (!companion.IsAlive) goto CompanionDeathCheck;
+
+        // Show "attacks companion!" if not already shown by ability path
+        if (!shownAttackMessage)
+        {
+            terminal.SetColor("red");
+            terminal.WriteLine(Loc.Get("combat.monster_attacks_companion", monster.TheNameOrName, companion.DisplayName));
+            await Task.Delay(GetCombatDelay(500));
+        }
 
         // Distraction penalty: distracted monsters have a 25% chance to miss companions entirely
         // (equivalent to the -5 to hit roll applied on the player attack path)

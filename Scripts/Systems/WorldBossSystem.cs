@@ -54,9 +54,16 @@ namespace UsurperRemake.Systems
                 int onlineCount = backend.GetOnlinePlayerCount();
                 if (onlineCount < GameConfig.WorldBossMinPlayersToSpawn) return;
 
-                // Cooldown: check last spawn time via boss_data_json or just rely on
-                // the fact that we only spawn 1/day and bosses last 1 hour + expire
-                // The DB already handles "no active boss" check above
+                // Cooldown: don't spawn if a boss was defeated/expired recently
+                var lastBossTime = backend.GetLastWorldBossEndTime();
+                if (lastBossTime.HasValue)
+                {
+                    double hoursSinceLast = (DateTime.UtcNow - lastBossTime.Value).TotalHours;
+                    if (hoursSinceLast < GameConfig.WorldBossSpawnCooldownHours)
+                    {
+                        return;
+                    }
+                }
 
                 // Pick a random boss
                 var bossDef = WorldBossDatabase.GetRandomBoss();
@@ -162,7 +169,7 @@ namespace UsurperRemake.Systems
 
                 // Menu
                 terminal.SetColor("cyan");
-                terminal.WriteLine($"  [A] {Loc.Get("world_boss.attack_boss")}    [Q] {Loc.Get("ui.back")}");
+                terminal.WriteLine($"  [A] {Loc.Get("world_boss.attack_boss")}    [Q] Back");
                 terminal.SetColor("white");
                 terminal.Write($"\n  {Loc.Get("ui.your_choice")}");
                 string input = (await terminal.ReadLineAsync())?.Trim().ToUpper() ?? "";

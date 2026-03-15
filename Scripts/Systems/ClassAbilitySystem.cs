@@ -2394,26 +2394,42 @@ public static class ClassAbilitySystem
                 var slotId = player.Quickbar[i];
                 if (!string.IsNullOrEmpty(slotId))
                 {
-                    var ability = GetAbility(slotId);
-                    if (ability != null)
+                    // Check if this slot holds a spell (prestige classes share quickbar)
+                    var spellLevel = SpellSystem.ParseQuickbarSpellLevel(slotId);
+                    if (spellLevel.HasValue)
                     {
+                        var spell = SpellSystem.GetSpellInfo(player.Class, spellLevel.Value);
                         terminal.SetColor("bright_yellow");
                         terminal.Write($"  [{i + 1}] ");
-                        terminal.SetColor("yellow");
-                        terminal.Write($"{ability.Name,-24} ({ability.StaminaCost} ST)");
-                        if (!string.IsNullOrEmpty(ability.Description))
-                        {
-                            terminal.SetColor("gray");
-                            terminal.Write($"  {ability.Description}");
-                        }
+                        terminal.SetColor("cyan");
+                        terminal.Write($"{(spell?.Name ?? slotId),-24}");
+                        terminal.SetColor("darkgray");
+                        terminal.Write($"  (spell)");
                         terminal.WriteLine("");
                     }
                     else
                     {
-                        // Invalid ability in slot - clear it
-                        player.Quickbar[i] = null;
-                        terminal.SetColor("darkgray");
-                        terminal.WriteLine($"  [{i + 1}] --- {Loc.Get("ui.empty").ToLower()} ---");
+                        var ability = GetAbility(slotId);
+                        if (ability != null)
+                        {
+                            terminal.SetColor("bright_yellow");
+                            terminal.Write($"  [{i + 1}] ");
+                            terminal.SetColor("yellow");
+                            terminal.Write($"{ability.Name,-24} ({ability.StaminaCost} ST)");
+                            if (!string.IsNullOrEmpty(ability.Description))
+                            {
+                                terminal.SetColor("gray");
+                                terminal.Write($"  {ability.Description}");
+                            }
+                            terminal.WriteLine("");
+                        }
+                        else
+                        {
+                            // Truly invalid entry - clear it
+                            player.Quickbar[i] = null;
+                            terminal.SetColor("darkgray");
+                            terminal.WriteLine($"  [{i + 1}] --- {Loc.Get("ui.empty").ToLower()} ---");
+                        }
                     }
                 }
                 else

@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using UsurperRemake.Locations;
 using UsurperRemake.UI;
 using UsurperRemake.Utils;
 
@@ -435,6 +436,21 @@ namespace UsurperRemake.Systems
             // cycle is already incremented (e.g., 2 for first NG+), use cycle-1 for bonus calculation
             var bonuses = CalculateCycleBonuses(player, lastEnding, cycle - 1);
             ApplyCycleBonuses(player, bonuses);
+
+            // Apply starting level bonus from MetaProgressionSystem
+            int startingLevel = MetaProgressionSystem.Instance.GetStartingLevelBonus();
+            if (startingLevel > 1)
+            {
+                for (int i = 1; i < startingLevel; i++)
+                {
+                    player.Level++;
+                    LevelMasterLocation.ApplyClassStatIncreases(player);
+                    player.TrainingPoints += TrainingSystem.CalculateTrainingPointsPerLevel(player);
+                }
+                // Set XP to match the new level so they don't instantly level again
+                player.Experience = LevelMasterLocation.GetExperienceForLevel(startingLevel);
+                player.RecalculateStats();
+            }
         }
 
         /// <summary>
@@ -461,6 +477,13 @@ namespace UsurperRemake.Systems
             bonuses.Add(Loc.Get("opening.cycle_sta_bonus", staBonus));
             bonuses.Add(Loc.Get("opening.cycle_gold_bonus", goldBonus));
             bonuses.Add(Loc.Get("opening.cycle_exp_bonus", $"{(expMult - 1) * 100:0}"));
+
+            // Starting level bonus from meta-progression
+            int startingLevel = MetaProgressionSystem.Instance.GetStartingLevelBonus();
+            if (startingLevel > 1)
+            {
+                bonuses.Add(Loc.Get("opening.cycle_level_bonus", startingLevel));
+            }
 
             // Check for special bonuses from endings
             if (story.HasStoryFlag("keeps_artifact_knowledge") || story.HasStoryFlag("knows_artifact_locations"))

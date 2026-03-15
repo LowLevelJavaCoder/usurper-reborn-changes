@@ -3383,83 +3383,54 @@ public class InnLocation : BaseLocation
         WriteSectionHeader($"EQUIP ITEM TO {target.DisplayName.ToUpper()}", "bright_cyan");
         terminal.WriteLine("");
 
-        // Collect equippable items from player's inventory and equipped items
-        var equipmentItems = new List<(Equipment item, bool isEquipped, EquipmentSlot? fromSlot)>();
+        // Step 1: Pick a slot
+        var selectedSlot = await PromptForEquipmentSlot(target);
+        if (selectedSlot == null) return;
 
-        // Add equippable items from player's inventory
-        foreach (var invItem in currentPlayer.Inventory)
-        {
-            var equipment = ConvertInventoryItemToEquipment(invItem);
-            if (equipment != null)
-                equipmentItems.Add((equipment, false, (EquipmentSlot?)null));
-        }
-
-        // Add player's currently equipped items
-        foreach (EquipmentSlot slot in Enum.GetValues(typeof(EquipmentSlot)))
-        {
-            if (slot == EquipmentSlot.None) continue;
-            var equipped = currentPlayer.GetEquipment(slot);
-            if (equipped != null)
-            {
-                equipmentItems.Add((equipped, true, slot));
-            }
-        }
+        // Step 2: Get items that match this slot
+        var equipmentItems = GetItemsForSlot(selectedSlot.Value);
 
         if (equipmentItems.Count == 0)
         {
+            terminal.WriteLine("");
             terminal.SetColor("yellow");
-            terminal.WriteLine(Loc.Get("ui.no_equipment_to_give"));
+            terminal.WriteLine("  No items available for this slot.");
             await Task.Delay(2000);
             return;
         }
 
-        // Display available items
-        terminal.SetColor("white");
-        terminal.WriteLine(Loc.Get("inn.available_equipment"));
+        // Step 3: Show current item in slot
         terminal.WriteLine("");
-
-        for (int i = 0; i < equipmentItems.Count; i++)
+        var currentItem = target.GetEquipment(selectedSlot.Value);
+        terminal.SetColor("white");
+        terminal.Write($"  Current: ");
+        if (currentItem != null)
         {
-            var (item, isEquipped, fromSlot) = equipmentItems[i];
-            terminal.SetColor("bright_yellow");
-            terminal.Write($"  {i + 1}. ");
-
-            if (!item.IsIdentified)
+            if (!currentItem.IsIdentified)
             {
                 terminal.SetColor("magenta");
-                terminal.Write($"{GetEquipmentDisplayName(item)} ");
+                terminal.WriteLine(GetEquipmentDisplayName(currentItem));
             }
             else
             {
-                terminal.SetColor("white");
-                terminal.Write($"{item.Name} ");
-
-                // Show item stats
-                terminal.SetColor("gray");
-                if (item.WeaponPower > 0)
-                    terminal.Write($"[Atk:{item.WeaponPower}] ");
-                if (item.ArmorClass > 0)
-                    terminal.Write($"[AC:{item.ArmorClass}] ");
-                if (item.ShieldBonus > 0)
-                    terminal.Write($"[Shield:{item.ShieldBonus}] ");
-
-                // Show if currently equipped by player
-                if (isEquipped)
-                {
-                    terminal.SetColor("cyan");
-                    terminal.Write($"(your {fromSlot?.GetDisplayName()})");
-                }
-
-                // Check if target can use it
-                if (!item.CanEquip(target, out string reason))
-                {
-                    terminal.SetColor("red");
-                    terminal.Write($" [{reason}]");
-                }
+                terminal.SetColor(currentItem.GetRarityColor());
+                terminal.Write(currentItem.Name);
+                WriteEquipmentStatSummary(currentItem);
+                terminal.WriteLine("");
             }
-
-            terminal.WriteLine("");
         }
+        else
+        {
+            terminal.SetColor("darkgray");
+            terminal.WriteLine("Empty");
+        }
+        terminal.WriteLine("");
+
+        // Step 4: Display matching items with full stats
+        terminal.SetColor("white");
+        terminal.WriteLine(Loc.Get("inn.available_equipment"));
+        terminal.WriteLine("");
+        DisplayEquipmentItemList(equipmentItems, target);
 
         terminal.WriteLine("");
         terminal.SetColor("cyan");
@@ -3495,30 +3466,8 @@ public class InnLocation : BaseLocation
             return;
         }
 
-        // For one-handed weapons, ask which hand
-        EquipmentSlot? targetSlot = null;
-        if (selectedItem.Handedness == WeaponHandedness.OneHanded &&
-            (selectedItem.Slot == EquipmentSlot.MainHand || selectedItem.Slot == EquipmentSlot.OffHand))
-        {
-            terminal.WriteLine("");
-            terminal.SetColor("cyan");
-            terminal.Write(Loc.Get("inn.which_hand_pre"));
-            terminal.SetColor("bright_yellow");
-            terminal.Write("M");
-            terminal.SetColor("cyan");
-            terminal.Write(Loc.Get("inn.which_hand_mid"));
-            terminal.SetColor("bright_yellow");
-            terminal.Write("O");
-            terminal.SetColor("cyan");
-            terminal.WriteLine(Loc.Get("inn.which_hand_post"));
-            terminal.Write(": ");
-            terminal.SetColor("white");
-            var handChoice = (await terminal.ReadLineAsync()).ToUpper().Trim();
-            if (handChoice.StartsWith("O"))
-                targetSlot = EquipmentSlot.OffHand;
-            else
-                targetSlot = EquipmentSlot.MainHand;
-        }
+        // Use the slot the player already picked (no need to ask which hand)
+        EquipmentSlot? targetSlot = selectedSlot.Value;
 
         // Remove from player
         if (wasEquipped && sourceSlot.HasValue)

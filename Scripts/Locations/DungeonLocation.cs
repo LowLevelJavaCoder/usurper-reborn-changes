@@ -2748,6 +2748,8 @@ public class DungeonLocation : BaseLocation
             WriteSRMenuOption("P", Loc.Get("dungeon.potions"));
             if (currentPlayer.TotalHerbCount > 0)
                 WriteSRMenuOption("J", Loc.Get("dungeon.herbs", currentPlayer.TotalHerbCount.ToString()));
+            if (teammates.Count > 0)
+                WriteSRMenuOption("Y", "Party");
             WriteSRMenuOption("=", Loc.Get("dungeon.status"));
             WriteSRMenuOption("Q", Loc.Get("dungeon.leave_dungeon"));
             terminal.WriteLine("");
@@ -2881,6 +2883,18 @@ public class DungeonLocation : BaseLocation
             terminal.Write($"{Loc.Get("dungeon.herbs", currentPlayer.TotalHerbCount.ToString())}  ");
         }
 
+        if (teammates.Count > 0)
+        {
+            terminal.SetColor("darkgray");
+            terminal.Write("[");
+            terminal.SetColor("bright_yellow");
+            terminal.Write("Y");
+            terminal.SetColor("darkgray");
+            terminal.Write("] ");
+            terminal.SetColor("white");
+            terminal.Write("Party  ");
+        }
+
         terminal.SetColor("darkgray");
         terminal.Write("[");
         terminal.SetColor("bright_yellow");
@@ -2928,6 +2942,15 @@ public class DungeonLocation : BaseLocation
         // Gold
         terminal.SetColor("yellow");
         terminal.Write($"{Loc.Get("status.gold_label")}: {player.Gold:N0}");
+
+        // Fatigue indicator (only when Tired or Exhausted)
+        var (fatigueLabel, fatigueColor) = player.GetFatigueTier();
+        if (!string.IsNullOrEmpty(fatigueLabel) && fatigueLabel != "Well-Rested")
+        {
+            terminal.Write("  ");
+            terminal.SetColor(fatigueColor);
+            terminal.Write(fatigueLabel);
+        }
 
         terminal.WriteLine("");
     }
@@ -4020,6 +4043,14 @@ public class DungeonLocation : BaseLocation
             case "J":
                 await HomeLocation.UseHerbMenu(currentPlayer, terminal);
                 RequestRedisplay();
+                return false;
+
+            case "Y":
+                if (teammates.Count > 0)
+                {
+                    await ManagePartyInDungeon();
+                    RequestRedisplay();
+                }
                 return false;
 
             case "=":
@@ -9357,6 +9388,380 @@ public class DungeonLocation : BaseLocation
             terminal.WriteLine(Loc.Get("dungeon.could_not_add", companion.Name));
         }
 
+        await Task.Delay(1500);
+    }
+
+    /// <summary>
+    /// In-dungeon party management: view party stats and manage equipment between fights.
+    /// </summary>
+    private async Task ManagePartyInDungeon()
+    {
+        while (true)
+        {
+            terminal.ClearScreen();
+            WriteBoxHeader("PARTY MANAGEMENT", "bright_cyan", 57);
+            terminal.WriteLine("");
+
+            // List party members with key stats
+            for (int i = 0; i < teammates.Count; i++)
+            {
+                var tm = teammates[i];
+                bool isCompanion = !tm.IsGroupedPlayer && !tm.IsEcho;
+                string hpColor = tm.HP < tm.MaxHP * 0.3 ? "red" : tm.HP < tm.MaxHP * 0.7 ? "yellow" : "bright_green";
+
+                terminal.SetColor("bright_yellow");
+                terminal.Write($"  {i + 1}. ");
+                terminal.SetColor("white");
+                terminal.Write($"{tm.DisplayName} ");
+                terminal.SetColor("gray");
+                terminal.Write($"Lv{tm.Level} {tm.Class}  ");
+                terminal.SetColor(hpColor);
+                terminal.Write($"HP:{tm.HP}/{tm.MaxHP}");
+                if (tm.IsManaClass)
+                {
+                    terminal.SetColor("cyan");
+                    terminal.Write($"  MP:{tm.Mana}/{tm.MaxMana}");
+                }
+                terminal.WriteLine("");
+
+                // Show equipped weapon and body armor on one line
+                var mainHand = tm.GetEquipment(EquipmentSlot.MainHand);
+                var body = tm.GetEquipment(EquipmentSlot.Body);
+                terminal.SetColor("darkgray");
+                terminal.Write("     ");
+                if (mainHand != null)
+                {
+                    terminal.Write($"Wpn: ");
+                    terminal.SetColor("gray");
+                    terminal.Write($"{(mainHand.IsIdentified ? mainHand.Name : "???")}");
+                    terminal.SetColor("darkgray");
+                }
+                if (body != null)
+                {
+                    terminal.Write($"  Armor: ");
+                    terminal.SetColor("gray");
+                    terminal.Write($"{(body.IsIdentified ? body.Name : "???")}");
+                }
+                terminal.WriteLine("");
+            }
+
+            terminal.WriteLine("");
+            terminal.SetColor("cyan");
+            terminal.WriteLine("  [#] View/equip member  [Q] Back");
+            terminal.WriteLine("");
+            terminal.SetColor("cyan");
+            terminal.Write(Loc.Get("ui.choice"));
+            terminal.SetColor("white");
+
+            var choice = (await terminal.ReadLineAsync()).Trim().ToUpper();
+
+            if (choice == "Q" || string.IsNullOrEmpty(choice))
+                return;
+
+            if (int.TryParse(choice, out int idx) && idx >= 1 && idx <= teammates.Count)
+            {
+                var selectedMember = teammates[idx - 1];
+
+                // Don't allow managing grouped player equipment or echo characters
+                if (selectedMember.IsGroupedPlayer)
+                {
+                    terminal.SetColor("yellow");
+                    terminal.WriteLine("  Other players manage their own equipment.");
+                    await Task.Delay(1500);
+                    continue;
+                }
+                if (selectedMember.IsEcho)
+                {
+                    terminal.SetColor("yellow");
+                    terminal.WriteLine("  Echo characters cannot be managed.");
+                    await Task.Delay(1500);
+                    continue;
+                }
+
+                await ManagePartyMemberEquipment(selectedMember);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Equipment management screen for a single party member in the dungeon.
+    /// Uses the shared slot-based equip flow from BaseLocation.
+    /// </summary>
+    private async Task ManagePartyMemberEquipment(Character target)
+    {
+        while (true)
+        {
+            terminal.ClearScreen();
+            WriteBoxHeader($"EQUIPMENT: {target.DisplayName.ToUpper()}", "bright_cyan", 57);
+            terminal.WriteLine("");
+
+            // Show target's stats
+            terminal.SetColor("white");
+            terminal.WriteLine($"  Level: {target.Level}  Class: {target.Class}  Race: {target.Race}");
+            string hpColor = target.HP < target.MaxHP * 0.3 ? "red" : target.HP < target.MaxHP * 0.7 ? "yellow" : "bright_green";
+            terminal.SetColor(hpColor);
+            terminal.Write($"  HP: {target.HP}/{target.MaxHP}");
+            if (target.IsManaClass)
+            {
+                terminal.SetColor("cyan");
+                terminal.Write($"  MP: {target.Mana}/{target.MaxMana}");
+            }
+            terminal.WriteLine("");
+            terminal.SetColor("white");
+            terminal.WriteLine($"  STR: {target.Strength}  DEX: {target.Dexterity}  AGI: {target.Agility}  CON: {target.Constitution}");
+            terminal.WriteLine($"  INT: {target.Intelligence}  WIS: {target.Wisdom}  CHA: {target.Charisma}  DEF: {target.Defence}");
+            terminal.WriteLine("");
+
+            // Show current equipment with stats
+            terminal.SetColor("bright_yellow");
+            terminal.WriteLine("  Equipment:");
+            terminal.SetColor("white");
+
+            DisplayEquipmentSlotWithStats(target, EquipmentSlot.MainHand, "Main Hand");
+            DisplayEquipmentSlotWithStats(target, EquipmentSlot.OffHand, "Off Hand");
+            DisplayEquipmentSlotWithStats(target, EquipmentSlot.Head, "Head");
+            DisplayEquipmentSlotWithStats(target, EquipmentSlot.Body, "Body");
+            DisplayEquipmentSlotWithStats(target, EquipmentSlot.Arms, "Arms");
+            DisplayEquipmentSlotWithStats(target, EquipmentSlot.Hands, "Hands");
+            DisplayEquipmentSlotWithStats(target, EquipmentSlot.Legs, "Legs");
+            DisplayEquipmentSlotWithStats(target, EquipmentSlot.Feet, "Feet");
+            DisplayEquipmentSlotWithStats(target, EquipmentSlot.Waist, "Belt");
+            DisplayEquipmentSlotWithStats(target, EquipmentSlot.Face, "Face");
+            DisplayEquipmentSlotWithStats(target, EquipmentSlot.Cloak, "Cloak");
+            DisplayEquipmentSlotWithStats(target, EquipmentSlot.Neck, "Neck");
+            DisplayEquipmentSlotWithStats(target, EquipmentSlot.LFinger, "Left Ring");
+            DisplayEquipmentSlotWithStats(target, EquipmentSlot.RFinger, "Right Ring");
+            terminal.WriteLine("");
+
+            // Options
+            terminal.SetColor("cyan");
+            terminal.WriteLine("  [E] Equip item  [U] Unequip item  [Q] Back");
+            terminal.WriteLine("");
+            terminal.SetColor("cyan");
+            terminal.Write(Loc.Get("ui.choice"));
+            terminal.SetColor("white");
+
+            var choice = (await terminal.ReadLineAsync()).Trim().ToUpper();
+
+            switch (choice)
+            {
+                case "E":
+                    await DungeonEquipItemToMember(target);
+                    break;
+                case "U":
+                    await DungeonUnequipItemFromMember(target);
+                    break;
+                case "Q":
+                case "":
+                    return;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Slot-based equip flow for dungeon party members.
+    /// </summary>
+    private async Task DungeonEquipItemToMember(Character target)
+    {
+        terminal.ClearScreen();
+        WriteBoxHeader($"EQUIP TO {target.DisplayName.ToUpper()}", "bright_cyan", 57);
+        terminal.WriteLine("");
+
+        // Step 1: Pick a slot
+        var selectedSlot = await PromptForEquipmentSlot(target);
+        if (selectedSlot == null) return;
+
+        // Step 2: Get items that match this slot
+        var equipmentItems = GetItemsForSlot(selectedSlot.Value);
+
+        if (equipmentItems.Count == 0)
+        {
+            terminal.WriteLine("");
+            terminal.SetColor("yellow");
+            terminal.WriteLine("  No items available for this slot.");
+            await Task.Delay(2000);
+            return;
+        }
+
+        // Step 3: Show current item in slot
+        terminal.WriteLine("");
+        var currentItem = target.GetEquipment(selectedSlot.Value);
+        terminal.SetColor("white");
+        terminal.Write($"  Current: ");
+        if (currentItem != null)
+        {
+            terminal.SetColor(currentItem.IsIdentified ? currentItem.GetRarityColor() : "magenta");
+            terminal.Write(currentItem.IsIdentified ? currentItem.Name : "Unidentified");
+            if (currentItem.IsIdentified) WriteEquipmentStatSummary(currentItem);
+            terminal.WriteLine("");
+        }
+        else
+        {
+            terminal.SetColor("darkgray");
+            terminal.WriteLine("Empty");
+        }
+        terminal.WriteLine("");
+
+        // Step 4: Display matching items with full stats
+        terminal.SetColor("white");
+        terminal.WriteLine("  Available items:");
+        terminal.WriteLine("");
+        DisplayEquipmentItemList(equipmentItems, target);
+
+        terminal.WriteLine("");
+        terminal.SetColor("cyan");
+        terminal.Write("  Item # (Q to cancel): ");
+        terminal.SetColor("white");
+
+        var input = await terminal.ReadLineAsync();
+        if (!int.TryParse(input, out int itemIdx) || itemIdx < 1 || itemIdx > equipmentItems.Count)
+        {
+            terminal.SetColor("gray");
+            terminal.WriteLine(Loc.Get("ui.cancelled"));
+            await Task.Delay(1000);
+            return;
+        }
+
+        var (selectedItem, wasEquipped, sourceSlot) = equipmentItems[itemIdx - 1];
+
+        // Block unidentified items
+        if (!selectedItem.IsIdentified)
+        {
+            terminal.SetColor("yellow");
+            terminal.WriteLine("  Must identify the item first.");
+            await Task.Delay(2000);
+            return;
+        }
+
+        // Check if target can equip
+        if (!selectedItem.CanEquip(target, out string equipReason))
+        {
+            terminal.SetColor("red");
+            terminal.WriteLine($"  {target.DisplayName} cannot use this: {equipReason}");
+            await Task.Delay(2000);
+            return;
+        }
+
+        EquipmentSlot? targetSlot = selectedSlot.Value;
+
+        // Remove from player
+        if (wasEquipped && sourceSlot.HasValue)
+        {
+            currentPlayer.UnequipSlot(sourceSlot.Value);
+            currentPlayer.RecalculateStats();
+        }
+        else
+        {
+            var invItem = currentPlayer.Inventory.FirstOrDefault(i => i.Name == selectedItem.Name);
+            if (invItem != null)
+                currentPlayer.Inventory.Remove(invItem);
+        }
+
+        // Track displaced items
+        var targetInventoryBefore = target.Inventory.Count;
+
+        var result = target.EquipItem(selectedItem, targetSlot, out string message);
+        target.RecalculateStats();
+
+        if (result)
+        {
+            // Move displaced items to player inventory
+            if (target.Inventory.Count > targetInventoryBefore)
+            {
+                var displacedItems = target.Inventory.Skip(targetInventoryBefore).ToList();
+                foreach (var displaced in displacedItems)
+                {
+                    target.Inventory.Remove(displaced);
+                    currentPlayer.Inventory.Add(displaced);
+                }
+            }
+
+            terminal.WriteLine("");
+            terminal.SetColor("bright_green");
+            terminal.WriteLine($"  {target.DisplayName} equipped {selectedItem.Name}.");
+            if (!string.IsNullOrEmpty(message))
+            {
+                terminal.SetColor("yellow");
+                terminal.WriteLine($"  {message}");
+            }
+        }
+        else
+        {
+            // Failed - return item
+            var legacyItem = currentPlayer.ConvertEquipmentToLegacyItem(selectedItem);
+            currentPlayer.Inventory.Add(legacyItem);
+            terminal.SetColor("red");
+            terminal.WriteLine($"  Failed: {message}");
+        }
+
+        await Task.Delay(2000);
+    }
+
+    /// <summary>
+    /// Unequip an item from a dungeon party member.
+    /// </summary>
+    private async Task DungeonUnequipItemFromMember(Character target)
+    {
+        terminal.ClearScreen();
+        WriteBoxHeader($"UNEQUIP FROM {target.DisplayName.ToUpper()}", "bright_cyan", 57);
+        terminal.WriteLine("");
+
+        var equippedSlots = new List<(EquipmentSlot slot, Equipment item)>();
+        foreach (EquipmentSlot slot in Enum.GetValues(typeof(EquipmentSlot)))
+        {
+            if (slot == EquipmentSlot.None) continue;
+            var item = target.GetEquipment(slot);
+            if (item != null)
+                equippedSlots.Add((slot, item));
+        }
+
+        if (equippedSlots.Count == 0)
+        {
+            terminal.SetColor("yellow");
+            terminal.WriteLine($"  {target.DisplayName} has no equipment.");
+            await Task.Delay(2000);
+            return;
+        }
+
+        for (int i = 0; i < equippedSlots.Count; i++)
+        {
+            var (slot, item) = equippedSlots[i];
+            terminal.SetColor("bright_yellow");
+            terminal.Write($"  {i + 1}. ");
+            terminal.SetColor("gray");
+            terminal.Write($"{slot.GetDisplayName(),-12}: ");
+            terminal.SetColor(item.GetRarityColor());
+            terminal.Write(item.Name);
+            WriteEquipmentStatSummary(item);
+            terminal.WriteLine("");
+        }
+
+        terminal.WriteLine("");
+        terminal.SetColor("cyan");
+        terminal.Write("  Unequip # (Q to cancel): ");
+        terminal.SetColor("white");
+
+        var input = await terminal.ReadLineAsync();
+        if (!int.TryParse(input, out int idx) || idx < 1 || idx > equippedSlots.Count)
+        {
+            terminal.SetColor("gray");
+            terminal.WriteLine(Loc.Get("ui.cancelled"));
+            await Task.Delay(1000);
+            return;
+        }
+
+        var (selectedSlot, selectedItem) = equippedSlots[idx - 1];
+
+        // Unequip and give to player
+        target.UnequipSlot(selectedSlot);
+        target.RecalculateStats();
+
+        var legacyItem = currentPlayer.ConvertEquipmentToLegacyItem(selectedItem);
+        currentPlayer.Inventory.Add(legacyItem);
+
+        terminal.WriteLine("");
+        terminal.SetColor("bright_green");
+        terminal.WriteLine($"  Took {selectedItem.Name} from {target.DisplayName}.");
         await Task.Delay(1500);
     }
 

@@ -43,6 +43,13 @@ public static class SpellLearningSystem
             for (int i = 0; i < 9; i++)
             {
                 var slotId = player.Quickbar[i];
+                if (string.IsNullOrEmpty(slotId))
+                {
+                    terminal.SetColor("darkgray");
+                    terminal.WriteLine(Loc.Get("spell_learning.empty_slot", i + 1));
+                    continue;
+                }
+
                 var spellLevel = SpellSystem.ParseQuickbarSpellLevel(slotId);
                 if (spellLevel.HasValue)
                 {
@@ -68,8 +75,15 @@ public static class SpellLearningSystem
                 }
                 else
                 {
+                    // Slot holds an ability (prestige classes share quickbar)
+                    var ability = ClassAbilitySystem.GetAbility(slotId);
+                    terminal.SetColor("bright_yellow");
+                    terminal.Write($"  [{i + 1}] ");
+                    terminal.SetColor("yellow");
+                    terminal.Write($"{(ability?.Name ?? slotId),-22}");
                     terminal.SetColor("darkgray");
-                    terminal.WriteLine(Loc.Get("spell_learning.empty_slot", i + 1));
+                    terminal.Write($"  (ability)");
+                    terminal.WriteLine("");
                 }
             }
 

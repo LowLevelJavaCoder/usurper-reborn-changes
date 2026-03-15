@@ -563,11 +563,12 @@ public class MusicShopLocation : BaseLocation
         // Process city tax
         CityControlSystem.Instance.ProcessSaleTax(item.Value);
 
-        bool isBard = currentPlayer.Class == CharacterClass.Bard;
+        bool canEquipInstrument = currentPlayer.Class == CharacterClass.Bard ||
+                                  currentPlayer.Class >= CharacterClass.Tidesworn; // Prestige classes bypass restrictions
 
-        if (isBard)
+        if (canEquipInstrument)
         {
-            // Bards can equip directly
+            // Bards and prestige classes can equip directly
             if (currentPlayer.EquipItem(item, null, out string message))
             {
                 terminal.SetColor("bright_green");

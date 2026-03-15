@@ -887,12 +887,17 @@ public partial class GameEngine
         if (PendingNewGamePlus)
         {
             PendingNewGamePlus = false;
+            // Preserve player preferences before deleting old save
+            bool preserveScreenReader = currentPlayer?.ScreenReaderMode ?? GameConfig.ScreenReaderMode;
             // Use the active character key (could be main or alt)
             var activeKey = UsurperRemake.BBS.DoorMode.GetPlayerName()?.ToLowerInvariant() ?? accountName;
             var ngpSaves = SaveSystem.Instance.GetPlayerSaves(activeKey);
             foreach (var save in ngpSaves)
                 SaveSystem.Instance.DeleteSave(Path.GetFileNameWithoutExtension(save.FileName));
             await CreateNewGame(activeKey);
+            // Restore preferences that CreateNewGame defaults from CLI flags
+            if (currentPlayer != null)
+                currentPlayer.ScreenReaderMode = preserveScreenReader;
         }
     }
 

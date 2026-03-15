@@ -9550,6 +9550,7 @@
   "opening.cycle_sta_bonus": "+{0} Stamina (cycle bonus)",
   "opening.cycle_gold_bonus": "+{0} Starting Gold (cycle bonus)",
   "opening.cycle_exp_bonus": "+{0}% Experience (cycle bonus)",
+  "opening.cycle_level_bonus": "Start at Level {0} (veteran bonus)",
   "opening.cycle_artifacts_revealed": "Artifact locations revealed",
   "opening.cycle_ancient_key": "Ancient Key retained",
   "opening.cycle_ocean_remembers": "The Ocean remembers your true ending",

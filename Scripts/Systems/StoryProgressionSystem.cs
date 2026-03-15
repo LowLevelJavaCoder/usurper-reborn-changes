@@ -528,8 +528,8 @@ namespace UsurperRemake.Systems
             CurrentGameDay = 1; // Reset game day counter
             MajorChoices.Clear();
             CollectedArtifacts.Clear();
+            CollectedSeals.Clear();
             StringStoryFlags.Clear();
-            // Keep CollectedSeals - they persist across cycles
 
             InitializeOldGods(); // Reset god states
             InitializeKeyNPCs(); // Reset relationships

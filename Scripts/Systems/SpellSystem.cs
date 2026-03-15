@@ -643,8 +643,10 @@ public static class SpellSystem
         // Formula: 1.0 + (level * 0.03) gives 1.0 at level 0, 4.0 at level 100
         double levelMultiplier = 1.0 + (caster.Level * 0.03);
 
-        // Use StatEffectsSystem for Intelligence-based spell damage multiplier
-        double statBonus = StatEffectsSystem.GetSpellDamageMultiplier(caster.Intelligence);
+        // Use StatEffectsSystem for stat-based spell damage multiplier
+        // Wavecaller uses CHA (performance-based magic), others use INT
+        long spellStat = caster.Class == CharacterClass.Wavecaller ? caster.Charisma : caster.Intelligence;
+        double statBonus = StatEffectsSystem.GetSpellDamageMultiplier(spellStat);
 
         // Wisdom adds a smaller bonus for hybrid casters
         if (caster.Class == CharacterClass.Cleric || caster.Class == CharacterClass.Sage)
@@ -663,8 +665,8 @@ public static class SpellSystem
         // Add some variance (±10%)
         double variance = 0.9 + (random.NextDouble() * 0.2);
 
-        // Check for spell critical (from Intelligence)
-        if (StatEffectsSystem.GetSpellCriticalChance(caster.Intelligence) > random.Next(100))
+        // Check for spell critical (from primary casting stat)
+        if (StatEffectsSystem.GetSpellCriticalChance(spellStat) > random.Next(100))
         {
             proficiencyMult *= 1.5f; // 50% bonus on spell crit
         }
@@ -695,10 +697,11 @@ public static class SpellSystem
         // Level scaling: 2% per level (damage is 3%, healing is 2.5%)
         double levelMultiplier = 1.0 + (caster.Level * 0.02);
 
-        // INT scaling for protection: 1.5% per point above 10, soft cap above INT 60
+        // Stat scaling for protection: 1.5% per point above 10, soft cap above 60
+        // Wavecaller uses CHA (performance-based magic), others use INT
         // Max ~2.5x (much less than damage's 8.0x)
         double intBonus = 1.0;
-        long effectiveInt = caster.Intelligence;
+        long effectiveInt = caster.Class == CharacterClass.Wavecaller ? caster.Charisma : caster.Intelligence;
         if (effectiveInt > 10)
         {
             if (effectiveInt <= 60)

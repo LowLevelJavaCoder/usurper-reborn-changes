@@ -9,7 +9,7 @@ using System.Collections.Generic;
 public static partial class GameConfig
 {
     // Version information
-    public const string Version = "0.52.7";
+    public const string Version = "0.52.8";
     public const string VersionName = "The Hook";
     public const string DiscordInvite = "discord.gg/EZhwgDT6Ta";
 
@@ -658,7 +658,8 @@ public static partial class GameConfig
     // World Boss System (v0.48.2) — Online Mode Only
     // ============================================================
     public const int WorldBossMinPlayersToSpawn = 2;            // Min online players to trigger spawn
-    public const int WorldBossSpawnCooldownTicks = 120;         // ~1 hour (120 ticks * 30s) between bosses
+    public const int WorldBossSpawnCooldownTicks = 120;         // ~1 hour (120 ticks * 30s) between bosses (unused, see Hours)
+    public const double WorldBossSpawnCooldownHours = 4.0;      // Hours between boss spawns after defeat/expire
     public const int WorldBossDurationHours = 1;                // Fight window in hours before despawn
     public const int WorldBossMinLevel = 10;                    // Min player level to participate
     public const int WorldBossMaxRoundsPerSession = 50;         // Max combat rounds per session

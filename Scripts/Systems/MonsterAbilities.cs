@@ -359,6 +359,7 @@ public static class MonsterAbilities
                 monster.HP = Math.Min(monster.HP + healAmount, monster.MaxHP);
                 result.DamageMultiplier = 0; // Heal only — no damage to target
                 result.SkipNormalAttack = false; // Can still attack normally
+                result.IsSelfOnly = true; // No "attacks!" message needed
                 result.Message = $"{monster.Name} regenerates {healAmount} HP!";
                 result.MessageColor = "bright_green";
                 break;
@@ -563,6 +564,7 @@ public static class MonsterAbilities
                 var bigHeal = Math.Max(20, monster.MaxHP / 4);
                 monster.HP = Math.Min(monster.HP + bigHeal, monster.MaxHP);
                 result.SkipNormalAttack = true;
+                result.IsSelfOnly = true;
                 result.Message = $"{monster.Name} heals for {bigHeal} HP!";
                 result.MessageColor = "bright_green";
                 break;
@@ -642,6 +644,7 @@ public static class MonsterAbilities
                     var phylHeal = monster.MaxHP / 3;
                     monster.HP = Math.Min(monster.HP + phylHeal, monster.MaxHP);
                     result.SkipNormalAttack = true;
+                    result.IsSelfOnly = true;
                     result.Message = $"{monster.Name}'s phylactery pulses — it regenerates {phylHeal} HP!";
                     result.MessageColor = "bright_magenta";
                 }
@@ -882,6 +885,7 @@ public static class MonsterAbilities
                     monster.HP = monster.MaxHP;
                     monster.HasEnraged = true;
                     result.SkipNormalAttack = true;
+                    result.IsSelfOnly = true;
                     result.Message = $"{monster.Name} erupts in flame and is reborn!";
                     result.MessageColor = "bright_yellow";
                 }
@@ -1016,6 +1020,7 @@ public static class MonsterAbilities
                     monster.HasHardenedArmor = true;
                 }
                 result.SkipNormalAttack = true;
+                result.IsSelfOnly = true;
                 result.Message = $"{monster.Name} wraps itself in a cocoon, healing {cocoonHeal} HP!";
                 result.MessageColor = "white";
                 break;
@@ -1068,6 +1073,7 @@ public static class MonsterAbilities
                 var repairAmount = Math.Max(15, monster.MaxHP / 5);
                 monster.HP = Math.Min(monster.HP + repairAmount, monster.MaxHP);
                 result.SkipNormalAttack = true;
+                result.IsSelfOnly = true;
                 result.Message = $"{monster.Name} repairs itself for {repairAmount} HP!";
                 result.MessageColor = "bright_cyan";
                 break;
@@ -1214,6 +1220,7 @@ public static class MonsterAbilities
                     monster.HasHardenedArmor = true;
                 }
                 result.SkipNormalAttack = true;
+                result.IsSelfOnly = true;
                 result.Message = $"{monster.Name} creates a sanctuary, healing {sancHeal} HP!";
                 result.MessageColor = "bright_white";
                 break;
@@ -1447,6 +1454,9 @@ public class AbilityResult
     public int ReflectDamagePercent { get; set; } = 0;
     public int EvasionBonus { get; set; } = 0;
     public bool AvoidAllDamage { get; set; } = false;
+
+    // Self-targeting (no "attacks!" message needed)
+    public bool IsSelfOnly { get; set; } = false;
 
     // Summon/flee
     public bool SummonMonsters { get; set; } = false;

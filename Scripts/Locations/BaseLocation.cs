@@ -8104,6 +8104,270 @@ public abstract class BaseLocation
     }
 
     /// <summary>
+    /// Write compact stat summary for an equipment item (shared by all equip screens).
+    /// Example: [WP:45 STR:+3 DEX:+2 CRIT:5%]
+    /// </summary>
+    protected void WriteEquipmentStatSummary(Equipment item)
+    {
+        var stats = new List<string>();
+        if (item.WeaponPower > 0) stats.Add($"{Loc.Get("ui.stat_wp")}:{item.WeaponPower}");
+        if (item.ArmorClass > 0) stats.Add($"{Loc.Get("ui.stat_ac")}:{item.ArmorClass}");
+        if (item.ShieldBonus > 0) stats.Add($"{Loc.Get("ui.stat_block")}:{item.ShieldBonus}");
+        if (item.DefenceBonus > 0) stats.Add($"DEF:{item.DefenceBonus:+#;-#}");
+        if (item.StrengthBonus != 0) stats.Add($"{Loc.Get("ui.stat_str")}:{item.StrengthBonus:+#;-#}");
+        if (item.DexterityBonus != 0) stats.Add($"{Loc.Get("ui.stat_dex")}:{item.DexterityBonus:+#;-#}");
+        if (item.AgilityBonus != 0) stats.Add($"{Loc.Get("ui.stat_agi")}:{item.AgilityBonus:+#;-#}");
+        if (item.ConstitutionBonus != 0) stats.Add($"{Loc.Get("ui.stat_con")}:{item.ConstitutionBonus:+#;-#}");
+        if (item.IntelligenceBonus != 0) stats.Add($"{Loc.Get("ui.stat_int")}:{item.IntelligenceBonus:+#;-#}");
+        if (item.WisdomBonus != 0) stats.Add($"{Loc.Get("ui.stat_wis")}:{item.WisdomBonus:+#;-#}");
+        if (item.CharismaBonus != 0) stats.Add($"{Loc.Get("ui.stat_cha")}:{item.CharismaBonus:+#;-#}");
+        if (item.MaxHPBonus > 0) stats.Add($"{Loc.Get("ui.stat_hp")}:{item.MaxHPBonus:+#}");
+        if (item.MaxManaBonus > 0) stats.Add($"{Loc.Get("ui.stat_mp")}:{item.MaxManaBonus:+#}");
+        if (item.CriticalChanceBonus > 0) stats.Add($"{Loc.Get("ui.stat_crit")}:{item.CriticalChanceBonus}%");
+        if (item.LifeSteal > 0) stats.Add($"{Loc.Get("ui.stat_leech")}:{item.LifeSteal}%");
+        if (item.MagicResistance > 0) stats.Add($"{Loc.Get("ui.stat_mr")}:{item.MagicResistance}%");
+        if (item.PoisonDamage > 0) stats.Add($"{Loc.Get("ui.stat_psn")}:{item.PoisonDamage}");
+
+        if (stats.Count > 0)
+        {
+            terminal.SetColor("darkgray");
+            terminal.Write($" [{string.Join(" ", stats)}]");
+        }
+    }
+
+    /// <summary>
+    /// Display an equipment slot with its current item and stat summary (shared by equip screens).
+    /// </summary>
+    protected void DisplayEquipmentSlotWithStats(Character target, EquipmentSlot slot, string label)
+    {
+        var item = target.GetEquipment(slot);
+        terminal.SetColor("gray");
+        terminal.Write($"  {label,-12}: ");
+        if (item != null)
+        {
+            if (!item.IsIdentified)
+            {
+                terminal.SetColor("magenta");
+                terminal.WriteLine($"Unidentified {slot.GetDisplayName()}");
+            }
+            else
+            {
+                terminal.SetColor(item.GetRarityColor());
+                terminal.Write(item.Name);
+                WriteEquipmentStatSummary(item);
+                terminal.WriteLine("");
+            }
+        }
+        else
+        {
+            // Check if off-hand is empty because of a two-handed weapon
+            if (slot == EquipmentSlot.OffHand)
+            {
+                var mainHand = target.GetEquipment(EquipmentSlot.MainHand);
+                if (mainHand?.Handedness == WeaponHandedness.TwoHanded)
+                {
+                    terminal.SetColor("darkgray");
+                    terminal.WriteLine("(using 2H weapon)");
+                    return;
+                }
+            }
+            terminal.SetColor("darkgray");
+            terminal.WriteLine("Empty");
+        }
+    }
+
+    /// <summary>
+    /// Slot picker for equipment management. Returns selected slot, or null if cancelled.
+    /// Shows current equipment in each slot for context.
+    /// </summary>
+    protected async Task<EquipmentSlot?> PromptForEquipmentSlot(Character target)
+    {
+        var slots = new (EquipmentSlot slot, string label)[]
+        {
+            (EquipmentSlot.MainHand, "Main Hand"),
+            (EquipmentSlot.OffHand, "Off Hand"),
+            (EquipmentSlot.Head, "Head"),
+            (EquipmentSlot.Body, "Body"),
+            (EquipmentSlot.Arms, "Arms"),
+            (EquipmentSlot.Hands, "Hands"),
+            (EquipmentSlot.Legs, "Legs"),
+            (EquipmentSlot.Feet, "Feet"),
+            (EquipmentSlot.Waist, "Waist"),
+            (EquipmentSlot.Face, "Face"),
+            (EquipmentSlot.Cloak, "Cloak"),
+            (EquipmentSlot.Neck, "Neck"),
+            (EquipmentSlot.LFinger, "Left Ring"),
+            (EquipmentSlot.RFinger, "Right Ring"),
+        };
+
+        terminal.SetColor("bright_yellow");
+        terminal.WriteLine("  Choose a slot:");
+        terminal.WriteLine("");
+
+        // Two-column layout: 1-7 left, 8-14 right
+        for (int row = 0; row < 7; row++)
+        {
+            // Left column
+            int li = row;
+            var (lSlot, lLabel) = slots[li];
+            var lItem = target.GetEquipment(lSlot);
+            terminal.SetColor("bright_yellow");
+            terminal.Write($"  {li + 1,2}. ");
+            terminal.SetColor("white");
+            terminal.Write($"{lLabel,-12}");
+            if (lItem != null)
+            {
+                terminal.SetColor("gray");
+                terminal.Write($"{(lItem.IsIdentified ? lItem.Name : "???"),-20}");
+            }
+            else
+            {
+                terminal.SetColor("darkgray");
+                terminal.Write($"{"---",-20}");
+            }
+
+            // Right column
+            int ri = row + 7;
+            var (rSlot, rLabel) = slots[ri];
+            var rItem = target.GetEquipment(rSlot);
+            terminal.SetColor("bright_yellow");
+            terminal.Write($" {ri + 1,2}. ");
+            terminal.SetColor("white");
+            terminal.Write($"{rLabel,-12}");
+            if (rItem != null)
+            {
+                terminal.SetColor("gray");
+                terminal.Write(rItem.IsIdentified ? rItem.Name : "???");
+            }
+            else
+            {
+                terminal.SetColor("darkgray");
+                terminal.Write("---");
+            }
+            terminal.WriteLine("");
+        }
+
+        terminal.WriteLine("");
+        terminal.SetColor("cyan");
+        terminal.Write("  Slot # (Q to cancel): ");
+        terminal.SetColor("white");
+
+        var input = (await terminal.ReadLineAsync()).Trim().ToUpper();
+        if (input == "Q" || string.IsNullOrEmpty(input))
+            return null;
+
+        if (int.TryParse(input, out int slotIdx) && slotIdx >= 1 && slotIdx <= 14)
+            return slots[slotIdx - 1].slot;
+
+        return null;
+    }
+
+    /// <summary>
+    /// Show items from player inventory/equipment that match a specific slot, with full stats.
+    /// Used by slot-based equip flow. Returns list of matching items.
+    /// </summary>
+    protected List<(Equipment item, bool isEquipped, EquipmentSlot? fromSlot)> GetItemsForSlot(
+        EquipmentSlot targetSlot)
+    {
+        var items = new List<(Equipment item, bool isEquipped, EquipmentSlot? fromSlot)>();
+
+        // Add matching items from player's inventory
+        foreach (var invItem in currentPlayer.Inventory)
+        {
+            var equipment = ConvertInventoryItemToEquipment(invItem);
+            if (equipment == null) continue;
+
+            if (ItemMatchesSlot(equipment, targetSlot))
+                items.Add((equipment, false, null));
+        }
+
+        // Add matching items from player's equipped items
+        foreach (EquipmentSlot slot in Enum.GetValues(typeof(EquipmentSlot)))
+        {
+            if (slot == EquipmentSlot.None) continue;
+            var equipped = currentPlayer.GetEquipment(slot);
+            if (equipped == null) continue;
+
+            if (ItemMatchesSlot(equipped, targetSlot))
+                items.Add((equipped, true, slot));
+        }
+
+        return items;
+    }
+
+    /// <summary>
+    /// Check if an equipment item can go in the specified slot.
+    /// Handles weapons (MainHand/OffHand), rings (LFinger/RFinger), and exact slot matches.
+    /// </summary>
+    private static bool ItemMatchesSlot(Equipment item, EquipmentSlot targetSlot)
+    {
+        // Weapons can go in MainHand; one-handed weapons can also go in OffHand
+        if (targetSlot == EquipmentSlot.MainHand)
+            return item.Slot == EquipmentSlot.MainHand;
+
+        if (targetSlot == EquipmentSlot.OffHand)
+        {
+            // Shields always go to off-hand
+            if (item.Slot == EquipmentSlot.OffHand) return true;
+            // One-handed weapons can go to off-hand (dual wield)
+            if (item.Slot == EquipmentSlot.MainHand && item.Handedness == WeaponHandedness.OneHanded)
+                return true;
+            return false;
+        }
+
+        // Rings can go in either finger slot
+        if (targetSlot == EquipmentSlot.LFinger || targetSlot == EquipmentSlot.RFinger)
+            return item.Slot == EquipmentSlot.LFinger || item.Slot == EquipmentSlot.RFinger;
+
+        // Exact match for all other slots
+        return item.Slot == targetSlot;
+    }
+
+    /// <summary>
+    /// Display a list of equipment items with full stat summaries and numbering.
+    /// Returns the displayed items for selection. Handles unidentified items.
+    /// </summary>
+    protected void DisplayEquipmentItemList(
+        List<(Equipment item, bool isEquipped, EquipmentSlot? fromSlot)> items,
+        Character target)
+    {
+        for (int i = 0; i < items.Count; i++)
+        {
+            var (item, isEquipped, fromSlot) = items[i];
+            terminal.SetColor("bright_yellow");
+            terminal.Write($"  {i + 1}. ");
+
+            if (!item.IsIdentified)
+            {
+                terminal.SetColor("magenta");
+                terminal.Write($"Unidentified {item.Slot.GetDisplayName()} ");
+            }
+            else
+            {
+                terminal.SetColor(item.GetRarityColor());
+                terminal.Write(item.Name);
+                WriteEquipmentStatSummary(item);
+            }
+
+            // Show if currently equipped by player
+            if (isEquipped)
+            {
+                terminal.SetColor("cyan");
+                terminal.Write($" (your {fromSlot?.GetDisplayName()})");
+            }
+
+            // Check if target can use it
+            if (item.IsIdentified && !item.CanEquip(target, out string reason))
+            {
+                terminal.SetColor("red");
+                terminal.Write($" [{reason}]");
+            }
+
+            terminal.WriteLine("");
+        }
+    }
+
+    /// <summary>
     /// Convert a legacy Item to an Equipment object for equipping to teammates/companions/spouses.
     /// Returns null if the item is not equippable (potions, food, etc.).
     /// </summary>

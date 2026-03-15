@@ -216,6 +216,8 @@ namespace UsurperRemake.Systems
                     break;
                 case EndingType.Secret:
                     await PlayDissolutionEnding(player, terminal);
+                    // Record in meta-progression before returning (save is deleted, but meta tracks it)
+                    MetaProgressionSystem.Instance.RecordEndingUnlock(ending, player);
                     return; // Dissolution ending doesn't lead to NG+ - save deleted
             }
 
@@ -693,7 +695,7 @@ namespace UsurperRemake.Systems
 
             var confirm = await terminal.GetInputAsync(Loc.Get("ending.dissolution_confirm"));
 
-            if (confirm.ToUpper() == "DISSOLVE")
+            if (confirm.Trim().ToUpper() == "DISSOLVE")
             {
                 terminal.WriteLine("");
                 terminal.WriteLine($"  {Loc.Get("ending.dissolution_farewell_1")}", "bright_cyan");

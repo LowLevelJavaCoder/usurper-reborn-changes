@@ -348,12 +348,15 @@ namespace UsurperRemake.Systems
                     }
                 }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                DebugLogger.Instance?.Log(DebugLogger.LogLevel.Error, "META", $"Failed to load meta progression: {ex.Message}");
             }
 
             return new MetaProgressionData();
         }
+
+        private static readonly object _fileLock = new object();
 
         private void SaveData()
         {
@@ -367,10 +370,40 @@ namespace UsurperRemake.Systems
 
                 var options = new JsonSerializerOptions { WriteIndented = true };
                 string json = JsonSerializer.Serialize(data, options);
-                File.WriteAllText(saveFilePath, json);
+
+                // Lock to prevent concurrent MUD sessions from overwriting each other
+                lock (_fileLock)
+                {
+                    // Re-read and merge before writing to avoid losing other sessions' data
+                    if (File.Exists(saveFilePath))
+                    {
+                        try
+                        {
+                            var diskData = JsonSerializer.Deserialize<MetaProgressionData>(File.ReadAllText(saveFilePath));
+                            if (diskData != null)
+                            {
+                                // Merge: take the max of counters, union of sets
+                                data.TotalPlaythroughs = Math.Max(data.TotalPlaythroughs, diskData.TotalPlaythroughs);
+                                data.HighestCycle = Math.Max(data.HighestCycle, diskData.HighestCycle);
+                                data.HighestLevelAchieved = Math.Max(data.HighestLevelAchieved, diskData.HighestLevelAchieved);
+                                data.TotalMonstersKilled = Math.Max(data.TotalMonstersKilled, diskData.TotalMonstersKilled);
+                                data.TotalGoldEarned = Math.Max(data.TotalGoldEarned, diskData.TotalGoldEarned);
+                                foreach (var e in diskData.UnlockedEndings) data.UnlockedEndings.Add(e);
+                                foreach (var b in diskData.UnlockedBonuses) data.UnlockedBonuses.Add(b);
+                                foreach (var t in diskData.UnlockedTitles) data.UnlockedTitles.Add(t);
+                            }
+                        }
+                        catch { /* disk file corrupted, overwrite it */ }
+                    }
+
+                    // Re-serialize with merged data
+                    json = JsonSerializer.Serialize(data, options);
+                    File.WriteAllText(saveFilePath, json);
+                }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                DebugLogger.Instance?.Log(DebugLogger.LogLevel.Error, "META", $"Failed to save meta progression: {ex.Message}");
             }
         }
 

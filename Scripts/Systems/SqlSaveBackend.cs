@@ -4139,6 +4139,27 @@ namespace UsurperRemake.Systems
         catch (Exception ex) { DebugLogger.Instance.LogError("SQL", $"Failed to expire world bosses: {ex.Message}"); }
     }
 
+    public DateTime? GetLastWorldBossEndTime()
+    {
+        try
+        {
+            using var connection = OpenConnection();
+            using var cmd = connection.CreateCommand();
+            // Get the most recent defeated or expired boss end time
+            // For defeated: use started_at + 1 hour (approximate defeat time is within the window)
+            // For expired: use expires_at
+            // Simpler: just get started_at of the most recent boss of any status
+            cmd.CommandText = @"SELECT started_at FROM world_bosses
+                                WHERE status IN ('defeated', 'expired')
+                                ORDER BY started_at DESC LIMIT 1;";
+            var result = cmd.ExecuteScalar();
+            if (result != null && DateTime.TryParse(result.ToString(), out var lastStart))
+                return lastStart;
+        }
+        catch (Exception ex) { DebugLogger.Instance.LogError("SQL", $"Failed to get last world boss time: {ex.Message}"); }
+        return null;
+    }
+
     public async Task UpdateWorldBossData(int bossId, string bossDataJson)
     {
         try

@@ -9077,6 +9077,7 @@
   "opening.cycle_sta_bonus": "+{0} Vigore (bonus ciclo)",
   "opening.cycle_gold_bonus": "+{0} Oro Iniziale (bonus ciclo)",
   "opening.cycle_exp_bonus": "+{0}% Esperienza (bonus ciclo)",
+  "opening.cycle_level_bonus": "Inizio al Livello {0} (bonus veterano)",
   "opening.cycle_artifacts_revealed": "Posizioni degli artefatti rivelate",
   "opening.cycle_ancient_key": "Chiave Antica conservata",
   "opening.cycle_ocean_remembers": "L'Oceano ricorda il tuo vero finale",
