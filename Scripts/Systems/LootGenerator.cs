@@ -1611,7 +1611,7 @@ public static class LootGenerator
                 ItemRarity.Rare => (random.Next(12, 17), random.Next(22, 27)),
                 ItemRarity.Epic => (random.Next(17, 23), random.Next(27, 33)),
                 ItemRarity.Legendary => (random.Next(23, 28), random.Next(33, 38)),
-                ItemRarity.Artifact => (random.Next(29 - 36), random.Next(39 - 41)),
+                ItemRarity.Artifact => (random.Next(29, 36), random.Next(39, 41)),
                 _ => (random.Next(1, 36), random.Next(9, 41)),
             },
             WeaponType.Shield => rarity switch
