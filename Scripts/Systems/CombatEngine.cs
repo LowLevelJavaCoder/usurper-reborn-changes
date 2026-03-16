@@ -6743,6 +6743,15 @@ public partial class CombatEngine
                 terminal.WriteLine(Loc.Get("combat.loot_type", itemTypeName));
                 lootBroadcastSb.AppendLine($"\u001b[37m  {Loc.Get("combat.loot_type", itemTypeName)}\u001b[0m");
             }
+            else if (lootItem.Type == global::ObjType.Shield)
+            {
+                // Shields have two unique stats: ShieldBonus and BlockChance
+                string itemTypeName = Loc.Get("combat.loot_type_shield");
+                terminal.WriteLine(Loc.Get("combat.loot_shield_bonus", lootItem.ShieldBonus));
+                lootBroadcastSb.AppendLine($"\u001b[37m  {Loc.Get("combat.loot_shield_bonus", lootItem.ShieldBonus)}\u001b[0m");
+                terminal.WriteLine(Loc.Get("combat.loot_block_chance", lootItem.BlockChance));
+                lootBroadcastSb.AppendLine($"\u001b[37m  {Loc.Get("combat.loot_block_chance", lootItem.BlockChance)}\u001b[0m");
+            }
             else
             {
                 terminal.WriteLine(Loc.Get("combat.loot_armor_power", lootItem.Armor));
@@ -8154,11 +8163,49 @@ public partial class CombatEngine
                     terminal.WriteLine("(same)");
                 }
             }
-            else if (lootItem.Type == global::ObjType.Shield && currentEquip.WeaponPower > 0)
+            else if (lootItem.Type == global::ObjType.Shield)
             {
-                // Shield replacing an off-hand weapon (dual-wield) — show the trade-off
-                terminal.SetColor("yellow");
-                terminal.WriteLine($"  Off-hand weapon (Attack: {currentEquip.WeaponPower}) would be replaced by shield (Armor: {lootItem.Armor})");
+                if (currentEquip.WeaponPower > 0)
+                {
+                    // Shield replacing an off-hand weapon (dual-wield) — show the trade-off
+                    terminal.SetColor("yellow");
+                    terminal.WriteLine($"  Off-hand weapon (Attack: {currentEquip.WeaponPower}) would be replaced by shield (Armor: {lootItem.Armor})");
+                }
+                else
+                {
+                    // Compare with current shield
+                    // Shield: compare total stat value as well as shield stats (block chance and shield bonus)
+                    int currentStatTotal = currentEquip.StrengthBonus + currentEquip.DexterityBonus +
+                        currentEquip.AgilityBonus + currentEquip.ConstitutionBonus +
+                        currentEquip.IntelligenceBonus + currentEquip.WisdomBonus + currentEquip.CharismaBonus +
+                        currentEquip.DefenceBonus + currentEquip.MaxHPBonus + currentEquip.MaxManaBonus +
+                        currentEquip.StaminaBonus + currentEquip.ShieldBonus + currentEquip.BlockChance;
+                    int newConTotal2 = lootItem.LootEffects?.Where(e => e.Item1 == (int)LootGenerator.SpecialEffect.Constitution).Sum(e => e.Item2) ?? 0;
+                    int newIntTotal2 = lootItem.LootEffects?.Where(e => e.Item1 == (int)LootGenerator.SpecialEffect.Intelligence).Sum(e => e.Item2) ?? 0;
+                    int newStatTotal = lootItem.Strength + lootItem.Dexterity + lootItem.Agility +
+                        lootItem.Wisdom + lootItem.Charisma + lootItem.Defence +
+                        newConTotal2 + newIntTotal2 +
+                        lootItem.HP + lootItem.Mana + lootItem.Stamina + currentEquip.ShieldBonus + currentEquip.BlockChance;
+                    int diff = newStatTotal - currentStatTotal;
+                    
+                    terminal.SetColor("white");
+                    terminal.Write($"  Stat Total: {currentStatTotal} -> {newStatTotal} ");
+                    if (diff > 0)
+                    {
+                        terminal.SetColor("bright_green");
+                        terminal.WriteLine($"(+{diff} UPGRADE)");
+                    }
+                    else if (diff < 0)
+                    {
+                        terminal.SetColor("red");
+                        terminal.WriteLine($"({diff} downgrade)");
+                    }
+                    else
+                    {
+                        terminal.SetColor("yellow");
+                        terminal.WriteLine("(same)");
+                    }
+                }
             }
             else
             {
