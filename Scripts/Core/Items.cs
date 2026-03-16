@@ -23,6 +23,8 @@ public class Item
     public int Mana { get; set; }                       // ..mana
     public int Armor { get; set; }                      // ..can object increase armor value
     public int Attack { get; set; }                     // ..can object increase attack value
+    public int BlockChance { get; set; }                // An extension of the original Pascal source, for compatibility with Equipment
+    public int ShieldBonus { get; set; }                // An extension of the original pascal source, for compatibility with Equipment
     public string Owned { get; set; } = "";             // owned by (character name)
     public bool OnlyOne { get; set; }                   // only one object of its kind?
     public Cures Cure { get; set; }                     // can the object heal?

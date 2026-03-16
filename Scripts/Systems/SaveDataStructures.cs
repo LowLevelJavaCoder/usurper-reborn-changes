@@ -780,6 +780,8 @@ namespace UsurperRemake.Systems
         public int Dexterity { get; set; }
         public int Wisdom { get; set; }
         public int Defence { get; set; }
+        public int ShieldBonus { get; set; }
+        public int BlockChance { get; set; }
         public int HP { get; set; }
         public int Mana { get; set; }
         public int Charisma { get; set; }

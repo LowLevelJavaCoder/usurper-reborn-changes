@@ -441,6 +441,8 @@ namespace UsurperRemake.Systems
                     Dexterity = item.Dexterity,
                     Wisdom = item.Wisdom,
                     Defence = item.Defence,
+                    BlockChance = item.BlockChance,
+                    ShieldBonus = item.ShieldBonus,
                     HP = item.HP,
                     Mana = item.Mana,
                     Charisma = item.Charisma,

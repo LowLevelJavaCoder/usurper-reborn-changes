@@ -829,34 +829,7 @@ public static class LootGenerator
         public static Item GenerateWeapon(int dungeonLevel, CharacterClass playerClass)
         {
             // Roll rarity based on dungeon level
-            var rarity = RollRarity(dungeonLevel);
-
-            // Find appropriate weapon templates
-            // NG+ prestige classes can use any weapon
-            bool isPrestige = playerClass >= CharacterClass.Tidesworn;
-            var candidates = WeaponTemplates
-                .Where(w => dungeonLevel >= w.MinLevel && dungeonLevel <= w.MaxLevel)
-                .Where(w => isPrestige || w.Classes.Contains("All") || w.Classes.Contains(playerClass.ToString()))
-                .ToList();
-
-            if (candidates.Count == 0)
-            {
-                // Fallback to any weapon in level range
-                candidates = WeaponTemplates
-                    .Where(w => dungeonLevel >= w.MinLevel && dungeonLevel <= w.MaxLevel)
-                    .ToList();
-            }
-
-            if (candidates.Count == 0)
-            {
-                // Ultimate fallback
-                return CreateBasicWeapon(dungeonLevel, rarity);
-            }
-
-            // Pick random template
-            var template = candidates[random.Next(candidates.Count)];
-
-            return CreateWeaponFromTemplate(template, dungeonLevel, rarity);
+            return GenerateWeaponWithRarity(dungeonLevel, playerClass, RollRarity(dungeonLevel));
         }
 
         /// <summary>
@@ -864,38 +837,7 @@ public static class LootGenerator
         /// </summary>
         public static Item GenerateArmor(int dungeonLevel, CharacterClass playerClass)
         {
-            var rarity = RollRarity(dungeonLevel);
-
-            // Roll a random armor slot with weighted distribution
-            var (slotTemplates, objType) = RollArmorSlot();
-
-            // Ring and necklace delegate to their specialized generators
-            if (objType == ObjType.Fingers)
-                return GenerateRing(dungeonLevel, rarity);
-            if (objType == ObjType.Neck)
-                return GenerateNecklace(dungeonLevel, rarity);
-
-            bool isPrestige = playerClass >= CharacterClass.Tidesworn;
-            var candidates = slotTemplates
-                .Where(a => dungeonLevel >= a.MinLevel && dungeonLevel <= a.MaxLevel)
-                .Where(a => isPrestige || a.Classes.Contains("All") || a.Classes.Contains(playerClass.ToString()))
-                .ToList();
-
-            if (candidates.Count == 0)
-            {
-                candidates = slotTemplates
-                    .Where(a => dungeonLevel >= a.MinLevel && dungeonLevel <= a.MaxLevel)
-                    .ToList();
-            }
-
-            if (candidates.Count == 0)
-            {
-                return CreateBasicArmor(dungeonLevel, rarity, objType);
-            }
-
-            var template = candidates[random.Next(candidates.Count)];
-
-            return CreateArmorFromTemplate(template, dungeonLevel, rarity, objType);
+            return GenerateArmorWithRarity(dungeonLevel, playerClass, RollRarity(dungeonLevel));
         }
 
         /// <summary>
@@ -972,6 +914,41 @@ public static class LootGenerator
 
             var template = candidates[random.Next(candidates.Count)];
             return CreateAccessoryFromTemplate(template, dungeonLevel, rarity, ObjType.Neck);
+        }
+
+        /// <summary>
+        /// Generate a shield drop for dungeon loot
+        /// </summary>
+        /// <param name="dungeonLevel"></param>
+        /// <param name="forcedRarity"></param>
+        /// <returns></returns>
+        public static Item GenerateShield(int dungeonLevel, ItemRarity? forcedRarity = null)
+        {
+            var rarity = forcedRarity ?? RollRarity(dungeonLevel);
+
+            var candidates = ShieldTemplates
+                .Where(n => dungeonLevel >= n.MinLevel && dungeonLevel <= n.MaxLevel)
+                .ToList();
+
+            if (candidates.Count == 0)
+            {
+                // Fallback to any necklace
+                candidates = ShieldTemplates.ToList();
+            }
+            int templateIndex = random.Next(candidates.Count);
+            var template = candidates[templateIndex];
+            WeaponType shieldType = 0;
+            if (templateIndex < 9)
+            {
+                shieldType = WeaponType.Buckler;
+            } else if (templateIndex < 18)
+            {
+                shieldType = WeaponType.Shield;
+            } else
+            {
+                shieldType = WeaponType.TowerShield;
+            }
+            return CreateShieldFromTemplate(template, shieldType, dungeonLevel, rarity);
         }
 
         /// <summary>
@@ -1053,9 +1030,12 @@ public static class LootGenerator
         /// </summary>
         private static Item GenerateWeaponWithRarity(int dungeonLevel, CharacterClass playerClass, ItemRarity rarity)
         {
+            // Find appropriate weapon templates
+            // NG+ prestige classes can use any weapon
+            bool isPrestige = playerClass >= CharacterClass.Tidesworn;
             var candidates = WeaponTemplates
                 .Where(w => dungeonLevel >= w.MinLevel && dungeonLevel <= w.MaxLevel)
-                .Where(w => w.Classes.Contains("All") || w.Classes.Contains(playerClass.ToString()))
+                .Where(w => isPrestige || w.Classes.Contains("All") || w.Classes.Contains(playerClass.ToString()))
                 .ToList();
 
             if (candidates.Count == 0)
@@ -1082,11 +1062,13 @@ public static class LootGenerator
             // Roll a random armor slot with weighted distribution
             var (slotTemplates, objType) = RollArmorSlot();
 
-            // Ring and necklace delegate to their specialized generators
+            // Ring, necklace, and shield delegate to their specialized generators
             if (objType == ObjType.Fingers)
                 return GenerateRing(dungeonLevel, rarity);
             if (objType == ObjType.Neck)
                 return GenerateNecklace(dungeonLevel, rarity);
+            if (objType == ObjType.Shield)
+                return GenerateShield(dungeonLevel, rarity);
 
             bool isPrestige = playerClass >= CharacterClass.Tidesworn;
             var candidates = slotTemplates
@@ -1592,6 +1574,234 @@ public static class LootGenerator
                 item.LootEffects.Add(((int)SpecialEffect.Intelligence, finalPower * 2 / 3));
                 item.LootEffects.Add(((int)SpecialEffect.Constitution, finalPower / 5));
                 item.Defence += Math.Max(1, finalPower / 10);
+            }
+
+            ApplyEffectsToItem(item, effects, isWeapon: false);
+
+            if (isCursed)
+            {
+                // Cursed accessories have higher stats but penalties
+                item.Strength = (int)(item.Strength * 1.3f);
+                item.Value = (long)(item.Value * 0.5f);
+                ApplyCursePenalties(item);
+            }
+
+            // Rare+ dungeon drops may be unidentified
+            item.IsIdentified = !ShouldBeUnidentified(rarity);
+
+            return item;
+        }
+
+        /// <summary>
+        /// Generate semi-randomized shield stats derived from authored shield data			
+        ///
+        /// Rolled artifact stats cap at 5 below the unique items in their class to preserve their awesomeness
+        /// </summary>
+        /// Might be good to weight the odds of better stats based on power, but out of scope for now
+        /// Power influences stat bonuses and value anyway so still serves a purpose without that
+        /// <returns></returns>
+        private static (int shieldBonus, int blockChance) RollShieldStats(WeaponType shieldType, int power, ItemRarity rarity)
+        {
+        return shieldType switch
+        {
+            WeaponType.Buckler => rarity switch
+            {
+                ItemRarity.Common => (random.Next(1, 7), random.Next(9, 17)),
+                ItemRarity.Uncommon => (random.Next(7, 12), random.Next(17, 22)),
+                ItemRarity.Rare => (random.Next(12, 17), random.Next(22, 27)),
+                ItemRarity.Epic => (random.Next(17, 23), random.Next(27, 33)),
+                ItemRarity.Legendary => (random.Next(23, 28), random.Next(33, 38)),
+                ItemRarity.Artifact => (random.Next(29, 36), random.Next(39, 41)),
+                _ => (random.Next(1, 36), random.Next(9, 41)),
+            },
+            WeaponType.Shield => rarity switch
+            {
+                ItemRarity.Common => (random.Next(2, 9), random.Next(11, 19)),
+                ItemRarity.Uncommon => (random.Next(9, 15), random.Next(19, 24)),
+                ItemRarity.Rare => (random.Next(15, 18), random.Next(24, 26)),
+                ItemRarity.Epic => (random.Next(18, 28), random.Next(25, 34)),
+                ItemRarity.Legendary => (random.Next(28, 37), random.Next(34, 40)),
+                ItemRarity.Artifact => (random.Next(37, 46), random.Next(39, 46)),
+                _ => (random.Next(2, 46), random.Next(11, 46)),
+            },
+            WeaponType.TowerShield => rarity switch
+            {
+                // No authored tower shields below Rare
+                // In case they get rolled, may as well default to shield stats
+                ItemRarity.Common => (random.Next(2, 9), random.Next(11, 19)),
+                ItemRarity.Uncommon => (random.Next(9, 15), random.Next(19, 24)),
+                ItemRarity.Rare => (random.Next(21, 27), random.Next(29, 34)),
+                ItemRarity.Epic => (random.Next(27, 34), random.Next(34, 39)),
+                ItemRarity.Legendary => (random.Next(34, 40), random.Next(39, 44)),
+                ItemRarity.Artifact => (random.Next(39, 51), random.Next(44, 51)),
+                _ => (random.Next(2, 51), random.Next(11, 51)),
+            },
+            // Just in case of a mishap in handling the shield type, default to lowest stats (buckler)
+            _ => (random.Next(1, 35), random.Next(9, 40)),
+        };
+    }
+
+        private static Item CreateShieldFromTemplate(
+            (string Name, string[] Classes, int MinLevel, int MaxLevel, float BasePower) template,
+            WeaponType shieldType,
+            int level,
+            ItemRarity rarity)
+        {
+            var (PowerMult, ValueMult, MinEffects, MaxEffects, CurseChance) = RarityStats[rarity];
+
+            float levelScale = 1.0f + (level / 80.0f);
+            int basePower = (int)(template.BasePower * levelScale * PowerMult);
+
+            int variance = (int)(basePower * 0.15f);
+            int finalPower = basePower + random.Next(-variance, variance + 1);
+            finalPower = Math.Max(2, finalPower);
+
+            var (shieldBonus, blockChance) = RollShieldStats(shieldType, finalPower, rarity);
+
+            // Shields are worth about as much as weapons
+            long value = (long)(finalPower * 15 * ValueMult);
+
+            // Shields get more stat/defensive effects
+            var effects = RollEffects(rarity, level, isWeapon: false);
+            bool isCursed = random.NextDouble() < CurseChance;
+
+            string name = BuildItemName(template.Name, rarity, effects, isCursed);
+
+            var item = new Item
+            {
+                Name = name,
+                Type = ObjType.Shield,
+                Value = value,
+                MinLevel = Math.Max(1, level - 10),
+                ShieldBonus = shieldBonus,
+                BlockChance = blockChance,
+                Cursed = isCursed,
+                IsCursed = isCursed,
+                Shop = false,
+                Dungeon = true
+            };
+
+            // For now, shields can use the same effect math as accessories. Maybe these can be tweaked for balance later
+            string lowerName = name.ToLowerInvariant();
+            // Wisdom/Insight themed (includes "of Insight" suffix from Wisdom effect)
+            if (lowerName.Contains("wisdom") || lowerName.Contains("insight") || lowerName.Contains("wise"))
+            {
+                item.Wisdom += finalPower / 2;
+                item.LootEffects.Add(((int)SpecialEffect.Intelligence, finalPower / 3));
+                item.LootEffects.Add(((int)SpecialEffect.Constitution, finalPower / 5));
+                item.Defence += Math.Max(1, finalPower / 10);
+            }
+            // Strength/Power themed (includes "of Strength" suffix, "of Power" suffix)
+            else if (lowerName.Contains("strength") || lowerName.Contains("power") || lowerName.Contains("heroes") ||
+                     lowerName.Contains("mighty"))
+            {
+                item.Strength += finalPower / 2;
+                item.LootEffects.Add(((int)SpecialEffect.Constitution, finalPower * 2 / 5));
+            }
+            // Protection/Shielding themed (includes "of Protection" suffix, "of Shielding" suffix, "of the Sentinel" suffix)
+            else if (lowerName.Contains("protection") || lowerName.Contains("ward") || lowerName.Contains("shield") ||
+                     lowerName.Contains("sentinel"))
+            {
+                item.Defence += finalPower / 3;
+                item.LootEffects.Add(((int)SpecialEffect.Constitution, finalPower * 2 / 5));
+            }
+            // Vitality/Health themed (includes "of Vitality" suffix, "of Healing" suffix, "of Fortitude" suffix)
+            else if (lowerName.Contains("vitality") || lowerName.Contains("life") || lowerName.Contains("health") ||
+                     lowerName.Contains("healing") || lowerName.Contains("fortitude") || lowerName.Contains("stalwart") ||
+                     lowerName.Contains("robust") || lowerName.Contains("colossus"))
+            {
+                item.LootEffects.Add(((int)SpecialEffect.Constitution, finalPower * 3 / 5));
+            }
+            // Might/Valor themed
+            else if (lowerName.Contains("might") || lowerName.Contains("valor"))
+            {
+                item.Strength += finalPower / 3;
+                item.Dexterity += finalPower / 4;
+                item.LootEffects.Add(((int)SpecialEffect.Constitution, finalPower / 5));
+            }
+            // Luck/Fortune themed
+            else if (lowerName.Contains("luck") || lowerName.Contains("fortune"))
+            {
+                item.Dexterity += finalPower / 3;
+                item.Charisma += finalPower / 3;
+                item.LootEffects.Add(((int)SpecialEffect.Constitution, finalPower / 5));
+            }
+            // Caster themed (includes "of the Arcane", "of Sorcery", "of the Mind", "Sage" prefix)
+            else if (lowerName.Contains("fireball") || lowerName.Contains("planes") || lowerName.Contains("gods") ||
+                     lowerName.Contains("mage") || lowerName.Contains("archmage") || lowerName.Contains("arcane") ||
+                     lowerName.Contains("sorcery") || lowerName.Contains("sigil") || lowerName.Contains("mind") ||
+                     lowerName.Contains("sage") || lowerName.Contains("mystic") || lowerName.Contains("enchanted"))
+            {
+                item.LootEffects.Add(((int)SpecialEffect.Intelligence, finalPower * 2 / 3));
+                item.Wisdom += finalPower / 4;
+                item.Defence += Math.Max(1, finalPower / 10);
+            }
+            // Holy/Light themed (includes "of Light" suffix from HolyDamage)
+            else if (lowerName.Contains("holy") || lowerName.Contains("light") || lowerName.Contains("sacred") ||
+                     lowerName.Contains("blessed") || lowerName.Contains("divine") || lowerName.Contains("celestial"))
+            {
+                item.Wisdom += finalPower / 3;
+                item.LootEffects.Add(((int)SpecialEffect.Constitution, finalPower / 4));
+                item.Defence += Math.Max(1, finalPower / 8);
+            }
+            // Shadow/Darkness themed (includes "of Darkness" suffix from ShadowDamage)
+            else if (lowerName.Contains("shadow") || lowerName.Contains("darkness") || lowerName.Contains("phantom") ||
+                     lowerName.Contains("death") || lowerName.Contains("night"))
+            {
+                item.Dexterity += finalPower / 3;
+                item.Agility += finalPower / 4;
+                item.Defence += Math.Max(1, finalPower / 8);
+            }
+            // Dragon themed
+            else if (lowerName.Contains("dragon"))
+            {
+                item.Strength += finalPower / 4;
+                item.Defence += finalPower / 4;
+                item.LootEffects.Add(((int)SpecialEffect.Constitution, finalPower * 2 / 5));
+            }
+            // Ranger/Hunter themed
+            else if (lowerName.Contains("hunter") || lowerName.Contains("marksman") || lowerName.Contains("windstrike") ||
+                     lowerName.Contains("eagle") || lowerName.Contains("ranger") || lowerName.Contains("sniper"))
+            {
+                item.Dexterity += finalPower / 2;
+                item.Agility += finalPower / 3;
+                item.Defence += Math.Max(1, finalPower / 8);
+            }
+            // Agility/Precision themed (includes "of Agility" suffix, "of Precision" suffix, "Nimble" prefix, "Keen" prefix)
+            else if (lowerName.Contains("agility") || lowerName.Contains("precision") || lowerName.Contains("nimble") ||
+                     lowerName.Contains("keen"))
+            {
+                item.Dexterity += finalPower / 3;
+                item.Agility += finalPower / 3;
+            }
+            // Elemental themed — fire/ice/lightning (includes "of Flames", "of Frost", "of Thunder")
+            else if (lowerName.Contains("flame") || lowerName.Contains("blaz") || lowerName.Contains("fire") ||
+                     lowerName.Contains("frost") || lowerName.Contains("frozen") || lowerName.Contains("ice") ||
+                     lowerName.Contains("thunder") || lowerName.Contains("lightning") || lowerName.Contains("shock") ||
+                     lowerName.Contains("storm") || lowerName.Contains("salamander") || lowerName.Contains("yeti"))
+            {
+                item.LootEffects.Add(((int)SpecialEffect.Intelligence, finalPower / 3));
+                item.Defence += Math.Max(1, finalPower / 8);
+            }
+            // Runed/Ancient themed
+            else if (lowerName.Contains("runed") || lowerName.Contains("ancient"))
+            {
+                item.LootEffects.Add(((int)SpecialEffect.Intelligence, finalPower / 3));
+                item.Wisdom += finalPower / 5;
+                item.Defence += Math.Max(1, finalPower / 10);
+            }
+            // Premium materials
+            else if (lowerName.Contains("mithril") || lowerName.Contains("adamantine") || lowerName.Contains("platinum"))
+            {
+                item.Defence += finalPower / 4;
+                item.LootEffects.Add(((int)SpecialEffect.Constitution, finalPower / 3));
+            }
+            // Generic fallbacks — basic material rings/necklaces with no themed suffix
+            else
+            {
+                item.Strength += finalPower / 4;
+                item.Dexterity += finalPower / 4;
+                item.LootEffects.Add(((int)SpecialEffect.Constitution, finalPower * 2 / 5));
             }
 
             ApplyEffectsToItem(item, effects, isWeapon: false);
