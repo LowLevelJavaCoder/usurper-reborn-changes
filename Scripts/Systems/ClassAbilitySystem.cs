@@ -1660,10 +1660,10 @@ public static class ClassAbilitySystem
         {
             Id = "calm_waters",
             Name = "Calm Waters",
-            Description = "Soothe the battlefield. Remove all negative effects from allies.",
+            Description = "Soothe the battlefield. Grant all allies a 50% chance to resist debuffs for 5 rounds.",
             LevelRequired = 15, StaminaCost = 40, Cooldown = 4,
             Type = AbilityType.Utility,
-            SpecialEffect = "cleanse",
+            SpecialEffect = "debuff_shield",
             AvailableToClasses = new[] { CharacterClass.Wavecaller }
         },
         ["empathic_link"] = new ClassAbility

@@ -35,8 +35,8 @@ public partial class PrisonWalkLocation : BaseLocation
     private void SetLocationProperties()
     {
         LocationId = GameLocation.PrisonWalk;
-        LocationName = "Outside the Royal Prison";
-        LocationDescription = "A small courtyard where prisoners can exercise";
+        LocationName = Loc.Get("prison_walk.title");
+        LocationDescription = Loc.Get("prison_walk.desc");
         AllowedClasses = new HashSet<CharacterClass>();
         LevelRequirement = 1;
         
@@ -54,8 +54,8 @@ public partial class PrisonWalkLocation : BaseLocation
         // Cannot enter if player is imprisoned
         if (player.DaysInPrison > 0)
         {
-            await terminal.WriteLineAsync("You cannot visit the prison while you are imprisoned!");
-            await terminal.WriteLineAsync("You must serve your sentence first.");
+            await terminal.WriteLineAsync(Loc.Get("prison_walk.cannot_visit"));
+            await terminal.WriteLineAsync(Loc.Get("prison_walk.serve_sentence"));
             await Task.Delay(1000);
             return false;
         }
@@ -88,7 +88,7 @@ public partial class PrisonWalkLocation : BaseLocation
         // Return message
         await terminal.WriteLineAsync();
         await terminal.WriteLineAsync();
-        await terminal.WriteLineAsync("You leave the depressing prison grounds.");
+        await terminal.WriteLineAsync(Loc.Get("prison_walk.leave"));
         await terminal.WriteLineAsync();
     }
     
@@ -113,14 +113,14 @@ public partial class PrisonWalkLocation : BaseLocation
                 }
                 
                 await terminal.WriteLineAsync();
-                await terminal.WriteAsync("Prison walk (");
+                await terminal.WriteAsync($"{Loc.Get("prison_walk.prompt")} (");
                 await terminal.WriteColorAsync("?", TerminalEmulator.ColorYellow);
                 await terminal.WriteAsync(" for menu) :");
             }
             else
             {
                 await terminal.WriteLineAsync();
-                await terminal.WriteAsync("Prison walk (P,F,S,R,?) :");
+                await terminal.WriteAsync($"{Loc.Get("prison_walk.prompt_expert")} :");
             }
         }
         else
@@ -137,18 +137,18 @@ public partial class PrisonWalkLocation : BaseLocation
         await terminal.ClearScreenAsync();
         await terminal.WriteLineAsync();
         
-        await terminal.WriteColorLineAsync("Outside the Royal Prison", TerminalEmulator.ColorWhite);
+        await terminal.WriteColorLineAsync(Loc.Get("prison_walk.title"), TerminalEmulator.ColorWhite);
         await terminal.WriteLineAsync();
-        await terminal.WriteLineAsync("You walk along side the long stretch of cells.");
-        await terminal.WriteLineAsync("From the dark pits You can hear the screams from the tortured souls");
-        await terminal.WriteLineAsync("deep in the dungeons. The torture masters must be having a great time.");
+        await terminal.WriteLineAsync(Loc.Get("prison_walk.walk_along"));
+        await terminal.WriteLineAsync(Loc.Get("prison_walk.screams"));
+        await terminal.WriteLineAsync(Loc.Get("prison_walk.torture"));
         await terminal.WriteLineAsync();
-        
+
         // Menu options
-        await terminal.WriteLineAsync("(P)risoners");
-        await terminal.WriteLineAsync("(F)ree a prisoner");
-        await terminal.WriteLineAsync("(S)tatus");
-        await terminal.WriteLineAsync("(R)eturn");
+        await terminal.WriteLineAsync(Loc.Get("prison_walk.menu_prisoners"));
+        await terminal.WriteLineAsync(Loc.Get("prison_walk.menu_free"));
+        await terminal.WriteLineAsync(Loc.Get("prison_walk.menu_status"));
+        await terminal.WriteLineAsync(Loc.Get("prison_walk.menu_return"));
     }
     
     private async Task ProcessPrisonWalkChoice(Character player, char choice)
@@ -192,14 +192,14 @@ public partial class PrisonWalkLocation : BaseLocation
     private async Task ShowCharacterStatus(Character player)
     {
         await terminal.WriteLineAsync();
-        await terminal.WriteLineAsync("=== CHARACTER STATUS ===");
+        await terminal.WriteLineAsync(Loc.Get("prison_walk.status_title"));
         await terminal.WriteLineAsync($"{Loc.Get("ui.name_label")}: {player.DisplayName}");
         await terminal.WriteLineAsync($"{Loc.Get("ui.level")}: {player.Level}");
         await terminal.WriteLineAsync($"{Loc.Get("ui.health_label")}: {player.HP}/{player.MaxHP}");
         await terminal.WriteLineAsync($"{Loc.Get("ui.gold")}: {player.Gold:N0}");
         await terminal.WriteLineAsync($"{Loc.Get("ui.experience")}: {player.Experience:N0}");
-        await terminal.WriteLineAsync($"Chivalry: {player.Chivalry:N0}");
-        await terminal.WriteLineAsync($"Darkness: {player.Darkness:N0}");
+        await terminal.WriteLineAsync($"{Loc.Get("prison_walk.chivalry")}: {player.Chivalry:N0}");
+        await terminal.WriteLineAsync($"{Loc.Get("prison_walk.darkness")}: {player.Darkness:N0}");
         await terminal.WriteLineAsync();
         await terminal.WriteAsync(Loc.Get("ui.press_enter"));
         await terminal.GetCharAsync();
@@ -209,7 +209,7 @@ public partial class PrisonWalkLocation : BaseLocation
     {
         await terminal.WriteLineAsync();
         await terminal.WriteLineAsync();
-        await terminal.WriteLineAsync("You examine the Dungeons.");
+        await terminal.WriteLineAsync(Loc.Get("prison_walk.examine"));
         await terminal.WriteLineAsync();
         
         await ListAllPrisoners();
@@ -217,7 +217,7 @@ public partial class PrisonWalkLocation : BaseLocation
     
     private async Task ListAllPrisoners()
     {
-        await terminal.WriteColorLineAsync("Current Prisoners", TerminalEmulator.ColorWhite);
+        await terminal.WriteColorLineAsync(Loc.Get("prison_walk.current_prisoners"), TerminalEmulator.ColorWhite);
         await terminal.WriteColorLineAsync("=================", TerminalEmulator.ColorWhite);
         
         // Get list of all prisoners
@@ -225,7 +225,7 @@ public partial class PrisonWalkLocation : BaseLocation
         
         if (prisoners.Count == 0)
         {
-            await terminal.WriteColorLineAsync("The Cells are empty! (how boring!)", TerminalEmulator.ColorCyan);
+            await terminal.WriteColorLineAsync(Loc.Get("prison_walk.cells_empty"), TerminalEmulator.ColorCyan);
         }
         else
         {
@@ -238,13 +238,13 @@ public partial class PrisonWalkLocation : BaseLocation
                 // Pause for long lists
                 if (count % 10 == 0)
                 {
-                    bool continueList = await terminal.ConfirmAsync("Continue search", true);
+                    bool continueList = await terminal.ConfirmAsync(Loc.Get("prison_walk.continue_search"), true);
                     if (!continueList) break;
                 }
             }
             
             await terminal.WriteLineAsync();
-            await terminal.WriteLineAsync($"There is a total of {prisoners.Count:N0} prisoners.");
+            await terminal.WriteLineAsync(Loc.Get("prison_walk.total_prisoners", prisoners.Count.ToString("N0")));
         }
         
         await terminal.WriteLineAsync();
@@ -273,25 +273,25 @@ public partial class PrisonWalkLocation : BaseLocation
     {
         await terminal.WriteColorAsync(prisoner.DisplayName, TerminalEmulator.ColorCyan);
         await terminal.WriteAsync($" the {GetRaceDisplay(prisoner.Race)}");
-        
+
         // Show if online/offline/dead
         if (await IsPlayerOnline(prisoner))
         {
-            await terminal.WriteColorAsync(" (awake)", TerminalEmulator.ColorGreen);
+            await terminal.WriteColorAsync($" {Loc.Get("prison_walk.prisoner_awake")}", TerminalEmulator.ColorGreen);
         }
         else if (prisoner.HP < 1)
         {
-            await terminal.WriteColorAsync(" (dead)", TerminalEmulator.ColorRed);
+            await terminal.WriteColorAsync($" {Loc.Get("prison_walk.prisoner_dead")}", TerminalEmulator.ColorRed);
         }
         else
         {
-            await terminal.WriteAsync(" (sleeping)");
+            await terminal.WriteAsync($" {Loc.Get("prison_walk.prisoner_sleeping")}");
         }
-        
+
         // Show days left
         int daysLeft = prisoner.DaysInPrison > 0 ? prisoner.DaysInPrison : 1;
-        string dayStr = daysLeft == 1 ? "day" : "days";
-        await terminal.WriteLineAsync($" ({daysLeft} {dayStr} left)");
+        string dayStr = daysLeft == 1 ? Loc.Get("prison_walk.day_singular") : Loc.Get("prison_walk.day_plural");
+        await terminal.WriteLineAsync($" {Loc.Get("prison_walk.days_left", daysLeft.ToString(), dayStr)}");
     }
     
     private async Task HandleFreePrisoner(Character player)
@@ -301,27 +301,27 @@ public partial class PrisonWalkLocation : BaseLocation
         {
             await terminal.WriteLineAsync();
             await terminal.WriteLineAsync();
-            await terminal.WriteColorLineAsync("Sorry, the Prison is being infiltrated right now!", TerminalEmulator.ColorRed);
-            await terminal.WriteColorLineAsync("There would be too big a risk to break in!", TerminalEmulator.ColorRed);
+            await terminal.WriteColorLineAsync(Loc.Get("prison_walk.infiltrated"), TerminalEmulator.ColorRed);
+            await terminal.WriteColorLineAsync(Loc.Get("prison_walk.too_risky"), TerminalEmulator.ColorRed);
             await Task.Delay(1000);
             return;
         }
         
         await terminal.WriteLineAsync();
         await terminal.WriteLineAsync();
-        await terminal.WriteColorLineAsync("You prepare to break in!", TerminalEmulator.ColorRed);
-        await terminal.WriteLineAsync("Don't get caught! You will be jailed instantly if the guards");
-        await terminal.WriteLineAsync("get you!");
+        await terminal.WriteColorLineAsync(Loc.Get("prison_walk.prepare_break"), TerminalEmulator.ColorRed);
+        await terminal.WriteLineAsync(Loc.Get("prison_walk.dont_get_caught"));
+        await terminal.WriteLineAsync(Loc.Get("prison_walk.get_you"));
         await terminal.WriteLineAsync();
         
         // Get prisoner name to free
-        await terminal.WriteLineAsync("Who do you wanna set free?");
+        await terminal.WriteLineAsync(Loc.Get("prison_walk.who_free"));
         await terminal.WriteAsync(":");
         string prisonerName = await terminal.GetStringAsync();
         
         if (string.IsNullOrWhiteSpace(prisonerName))
         {
-            await terminal.WriteLineAsync("No prisoner name entered.");
+            await terminal.WriteLineAsync(Loc.Get("prison_walk.no_name"));
             return;
         }
         
@@ -331,12 +331,12 @@ public partial class PrisonWalkLocation : BaseLocation
         if (prisoner == null)
         {
             await terminal.WriteLineAsync();
-            await terminal.WriteLineAsync($"Could not find prisoner '{prisonerName}' in the prison.");
+            await terminal.WriteLineAsync(Loc.Get("prison_walk.not_found", prisonerName));
             return;
         }
         
         // Confirm prisoner selection
-        bool confirmed = await terminal.ConfirmAsync($"Free {prisoner.DisplayName}", false);
+        bool confirmed = await terminal.ConfirmAsync(Loc.Get("prison_walk.confirm_free", prisoner.DisplayName), false);
         if (!confirmed)
         {
             return;
@@ -370,7 +370,7 @@ public partial class PrisonWalkLocation : BaseLocation
     private async Task AttemptPrisonBreak(Character player, Character prisoner)
     {
         await terminal.WriteLineAsync();
-        await terminal.WriteLineAsync($"You attempt to break {prisoner.DisplayName} out of prison!");
+        await terminal.WriteLineAsync(Loc.Get("prison_walk.attempt_break", prisoner.DisplayName));
         await terminal.WriteLineAsync();
         
         // Set location to prison break (for other systems to detect)
@@ -381,12 +381,12 @@ public partial class PrisonWalkLocation : BaseLocation
         
         if (guards.Count == 0)
         {
-            await terminal.WriteLineAsync("No guards responded! The prison break succeeds easily!");
+            await terminal.WriteLineAsync(Loc.Get("prison_walk.no_guards"));
             await FreePrisonerSuccessfully(player, prisoner);
             return;
         }
         
-        await terminal.WriteLineAsync($"{guards.Count} prison guards respond to the alarm!");
+        await terminal.WriteLineAsync(Loc.Get("prison_walk.guards_respond", guards.Count.ToString()));
         await terminal.WriteLineAsync();
         
         // Battle with guards
@@ -459,8 +459,8 @@ public partial class PrisonWalkLocation : BaseLocation
     
     private async Task<bool> BattlePrisonGuards(Character player, List<Character> guards)
     {
-        await terminal.WriteLineAsync("=== PRISON GUARD BATTLE ===");
-        await terminal.WriteLineAsync("You must defeat all guards to free the prisoner!");
+        await terminal.WriteLineAsync(Loc.Get("prison_walk.battle_title"));
+        await terminal.WriteLineAsync(Loc.Get("prison_walk.must_defeat"));
         await terminal.WriteLineAsync();
 
         var random = new System.Random();
@@ -472,7 +472,7 @@ public partial class PrisonWalkLocation : BaseLocation
         {
             await terminal.WriteLineAsync();
             await terminal.WriteColorAsync($">>> {guard.Name2}", TerminalEmulator.ColorYellow);
-            await terminal.WriteLineAsync($" (Level {guard.Level}, HP: {guard.HP}) attacks!");
+            await terminal.WriteLineAsync(Loc.Get("prison_walk.guard_attacks", guard.Level.ToString(), guard.HP.ToString()));
             await terminal.WriteLineAsync();
 
             // Combat loop with this guard
@@ -482,14 +482,14 @@ public partial class PrisonWalkLocation : BaseLocation
                 int playerDamage = CalculateDamage(player, guard, random);
                 guard.HP = Math.Max(0, guard.HP - playerDamage);
 
-                await terminal.WriteAsync($"You strike for ");
+                await terminal.WriteAsync(Loc.Get("prison_walk.you_strike"));
                 await terminal.WriteColorAsync($"{playerDamage}", TerminalEmulator.ColorGreen);
-                await terminal.WriteLineAsync($" damage! (Guard HP: {guard.HP})");
+                await terminal.WriteLineAsync(Loc.Get("prison_walk.guard_hp", guard.HP.ToString()));
 
                 if (guard.HP <= 0)
                 {
                     guardsRemaining--;
-                    await terminal.WriteColorLineAsync($"{guard.Name2} is defeated!", TerminalEmulator.ColorGreen);
+                    await terminal.WriteColorLineAsync(Loc.Get("prison_walk.guard_defeated", guard.Name2), TerminalEmulator.ColorGreen);
                     break;
                 }
 
@@ -497,33 +497,33 @@ public partial class PrisonWalkLocation : BaseLocation
                 int guardDamage = CalculateDamage(guard, player, random);
                 player.HP = Math.Max(0, player.HP - guardDamage);
 
-                await terminal.WriteAsync($"{guard.Name2} strikes back for ");
+                await terminal.WriteAsync(Loc.Get("prison_walk.strikes_back", guard.Name2));
                 await terminal.WriteColorAsync($"{guardDamage}", TerminalEmulator.ColorRed);
-                await terminal.WriteLineAsync($" damage! (Your HP: {player.HP}/{player.MaxHP})");
+                await terminal.WriteLineAsync(Loc.Get("prison_walk.your_hp", player.HP.ToString(), player.MaxHP.ToString()));
 
                 if (player.HP <= 0)
                 {
                     await terminal.WriteLineAsync();
-                    await terminal.WriteColorLineAsync("You have been knocked unconscious!", TerminalEmulator.ColorRed);
+                    await terminal.WriteColorLineAsync(Loc.Get("prison_walk.knocked_out"), TerminalEmulator.ColorRed);
                     break;
                 }
 
                 // Option to flee if taking heavy damage
                 if (player.HP < player.MaxHP / 3 && guard.HP > guard.MaxHP / 4)
                 {
-                    bool flee = await terminal.ConfirmAsync("Attempt to flee", false);
+                    bool flee = await terminal.ConfirmAsync(Loc.Get("prison_walk.attempt_flee"), false);
                     if (flee)
                     {
                         // 40% chance to escape
                         if (random.Next(100) < 40 + player.Agility / 5)
                         {
-                            await terminal.WriteColorLineAsync("You manage to escape!", TerminalEmulator.ColorYellow);
+                            await terminal.WriteColorLineAsync(Loc.Get("prison_walk.escape_success"), TerminalEmulator.ColorYellow);
                             playerFled = true;
                             break;
                         }
                         else
                         {
-                            await terminal.WriteColorLineAsync("You couldn't escape!", TerminalEmulator.ColorRed);
+                            await terminal.WriteColorLineAsync(Loc.Get("prison_walk.escape_fail"), TerminalEmulator.ColorRed);
                         }
                     }
                 }
@@ -543,13 +543,13 @@ public partial class PrisonWalkLocation : BaseLocation
 
         if (player.HP > 0 && guardsRemaining == 0 && !playerFled)
         {
-            await terminal.WriteColorLineAsync("VICTORY! All guards have been defeated!", TerminalEmulator.ColorGreen);
-            await terminal.WriteLineAsync($"You took {playerStartHP - player.HP} damage during the fight.");
+            await terminal.WriteColorLineAsync(Loc.Get("prison_walk.victory"), TerminalEmulator.ColorGreen);
+            await terminal.WriteLineAsync(Loc.Get("prison_walk.damage_taken", (playerStartHP - player.HP).ToString()));
 
             // Award experience for defeating guards
             long expGained = guards.Sum(g => g.Level * 50);
             player.Experience += expGained;
-            await terminal.WriteLineAsync($"You gained {expGained} experience!");
+            await terminal.WriteLineAsync(Loc.Get("prison_walk.xp_gained", expGained.ToString()));
 
             return true;
         }
@@ -557,21 +557,21 @@ public partial class PrisonWalkLocation : BaseLocation
         {
             if (playerFled)
             {
-                await terminal.WriteColorLineAsync("You fled the scene! The alarm is raised!", TerminalEmulator.ColorYellow);
+                await terminal.WriteColorLineAsync(Loc.Get("prison_walk.fled_scene"), TerminalEmulator.ColorYellow);
             }
             else
             {
-                await terminal.WriteColorLineAsync("The prison guards have captured you!", TerminalEmulator.ColorRed);
+                await terminal.WriteColorLineAsync(Loc.Get("prison_walk.captured"), TerminalEmulator.ColorRed);
 
-                bool surrender = await terminal.ConfirmAsync("Surrender peacefully", true);
+                bool surrender = await terminal.ConfirmAsync(Loc.Get("prison_walk.surrender"), true);
 
                 if (surrender)
                 {
-                    await terminal.WriteColorLineAsync("YOU COWARD!", TerminalEmulator.ColorRed);
+                    await terminal.WriteColorLineAsync(Loc.Get("prison_walk.coward"), TerminalEmulator.ColorRed);
                 }
                 else
                 {
-                    await terminal.WriteColorLineAsync("The guards beat you unconscious!", TerminalEmulator.ColorRed);
+                    await terminal.WriteColorLineAsync(Loc.Get("prison_walk.beaten_unconscious"), TerminalEmulator.ColorRed);
                 }
             }
 
@@ -596,7 +596,7 @@ public partial class PrisonWalkLocation : BaseLocation
     private async Task FreePrisonerSuccessfully(Character player, Character prisoner)
     {
         await terminal.WriteLineAsync();
-        await terminal.WriteColorLineAsync("SUCCESS! The prisoner has been freed!", TerminalEmulator.ColorGreen);
+        await terminal.WriteColorLineAsync(Loc.Get("prison_walk.success"), TerminalEmulator.ColorGreen);
         await terminal.WriteLineAsync();
 
         // If prisoner is an NPC, use the NPCSpawnSystem
@@ -612,17 +612,17 @@ public partial class PrisonWalkLocation : BaseLocation
         }
 
         await terminal.WriteColorAsync(prisoner.DisplayName, TerminalEmulator.ColorCyan);
-        await terminal.WriteLineAsync(" is now free!");
+        await terminal.WriteLineAsync(Loc.Get("prison_walk.now_free"));
         await terminal.WriteLineAsync();
 
         // Increase chivalry for the heroic rescue
         long chivalryGain = 50 + prisoner.Level * 10;
         player.Chivalry += chivalryGain;
-        await terminal.WriteLineAsync($"Your heroic act increases your Chivalry by {chivalryGain}!");
+        await terminal.WriteLineAsync(Loc.Get("prison_walk.chivalry_gain", chivalryGain.ToString()));
 
         await terminal.WriteLineAsync();
-        await terminal.WriteLineAsync("The prisoner thanks you profusely and disappears into the night.");
-        await terminal.WriteLineAsync("\"I won't forget this! You have made a friend today!\"");
+        await terminal.WriteLineAsync(Loc.Get("prison_walk.thanks"));
+        await terminal.WriteLineAsync(Loc.Get("prison_walk.friend"));
 
         // Add to player's known allies (if applicable)
         // This could trigger future events where the freed prisoner helps the player
@@ -633,7 +633,7 @@ public partial class PrisonWalkLocation : BaseLocation
     private async Task HandlePrisonBreakFailure(Character player, Character prisoner)
     {
         await terminal.WriteLineAsync();
-        await terminal.WriteColorLineAsync("PRISON BREAK FAILED!", TerminalEmulator.ColorRed);
+        await terminal.WriteColorLineAsync(Loc.Get("prison_walk.break_failed"), TerminalEmulator.ColorRed);
         await terminal.WriteLineAsync();
 
         // Calculate sentence based on severity
@@ -650,8 +650,8 @@ public partial class PrisonWalkLocation : BaseLocation
         // Set HP to 1 (badly beaten but not dead)
         player.HP = 1;
 
-        await terminal.WriteLineAsync("You are beaten by the guards and thrown into a cell!");
-        await terminal.WriteLineAsync($"You are sentenced to {player.DaysInPrison} days in prison!");
+        await terminal.WriteLineAsync(Loc.Get("prison_walk.thrown_in_cell"));
+        await terminal.WriteLineAsync(Loc.Get("prison_walk.sentenced", player.DaysInPrison.ToString()));
         await terminal.WriteLineAsync();
 
         // Lose some gold as a fine
@@ -659,16 +659,16 @@ public partial class PrisonWalkLocation : BaseLocation
         if (fine > 0)
         {
             player.Gold -= fine;
-            await terminal.WriteLineAsync($"The crown confiscates {fine:N0} gold as a fine!");
+            await terminal.WriteLineAsync(Loc.Get("prison_walk.gold_fine", fine.ToString("N0")));
         }
 
         // Darkness increases for criminal activity
         player.Darkness += 25;
-        await terminal.WriteColorLineAsync("Your Darkness increases from your criminal behavior.", TerminalEmulator.ColorMagenta);
+        await terminal.WriteColorLineAsync(Loc.Get("prison_walk.darkness_increase"), TerminalEmulator.ColorMagenta);
 
         await terminal.WriteLineAsync();
-        await terminal.WriteLineAsync("You will wake up in your cell tomorrow...");
-        await terminal.WriteLineAsync("Maybe next time, plan your escape better!");
+        await terminal.WriteLineAsync(Loc.Get("prison_walk.wake_tomorrow"));
+        await terminal.WriteLineAsync(Loc.Get("prison_walk.plan_better"));
 
         await Task.Delay(2000);
     }
@@ -688,11 +688,11 @@ public partial class PrisonWalkLocation : BaseLocation
     {
         var commands = new List<string>
         {
-            "? - Show menu",
-            "P - List prisoners",
-            "F - Attempt to free a prisoner",
-            "S - Show status",
-            "R - Return to Main Street"
+            Loc.Get("prison_walk.help_menu"),
+            Loc.Get("prison_walk.help_prisoners"),
+            Loc.Get("prison_walk.help_free"),
+            Loc.Get("prison_walk.help_status"),
+            Loc.Get("prison_walk.help_return")
         };
 
         return Task.FromResult(commands);
@@ -707,6 +707,6 @@ public partial class PrisonWalkLocation : BaseLocation
     public async Task<string> GetLocationStatus(Character player)
     {
         var prisoners = await GetAllPrisoners();
-        return $"Outside the Royal Prison - {prisoners.Count} prisoners currently held";
+        return Loc.Get("prison_walk.location_status", prisoners.Count.ToString());
     }
 } 

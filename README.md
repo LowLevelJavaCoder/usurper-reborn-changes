@@ -2,7 +2,7 @@
 
 ## A Persistent Online Text RPG with a Living World
 
-**ALPHA v0.52.7** | **FREE AND OPEN SOURCE** | **GPL v2**
+**ALPHA v0.52.12** | **FREE AND OPEN SOURCE** | **GPL v2**
 
 60+ autonomous NPCs wake up, go to work, visit taverns, fall in love, get married, have children, age, and eventually die of old age — all while you're offline. Log back in, read the news feed, and discover that the blacksmith married the barmaid, the king was assassinated, or a new generation just came of age. The world doesn't wait for you.
 
@@ -261,10 +261,26 @@ For detailed BBS setup instructions, see [DOCS/BBS_DOOR_SETUP.md](DOCS/BBS_DOOR_
 - Additional companion personal quest storylines
 - Expanded faction recruitment ceremonies
 
-### v0.52.7 - Bug Fixes & Quality of Life
-Windows ANSI rendering fix (garbled splash screen in cmd.exe). Companion/NPC equipment stat loss fix (INT, CON, enchantments, proc effects preserved). Inventory backpack pagination. Tank companion AI immediate taunt. Party-wide ambush detection. Group follower full combat menu. Credential "Don't ask again" option. Group commands in help. Accessible launcher terminal priority fix. maxsond credits.
+### v0.52.12 - Bug Fixes, Balance & Localization
+Online daily reset banner fix. Companion HP equipment bug. Old God boss rebalance (HP/STR/enrage/AoE scaled to endgame). Old God system hardening (4 fixes). Quest abandon persistence. Group reward fairness (follower XP parity). Group loot NPC-first priority. Home chest item loss fix (online). Shop stat display consistency (all bonuses shown). Lyris class display fix. NPC activity localization (59 keys, 5 languages). Localization pass: dialogue (88), prison (79), street encounters (5).
 
-### v0.52.1 - Guild Board & Boss Fight Audit
+### v0.52.11 - Guild Tags, Parenting & Combat Balance
+Guild tags in `/who`. Weekly rival fix. Localization: Seven Seals (170+), Quests (76), NPC Stories (125), Petitions (176). CK-style parenting (24 scenarios). Paladin Divine Resolve. DoT level scaling. Armor variance tightened. Ability scaling rebalance. Relationship system audit (23 bugs). Shield loot type fix.
+
+### v0.52.10 - Knighthood, Fame & Bug Fixes
+Knighthood system overhaul (+5% damage/defense, Sir/Dame prefix). Fame persistence and expansion. Grief system localization. Companion CriticalStrike damage fix. Auction house cleanup. Guild system audit (6 fixes, ~90 localized keys). NPC teammate catch-up XP. Wavecaller Siren's Lament fix. Shield loot generation.
+
+### v0.52.9 - Team HQ Upgrades & Spell Audit
+Team HQ upgrades functional (Armory/Barracks/Training/Infirmary bonuses). Comprehensive spell system audit (9 fixes). Equipment name localization (~434 keys). Companion quest localization (~145 keys). Opening story localization (~120 keys). Shop category navigation fix. NG+ relationship carryover fix. Admin level edit applies class stats.
+
+### v0.52.8 - Dungeon Party & Balance
+Sunforged Blade quest fix. Wavecaller CHA scaling. Monster self-heal message fix. NG+ story/screen reader fixes. Music Shop prestige instruments. Slot-based equipment management. Dungeon party management (`[Y] Party`). NG+ starting level bonus. Prestige quickbar fix. World boss spawn cooldown.
+
+### v0.52.7 - Bug Fixes & Quality of Life
+Windows ANSI rendering fix. Companion/NPC equipment stat loss fix. Inventory backpack pagination. Tank companion AI immediate taunt. Party-wide ambush detection. Group follower full combat menu. Credential "Don't ask again" option. Accessible launcher terminal priority fix.
+
+### v0.52.1-v0.52.6
+Guild Board & Boss Fight Audit. Prestige combat fixes. Prestige class overhaul. Dungeon & Main Street localization. Secret boss & Steam init fixes. Linux launch & equipment persistence fix. Loot & progression overhaul.
 Guild Board on Main Street. Comprehensive city control system overhaul (12 fixes). End-game Old God boss fight party balance with 7 interlocking mechanics (enrage, AoE, channeling, corruption, doom, phase immunity, divine armor). 20+ bug fixes across combat, companions, NPCs, and equipment.
 
 ### v0.52.0 - The Hook (Player Retention)
@@ -341,7 +357,7 @@ Join our Discord server for discussions, feedback, and updates:
 
 *"You are not a wave fighting the ocean. You ARE the ocean, dreaming of being a wave."*
 
-## Known Issues (Alpha v0.52.7)
+## Known Issues (Alpha v0.52.12)
 - Save files from earlier alpha versions may not be fully compatible
 - BBS FOSSIL mode not supported (use `--stdio` flag for FOSSIL-based BBSes)
 - Steam features only work when game is launched through Steam client
@@ -350,4 +366,4 @@ Join our Discord server for discussions, feedback, and updates:
 
 ---
 
-**Status**: ALPHA v0.52.7 — The world is running. [Watch it live.](https://usurper-reborn.net)
+**Status**: ALPHA v0.52.12 — The world is running. [Watch it live.](https://usurper-reborn.net)

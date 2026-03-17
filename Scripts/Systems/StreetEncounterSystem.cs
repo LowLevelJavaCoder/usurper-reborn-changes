@@ -1420,15 +1420,15 @@ public class StreetEncounterSystem
             if (isHonorDuel)
             {
                 player.Fame += 15;
-                result.Message = $"Won honor duel against {npc.Name}! (+{expGain} XP, +{goldGain} gold, +15 Fame)";
+                result.Message = Loc.Get("street.fight.honor_duel_victory", npc.Name, expGain.ToString(), goldGain.ToString());
             }
             else if (isBrawl)
             {
-                result.Message = $"Won tavern brawl! (+{expGain} XP)";
+                result.Message = Loc.Get("street.fight.brawl_victory", expGain.ToString());
             }
             else
             {
-                result.Message = $"Defeated {npc.Name}! (+{expGain} XP, +{goldGain} gold)";
+                result.Message = Loc.Get("street.fight.defeated_npc", npc.Name, expGain.ToString(), goldGain.ToString());
             }
 
             result.ExperienceGained = expGain;
@@ -1464,13 +1464,13 @@ public class StreetEncounterSystem
             {
                 terminal.WriteLine("");
                 terminal.SetColor("bright_yellow");
-                terminal.WriteLine($"  *** BOUNTY COLLECTED! +{bountyReward:N0} gold ***");
+                terminal.WriteLine(Loc.Get("street.fight.bounty_collected", bountyReward.ToString("N0")));
                 result.GoldGained += bountyReward;
             }
         }
         else
         {
-            result.Message = $"Lost to {npc.Name}...";
+            result.Message = Loc.Get("street.fight.lost_to_npc", npc.Name);
         }
     }
 
@@ -2987,7 +2987,7 @@ public class StreetEncounterSystem
             if (bountyReward > 0)
             {
                 terminal.SetColor("bright_yellow");
-                terminal.WriteLine($"  *** BOUNTY COLLECTED! +{bountyReward:N0} gold ***");
+                terminal.WriteLine(Loc.Get("street.fight.bounty_collected", bountyReward.ToString("N0")));
                 result.GoldGained += bountyReward;
             }
 

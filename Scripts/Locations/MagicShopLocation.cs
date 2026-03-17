@@ -1810,8 +1810,6 @@ public partial class MagicShopLocation : BaseLocation
         player.Statistics?.RecordEnchantment(enchantCost);
         player.Statistics?.RecordGoldSpent(enchantCost);
         CityControlSystem.Instance.ProcessSaleTax(enchantCost);
-        TelemetrySystem.Instance.TrackShopTransaction("magic_shop", "enchant", enchanted.Name, enchantCost, player.Level, player.Gold);
-
         // Achievements
         AchievementSystem.TryUnlock(player, "first_enchant");
         if ((player.Statistics?.TotalEnchantmentsApplied ?? 0) >= 10)
@@ -2337,8 +2335,6 @@ public partial class MagicShopLocation : BaseLocation
         player.Statistics?.RecordPurchase(totalWithTax);
         player.Statistics?.RecordAccessoryPurchase(totalWithTax);
         CityControlSystem.Instance.ProcessSaleTax(price);
-        TelemetrySystem.Instance.TrackShopTransaction("magic_shop", "buy_accessory", item.Name, totalWithTax, player.Level, player.Gold);
-
         // Check for equipment quest completion
         QuestSystem.OnEquipmentPurchased(player, item);
 
@@ -2989,8 +2985,6 @@ public partial class MagicShopLocation : BaseLocation
 
         player.Statistics?.RecordLoveSpellCast(loveTotalWithTax);
         player.Statistics?.RecordGoldSpent(loveTotalWithTax);
-        TelemetrySystem.Instance.TrackShopTransaction("magic_shop", "love_spell", selected.name, loveTotalWithTax, player.Level, player.Gold);
-
         if ((player.Statistics?.TotalLoveSpellsCast ?? 0) >= 5)
             AchievementSystem.TryUnlock(player, "love_magician");
 
@@ -3286,8 +3280,6 @@ public partial class MagicShopLocation : BaseLocation
         }
 
         player.Statistics?.RecordGoldSpent(deathTotalWithTax);
-        TelemetrySystem.Instance.TrackShopTransaction("magic_shop", "death_spell", selected.name, deathTotalWithTax, player.Level, player.Gold);
-
         await terminal.WaitForKey();
     }
 

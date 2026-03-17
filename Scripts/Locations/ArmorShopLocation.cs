@@ -497,7 +497,7 @@ public class ArmorShopLocation : BaseLocation
         if (item.CriticalChanceBonus != 0) bonuses.Add($"{Loc.Get("ui.stat_crit")}+{item.CriticalChanceBonus}%");
         if (item.MagicResistance != 0) bonuses.Add($"{Loc.Get("ui.stat_mr")}+{item.MagicResistance}%");
 
-        return string.Join(" ", bonuses.Take(3)); // Limit to 3 to fit
+        return string.Join(" ", bonuses);
     }
 
     private static string GetClassTag(Equipment item)
@@ -788,11 +788,6 @@ public class ArmorShopLocation : BaseLocation
             terminal.WriteLine(Loc.Get("shop.purchased_inventory", item.Name));
         }
 
-        // Track purchase (all paths — equip, inventory, or can't-equip)
-        TelemetrySystem.Instance.TrackShopTransaction(
-            "armor", "buy", item.Name, armorTotalWithTax,
-            currentPlayer.Level, currentPlayer.Gold
-        );
         QuestSystem.OnEquipmentPurchased(currentPlayer, item);
 
         // Auto-save after purchase
@@ -967,12 +962,6 @@ public class ArmorShopLocation : BaseLocation
             currentPlayer.Statistics.RecordSale(price);
             DebugLogger.Instance.LogInfo("GOLD", $"SHOP SELL: {currentPlayer.DisplayName} sold armor for {price:N0}g (gold now {currentPlayer.Gold:N0})");
             currentPlayer.RecalculateStats();
-
-            // Track shop sale telemetry
-            TelemetrySystem.Instance.TrackShopTransaction(
-                "armor", "sell", selected.name, price,
-                currentPlayer.Level, currentPlayer.Gold
-            );
 
             terminal.SetColor("bright_green");
             terminal.WriteLine("");

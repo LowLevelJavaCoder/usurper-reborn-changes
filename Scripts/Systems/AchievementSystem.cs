@@ -1116,14 +1116,6 @@ public static class AchievementSystem
             player.Statistics.TotalExperienceEarned += achievement.ExperienceReward;
             player.Statistics.TotalGoldEarned += achievement.GoldReward;
 
-            // Track achievement telemetry
-            TelemetrySystem.Instance.TrackAchievement(
-                achievementId,
-                achievement.Name,
-                player.Level,
-                achievement.Category.ToString()
-            );
-
             // Sync with Steam if available (blocked if dev menu was used)
             if (!player.DevMenuUsed)
             {

@@ -104,15 +104,6 @@ public partial class QuestSystem
         // Send confirmation mail (Pascal: Quest claim notification)
         MailSystem.SendQuestClaimedMail(player.Name2, foundQuest.Title);
 
-        // Track telemetry for quest acceptance
-        TelemetrySystem.Instance.TrackQuest(
-            foundQuest.Title ?? foundQuest.GetTargetDescription(),
-            "accepted",
-            player.Level,
-            reward: null,
-            questType: foundQuest.QuestType.ToString()
-        );
-
         return QuestClaimResult.CanClaim;
     }
     
@@ -203,15 +194,6 @@ public partial class QuestSystem
 
         // News announcement (Pascal: News generation)
         GenerateQuestCompletionNews(player, quest);
-
-        // Track telemetry for quest completion
-        TelemetrySystem.Instance.TrackQuest(
-            quest.Title ?? quest.GetTargetDescription(),
-            "completed",
-            player.Level,
-            reward: rewardAmount,
-            questType: quest.QuestType.ToString()
-        );
 
         // GD.Print($"[QuestSystem] Quest completed by {player.Name2}: {quest.Id}");
 
@@ -753,11 +735,13 @@ public partial class QuestSystem
     /// </summary>
     public static void AbandonQuest(Character player, string questId)
     {
-        var quest = questDatabase.FirstOrDefault(q => q.Id == questId);
-        if (quest != null)
+        // Mark ALL matching quests in database (defense against duplicates)
+        foreach (var quest in questDatabase.Where(q => q.Id == questId).ToList())
         {
             quest.Deleted = true;
-            quest.Occupier = "";
+            quest.IsAbandoned = true;
+            // Keep Occupier set so the quest is properly serialized with Abandoned status
+            // and doesn't reappear as an unclaimed board quest
         }
         player.ActiveQuests.RemoveAll(q => q.Id == questId);
     }
@@ -890,7 +874,8 @@ public partial class QuestSystem
                 OfferedTo = questData.OfferedTo,
                 Forced = questData.Forced,
                 TargetNPCName = questData.TargetNPCName ?? "",
-                Deleted = questData.Status == QuestStatus.Completed || questData.Status == QuestStatus.Failed
+                Deleted = questData.Status == QuestStatus.Completed || questData.Status == QuestStatus.Failed || questData.Status == QuestStatus.Abandoned,
+                IsAbandoned = questData.Status == QuestStatus.Abandoned
             };
 
             // Restore objectives
@@ -964,7 +949,8 @@ public partial class QuestSystem
                 OfferedTo = questData.OfferedTo,
                 Forced = questData.Forced,
                 TargetNPCName = questData.TargetNPCName ?? "",
-                Deleted = questData.Status == QuestStatus.Completed || questData.Status == QuestStatus.Failed
+                Deleted = questData.Status == QuestStatus.Completed || questData.Status == QuestStatus.Failed || questData.Status == QuestStatus.Abandoned,
+                IsAbandoned = questData.Status == QuestStatus.Abandoned
             };
 
             foreach (var objData in questData.Objectives)
@@ -1038,7 +1024,8 @@ public partial class QuestSystem
                 OfferedTo = questData.OfferedTo,
                 Forced = questData.Forced,
                 TargetNPCName = questData.TargetNPCName ?? "",
-                Deleted = questData.Status == QuestStatus.Completed || questData.Status == QuestStatus.Failed
+                Deleted = questData.Status == QuestStatus.Completed || questData.Status == QuestStatus.Failed || questData.Status == QuestStatus.Abandoned,
+                IsAbandoned = questData.Status == QuestStatus.Abandoned
             };
 
             foreach (var objData in questData.Objectives)

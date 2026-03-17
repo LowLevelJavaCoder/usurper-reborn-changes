@@ -2474,9 +2474,6 @@ public partial class GameEngine
                 await LoadSharedChildrenAndMarriages();
             }
 
-            // Restore telemetry settings
-            TelemetrySystem.Instance.Deserialize(saveData.Telemetry);
-
             terminal.WriteLine(Loc.Get("engine.save_loaded"), "bright_green");
             await Task.Delay(1000);
 
@@ -3435,27 +3432,6 @@ public partial class GameEngine
             SyncPlayerFlagsFromWorldState(currentPlayer);
         }
 
-        // Restore telemetry settings
-        TelemetrySystem.Instance.Deserialize(saveData.Telemetry);
-
-        // Track session start if telemetry is enabled
-        if (TelemetrySystem.Instance.IsEnabled)
-        {
-            TelemetrySystem.Instance.TrackSessionStart(
-                GameConfig.Version,
-                System.Environment.OSVersion.Platform.ToString()
-            );
-
-            // Identify user for PostHog dashboards (DAUs, WAUs, Retention)
-            // This updates user properties and ensures they show up in daily/weekly counts
-            TelemetrySystem.Instance.Identify(
-                characterName: currentPlayer?.Name ?? "",
-                characterClass: currentPlayer.Class.ToString(),
-                race: currentPlayer.Race.ToString(),
-                level: currentPlayer.Level,
-                difficulty: DifficultySystem.CurrentDifficulty.ToString()
-            );
-        }
 
         terminal.WriteLine(Loc.Get("engine.game_loaded", saveData.CurrentDay, saveData.Player.TurnsRemaining), "green");
         await Task.Delay(1500);
@@ -3561,9 +3537,6 @@ public partial class GameEngine
             CycleSystem.Instance.ApplyCycleBonusesToNewCharacter(currentPlayer, story.CurrentCycle, lastEnding);
             currentPlayer.RecalculateStats();
         }
-
-        // Ask about telemetry opt-in for new players
-        await PromptTelemetryOptIn();
 
         // Save the new game using the character's actual name (Name1)
         // This is important because playerName may be empty if coming from no-saves path
@@ -5944,17 +5917,8 @@ public partial class GameEngine
     {
         terminal.WriteLine(Loc.Get("save.saving"), "yellow");
 
-        // Track session end telemetry
         if (currentPlayer != null)
         {
-            int playtimeMinutes = (int)currentPlayer.Statistics.TotalPlayTime.TotalMinutes;
-            TelemetrySystem.Instance.TrackSessionEnd(
-                currentPlayer.Level,
-                playtimeMinutes,
-                (int)currentPlayer.MDefeats,
-                (int)currentPlayer.MKills
-            );
-
             // Log game exit
             DebugLogger.Instance.LogGameExit(currentPlayer.Name, "QuitGame");
         }
@@ -6652,93 +6616,6 @@ public partial class GameEngine
         }
     }
 
-    /// <summary>
-    /// Prompt player to opt-in to anonymous telemetry for alpha testing
-    /// </summary>
-    private async Task PromptTelemetryOptIn()
-    {
-        terminal.Clear();
-        terminal.SetColor("cyan");
-        terminal.WriteLine("");
-        if (GameConfig.ScreenReaderMode)
-        {
-            terminal.WriteLine(Loc.Get("engine.telemetry_title"));
-        }
-        else
-        {
-            terminal.WriteLine("╔══════════════════════════════════════════════════════════════╗");
-            { string t = Loc.Get("engine.telemetry_title"); int l = (62 - t.Length) / 2; int r = 62 - t.Length - l; terminal.WriteLine("║" + new string(' ', l) + t + new string(' ', r) + "║"); }
-            terminal.WriteLine("╚══════════════════════════════════════════════════════════════╝");
-        }
-        terminal.WriteLine("");
-        terminal.SetColor("white");
-        terminal.WriteLine(Loc.Get("engine.telemetry_desc_1"));
-        terminal.WriteLine(Loc.Get("engine.telemetry_desc_2"));
-        terminal.WriteLine("");
-        terminal.SetColor("gray");
-        terminal.WriteLine(Loc.Get("engine.telemetry_collect"));
-        terminal.WriteLine(Loc.Get("engine.telemetry_collect_1"));
-        terminal.WriteLine(Loc.Get("engine.telemetry_collect_2"));
-        terminal.WriteLine(Loc.Get("engine.telemetry_collect_3"));
-        terminal.WriteLine(Loc.Get("engine.telemetry_collect_4"));
-        terminal.WriteLine("");
-        terminal.SetColor("bright_green");
-        terminal.WriteLine(Loc.Get("engine.telemetry_not_collect"));
-        terminal.WriteLine(Loc.Get("engine.telemetry_not_1"));
-        terminal.WriteLine(Loc.Get("engine.telemetry_not_2"));
-        terminal.WriteLine(Loc.Get("engine.telemetry_not_3"));
-        terminal.WriteLine("");
-        terminal.SetColor("yellow");
-        terminal.WriteLine(Loc.Get("engine.telemetry_disable_hint"));
-        terminal.WriteLine("");
-        terminal.SetColor("white");
-        terminal.Write(Loc.Get("engine.telemetry_prompt"));
-
-        var response = await terminal.GetInput("");
-        if (response.Trim().ToUpper() == "Y" || response.Trim().ToUpper() == "YES")
-        {
-            TelemetrySystem.Instance.Enable();
-            terminal.SetColor("bright_green");
-            terminal.WriteLine("");
-            terminal.WriteLine(Loc.Get("engine.telemetry_thanks"));
-            terminal.WriteLine("");
-
-            // Track session start first
-            TelemetrySystem.Instance.TrackSessionStart(
-                GameConfig.Version,
-                System.Environment.OSVersion.Platform.ToString()
-            );
-
-            // Track new character creation with details - this sends immediately
-            TelemetrySystem.Instance.TrackNewCharacter(
-                currentPlayer.Race.ToString(),
-                currentPlayer.Class.ToString(),
-                currentPlayer.Sex.ToString(),
-                DifficultySystem.CurrentDifficulty.ToString(),
-                (int)currentPlayer.Gold
-            );
-
-            // Identify user for PostHog dashboards (DAUs, WAUs, Retention)
-            TelemetrySystem.Instance.Identify(
-                characterName: currentPlayer.Name,
-                characterClass: currentPlayer.Class.ToString(),
-                race: currentPlayer.Race.ToString(),
-                level: currentPlayer.Level,
-                difficulty: DifficultySystem.CurrentDifficulty.ToString(),
-                firstSeen: DateTime.UtcNow
-            );
-        }
-        else
-        {
-            TelemetrySystem.Instance.Disable();
-            terminal.SetColor("gray");
-            terminal.WriteLine("");
-            terminal.WriteLine(Loc.Get("engine.telemetry_declined"));
-            terminal.WriteLine("");
-        }
-
-        await Task.Delay(1500);
-    }
 }
 
 /// <summary>

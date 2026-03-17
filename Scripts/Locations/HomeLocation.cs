@@ -1160,6 +1160,11 @@ public class HomeLocation : BaseLocation
             currentPlayer.Inventory.RemoveAt(idx - 1);
             Chest.Add(item);
             terminal.WriteLine(Loc.Get("home.chest_stored", item.GetDisplayName(), Chest.Count, maxCapacity), "green");
+
+            // Force immediate save — chest changes bypass the 60s auto-save throttle
+            // to prevent item loss on disconnect/crash
+            if (DoorMode.IsOnlineMode)
+                SaveSystem.Instance.ResetAutoSaveThrottle();
         }
         else
         {
@@ -1188,6 +1193,10 @@ public class HomeLocation : BaseLocation
             Chest.RemoveAt(idx - 1);
             currentPlayer.Inventory.Add(item);
             terminal.WriteLine(Loc.Get("home.chest_retrieved", item.GetDisplayName()), "green");
+
+            // Force immediate save — chest changes bypass the 60s auto-save throttle
+            if (DoorMode.IsOnlineMode)
+                SaveSystem.Instance.ResetAutoSaveThrottle();
         }
         else
         {
@@ -2206,31 +2215,31 @@ public class HomeLocation : BaseLocation
         terminal.SetColor("bright_yellow");
         terminal.Write("  [1]");
         terminal.SetColor("white");
-        terminal.WriteLine(" Express your love and commitment");
+        terminal.WriteLine($" {Loc.Get("home.discuss_opt_love")}");
 
         if (spouseData != null && !spouseData.AcceptsPolyamory)
         {
             terminal.SetColor("bright_yellow");
             terminal.Write("  [2]");
             terminal.SetColor("magenta");
-            terminal.WriteLine(" Discuss opening our marriage (polyamory)");
+            terminal.WriteLine($" {Loc.Get("home.discuss_opt_poly_open")}");
         }
         else if (spouseData != null && spouseData.AcceptsPolyamory)
         {
             terminal.SetColor("bright_yellow");
             terminal.Write("  [2]");
             terminal.SetColor("magenta");
-            terminal.WriteLine(" Discuss returning to monogamy");
+            terminal.WriteLine($" {Loc.Get("home.discuss_opt_poly_close")}");
         }
 
         terminal.SetColor("bright_yellow");
         terminal.Write("  [3]");
         terminal.SetColor("red");
-        terminal.WriteLine(" Discuss separation/divorce...");
+        terminal.WriteLine($" {Loc.Get("home.discuss_opt_divorce")}");
         terminal.SetColor("bright_yellow");
         terminal.Write("  [0]");
         terminal.SetColor("gray");
-        terminal.WriteLine(" Never mind");
+        terminal.WriteLine($" {Loc.Get("home.discuss_opt_nevermind")}");
         terminal.WriteLine();
 
         var input = await terminal.GetInput(Loc.Get("ui.choice"));
@@ -2270,8 +2279,8 @@ public class HomeLocation : BaseLocation
         await Task.Delay(1000);
 
         terminal.SetColor("white");
-        terminal.WriteLine("\"I just wanted you to know how much you mean to me.\"");
-        terminal.WriteLine("\"Every day with you is a blessing.\"");
+        terminal.WriteLine(Loc.Get("home.love_line1"));
+        terminal.WriteLine(Loc.Get("home.love_line2"));
         terminal.WriteLine();
 
         await Task.Delay(1500);
@@ -2282,13 +2291,13 @@ public class HomeLocation : BaseLocation
         terminal.SetColor("bright_cyan");
         if (romanticism > 0.6f)
         {
-            terminal.WriteLine($"{spouse.Name}'s eyes glisten with emotion.");
-            terminal.WriteLine($"\"And I love you more than words can express,\" they whisper.");
+            terminal.WriteLine(Loc.Get("home.love_romantic_eyes", spouse.Name));
+            terminal.WriteLine(Loc.Get("home.love_romantic_whisper"));
         }
         else
         {
-            terminal.WriteLine($"{spouse.Name} smiles warmly.");
-            terminal.WriteLine($"\"I know. And I feel the same way.\"");
+            terminal.WriteLine(Loc.Get("home.love_warm_smile", spouse.Name));
+            terminal.WriteLine(Loc.Get("home.love_warm_reply"));
         }
 
         // Boost relationship (lower number = better in this system)
@@ -2319,10 +2328,10 @@ public class HomeLocation : BaseLocation
             await Task.Delay(1000);
 
             terminal.SetColor("white");
-            terminal.WriteLine("\"I've been thinking about our relationship,\" you begin carefully.");
-            terminal.WriteLine("\"I love you deeply, and I want to be honest with you.\"");
-            terminal.WriteLine("\"I've been wondering if you might be open to...\"");
-            terminal.WriteLine("\"...the idea of us having other partners as well?\"");
+            terminal.WriteLine(Loc.Get("home.poly_line1"));
+            terminal.WriteLine(Loc.Get("home.poly_line2"));
+            terminal.WriteLine(Loc.Get("home.poly_line3"));
+            terminal.WriteLine(Loc.Get("home.poly_line4"));
             terminal.WriteLine();
 
             await Task.Delay(2000);
@@ -2342,18 +2351,18 @@ public class HomeLocation : BaseLocation
             terminal.SetColor("bright_cyan");
             if (wouldAccept)
             {
-                terminal.WriteLine($"{spouse.Name} is quiet for a long moment, then takes your hand.");
+                terminal.WriteLine(Loc.Get("home.poly_accept_quiet", spouse.Name));
                 terminal.WriteLine();
-                terminal.WriteLine($"\"I... I've thought about this too, actually.\"");
-                terminal.WriteLine($"\"Our love is strong. I don't think it would diminish\"");
-                terminal.WriteLine($"\"what we have if you found connection elsewhere.\"");
+                terminal.WriteLine(Loc.Get("home.poly_accept_thought"));
+                terminal.WriteLine(Loc.Get("home.poly_accept_strong"));
+                terminal.WriteLine(Loc.Get("home.poly_accept_diminish"));
                 terminal.WriteLine();
 
                 await Task.Delay(1500);
 
                 terminal.SetColor("bright_magenta");
-                terminal.WriteLine($"\"Yes. I'm willing to try this. But promise me...\"");
-                terminal.WriteLine($"\"Promise me you'll always come home to me.\"");
+                terminal.WriteLine(Loc.Get("home.poly_accept_willing"));
+                terminal.WriteLine(Loc.Get("home.poly_accept_promise"));
                 terminal.WriteLine();
 
                 terminal.SetColor("bright_green");
@@ -2364,14 +2373,14 @@ public class HomeLocation : BaseLocation
             }
             else
             {
-                terminal.WriteLine($"{spouse.Name}'s expression falls.");
+                terminal.WriteLine(Loc.Get("home.poly_reject_falls", spouse.Name));
                 terminal.WriteLine();
 
                 if (jealousy > 0.6f)
                 {
                     terminal.SetColor("red");
-                    terminal.WriteLine($"\"What? You want to be with OTHER people?\"");
-                    terminal.WriteLine($"\"Am I not enough for you? Is that what you're saying?\"");
+                    terminal.WriteLine(Loc.Get("home.poly_reject_jealous1"));
+                    terminal.WriteLine(Loc.Get("home.poly_reject_jealous2"));
                     terminal.WriteLine();
                     terminal.SetColor("yellow");
                     terminal.WriteLine(Loc.Get("home.poly_tense"));
@@ -2385,9 +2394,9 @@ public class HomeLocation : BaseLocation
                 else
                 {
                     terminal.SetColor("yellow");
-                    terminal.WriteLine($"\"I... I understand what you're asking, but...\"");
-                    terminal.WriteLine($"\"I don't think I could handle that. I'm sorry.\"");
-                    terminal.WriteLine($"\"I need our relationship to be just us.\"");
+                    terminal.WriteLine(Loc.Get("home.poly_reject_gentle1"));
+                    terminal.WriteLine(Loc.Get("home.poly_reject_gentle2"));
+                    terminal.WriteLine(Loc.Get("home.poly_reject_gentle3"));
                     terminal.WriteLine();
                     terminal.SetColor("gray");
                     terminal.WriteLine(Loc.Get("home.poly_not_ready"));
@@ -2410,16 +2419,16 @@ public class HomeLocation : BaseLocation
             await Task.Delay(1000);
 
             terminal.SetColor("white");
-            terminal.WriteLine("\"I've been thinking... maybe we should close our marriage.\"");
-            terminal.WriteLine("\"Just be with each other. What do you think?\"");
+            terminal.WriteLine(Loc.Get("home.mono_line1"));
+            terminal.WriteLine(Loc.Get("home.mono_line2"));
             terminal.WriteLine();
 
             await Task.Delay(1500);
 
             terminal.SetColor("bright_cyan");
-            terminal.WriteLine($"{spouse.Name} nods thoughtfully.");
-            terminal.WriteLine($"\"If that's what you want, I'm happy with that.\"");
-            terminal.WriteLine($"\"What matters most is that we're together.\"");
+            terminal.WriteLine(Loc.Get("home.mono_nods", spouse.Name));
+            terminal.WriteLine(Loc.Get("home.mono_happy"));
+            terminal.WriteLine(Loc.Get("home.mono_together"));
             terminal.WriteLine();
 
             terminal.SetColor("bright_green");
@@ -2433,7 +2442,7 @@ public class HomeLocation : BaseLocation
             {
                 terminal.SetColor("yellow");
                 terminal.WriteLine();
-                terminal.WriteLine("(Note: You should end your other relationships to honor this commitment.)");
+                terminal.WriteLine(Loc.Get("home.mono_note_other_relationships"));
             }
         }
     }
@@ -2453,15 +2462,15 @@ public class HomeLocation : BaseLocation
         await Task.Delay(1500);
 
         terminal.SetColor("yellow");
-        terminal.WriteLine("\"We need to talk about us. About our future.\"");
-        terminal.WriteLine("\"I've been doing a lot of thinking, and...\"");
+        terminal.WriteLine(Loc.Get("home.divorce_talk_line1"));
+        terminal.WriteLine(Loc.Get("home.divorce_talk_line2"));
         terminal.WriteLine();
 
         await Task.Delay(1500);
 
         terminal.SetColor("bright_cyan");
-        terminal.WriteLine($"{spouse.Name} looks at you with growing concern.");
-        terminal.WriteLine($"\"What is it? You're scaring me...\"");
+        terminal.WriteLine(Loc.Get("home.divorce_concern", spouse.Name));
+        terminal.WriteLine(Loc.Get("home.divorce_scaring"));
         terminal.WriteLine();
 
         await Task.Delay(1000);
@@ -2480,11 +2489,11 @@ public class HomeLocation : BaseLocation
         terminal.SetColor("bright_yellow");
         terminal.Write("  [Y]");
         terminal.SetColor("white");
-        terminal.WriteLine(" Yes, I want a divorce");
+        terminal.WriteLine($" {Loc.Get("home.divorce_yes")}");
         terminal.SetColor("bright_yellow");
         terminal.Write("  [N]");
         terminal.SetColor("white");
-        terminal.WriteLine(" No, I changed my mind");
+        terminal.WriteLine($" {Loc.Get("home.divorce_no")}");
         terminal.WriteLine();
 
         var input = await terminal.GetInput(Loc.Get("ui.choice"));
@@ -2493,18 +2502,18 @@ public class HomeLocation : BaseLocation
             terminal.WriteLine();
             terminal.SetColor("bright_cyan");
             terminal.WriteLine(Loc.Get("home.divorce_reach_hand", spouse.Name));
-            terminal.WriteLine("\"I'm sorry. I didn't mean to scare you. I love you.\"");
+            terminal.WriteLine(Loc.Get("home.divorce_cancel_sorry"));
             terminal.WriteLine();
             terminal.SetColor("white");
-            terminal.WriteLine($"{spouse.Name} exhales with relief, squeezing your hand tightly.");
+            terminal.WriteLine(Loc.Get("home.divorce_cancel_relief", spouse.Name));
             return;
         }
 
         // Process the divorce
         terminal.WriteLine();
         terminal.SetColor("white");
-        terminal.WriteLine("\"I think... I think we should end this.\"");
-        terminal.WriteLine("\"I want a divorce.\"");
+        terminal.WriteLine(Loc.Get("home.divorce_end_line1"));
+        terminal.WriteLine(Loc.Get("home.divorce_end_line2"));
         terminal.WriteLine();
 
         await Task.Delay(2000);
@@ -2516,15 +2525,15 @@ public class HomeLocation : BaseLocation
         terminal.SetColor("bright_cyan");
         if (volatility > 0.6f)
         {
-            terminal.WriteLine($"{spouse.Name}'s face contorts with shock and anger.");
-            terminal.WriteLine($"\"WHAT?! After everything we've been through?!\"");
-            terminal.WriteLine($"\"How could you do this to me?!\"");
+            terminal.WriteLine(Loc.Get("home.divorce_angry_face", spouse.Name));
+            terminal.WriteLine(Loc.Get("home.divorce_angry_what"));
+            terminal.WriteLine(Loc.Get("home.divorce_angry_how"));
         }
         else
         {
-            terminal.WriteLine($"{spouse.Name}'s eyes fill with tears.");
-            terminal.WriteLine($"\"I... I see. I suppose I knew something was wrong.\"");
-            terminal.WriteLine($"\"If that's truly what you want...\"");
+            terminal.WriteLine(Loc.Get("home.divorce_sad_tears", spouse.Name));
+            terminal.WriteLine(Loc.Get("home.divorce_sad_knew"));
+            terminal.WriteLine(Loc.Get("home.divorce_sad_want"));
         }
 
         terminal.WriteLine();
@@ -2560,7 +2569,7 @@ public class HomeLocation : BaseLocation
 
         terminal.SetColor("gray");
         terminal.WriteLine();
-        terminal.WriteLine($"{spouse.Name} gathers their things and leaves your home.");
+        terminal.WriteLine(Loc.Get("home.divorce_leaves", spouse.Name));
 
         // Move spouse out of home
         spouse.UpdateLocation("Inn");
@@ -2579,7 +2588,7 @@ public class HomeLocation : BaseLocation
 
         terminal.SetColor("white");
         terminal.WriteLine(Loc.Get("home.fantasies_curl", spouse.Name));
-        terminal.WriteLine("\"I want to talk about fantasies. Things we might explore together.\"");
+        terminal.WriteLine(Loc.Get("home.fantasies_talk"));
         terminal.WriteLine();
 
         await Task.Delay(1500);
@@ -2592,13 +2601,13 @@ public class HomeLocation : BaseLocation
         terminal.SetColor("bright_cyan");
         if (adventurousness > 0.5f)
         {
-            terminal.WriteLine($"{spouse.Name} smiles with a playful glint in their eye.");
-            terminal.WriteLine("\"I'm listening. What did you have in mind?\"");
+            terminal.WriteLine(Loc.Get("home.fantasies_playful", spouse.Name));
+            terminal.WriteLine(Loc.Get("home.fantasies_listening"));
         }
         else
         {
-            terminal.WriteLine($"{spouse.Name} looks curious but a bit nervous.");
-            terminal.WriteLine("\"Okay... what kind of fantasies?\"");
+            terminal.WriteLine(Loc.Get("home.fantasies_nervous", spouse.Name));
+            terminal.WriteLine(Loc.Get("home.fantasies_what_kind"));
         }
 
         terminal.WriteLine();
@@ -2608,19 +2617,19 @@ public class HomeLocation : BaseLocation
         terminal.SetColor("bright_yellow");
         terminal.Write("  [1]");
         terminal.SetColor("white");
-        terminal.WriteLine(" Group encounters (threesomes, moresomes)");
+        terminal.WriteLine($" {Loc.Get("home.fantasies_opt_group")}");
         terminal.SetColor("bright_yellow");
         terminal.Write("  [2]");
         terminal.SetColor("white");
-        terminal.WriteLine(" Watching (voyeurism)");
+        terminal.WriteLine($" {Loc.Get("home.fantasies_opt_voyeur")}");
         terminal.SetColor("bright_yellow");
         terminal.Write("  [3]");
         terminal.SetColor("white");
-        terminal.WriteLine(" Being watched (exhibitionism)");
+        terminal.WriteLine($" {Loc.Get("home.fantasies_opt_exhibit")}");
         terminal.SetColor("bright_yellow");
         terminal.Write("  [0]");
         terminal.SetColor("gray");
-        terminal.WriteLine(" Never mind");
+        terminal.WriteLine($" {Loc.Get("home.discuss_opt_nevermind")}");
         terminal.WriteLine();
 
         var input = await terminal.GetInput(Loc.Get("ui.choice"));
@@ -2649,8 +2658,8 @@ public class HomeLocation : BaseLocation
     {
         terminal.WriteLine();
         terminal.SetColor("white");
-        terminal.WriteLine("\"Have you ever thought about... bringing someone else into our bed?\"");
-        terminal.WriteLine("\"A third person, sharing an experience together?\"");
+        terminal.WriteLine(Loc.Get("home.group_line1"));
+        terminal.WriteLine(Loc.Get("home.group_line2"));
         terminal.WriteLine();
 
         await Task.Delay(2000);
@@ -2665,33 +2674,33 @@ public class HomeLocation : BaseLocation
         terminal.SetColor("bright_cyan");
         if (veryInterested)
         {
-            terminal.WriteLine($"{spouse.Name}'s eyes light up with excitement.");
-            terminal.WriteLine("\"Actually... I've thought about that too.\"");
-            terminal.WriteLine("\"It could be incredible, experiencing that together.\"");
+            terminal.WriteLine(Loc.Get("home.group_very_excited", spouse.Name));
+            terminal.WriteLine(Loc.Get("home.group_very_thought"));
+            terminal.WriteLine(Loc.Get("home.group_very_incredible"));
             terminal.WriteLine();
 
             terminal.SetColor("bright_green");
-            terminal.WriteLine($"{spouse.Name} is open to group encounters!");
+            terminal.WriteLine(Loc.Get("home.group_very_open", spouse.Name));
 
             // Mark as consenting
             RomanceTracker.Instance.AgreedStructures[spouse.ID] = RelationshipStructure.OpenRelationship;
         }
         else if (interested)
         {
-            terminal.WriteLine($"{spouse.Name} considers the idea carefully.");
-            terminal.WriteLine("\"I... I'm not sure. It's a big step.\"");
-            terminal.WriteLine("\"Maybe someday, if the right person came along...\"");
+            terminal.WriteLine(Loc.Get("home.group_considers", spouse.Name));
+            terminal.WriteLine(Loc.Get("home.group_not_sure"));
+            terminal.WriteLine(Loc.Get("home.group_maybe_someday"));
             terminal.WriteLine();
 
             terminal.SetColor("yellow");
-            terminal.WriteLine($"{spouse.Name} might be open to this in the future.");
+            terminal.WriteLine(Loc.Get("home.group_future", spouse.Name));
         }
         else if (jealousy > 0.6f)
         {
             terminal.SetColor("red");
-            terminal.WriteLine($"{spouse.Name}'s expression hardens.");
-            terminal.WriteLine("\"Absolutely not. I don't share. Period.\"");
-            terminal.WriteLine("\"I can't believe you'd even suggest that!\"");
+            terminal.WriteLine(Loc.Get("home.group_jealous_hardens", spouse.Name));
+            terminal.WriteLine(Loc.Get("home.group_jealous_no"));
+            terminal.WriteLine(Loc.Get("home.group_jealous_believe"));
             terminal.WriteLine();
 
             terminal.SetColor("yellow");
@@ -2702,9 +2711,9 @@ public class HomeLocation : BaseLocation
         }
         else
         {
-            terminal.WriteLine($"{spouse.Name} shakes their head gently.");
-            terminal.WriteLine("\"That's not really something I'm interested in.\"");
-            terminal.WriteLine("\"I prefer it to just be us.\"");
+            terminal.WriteLine(Loc.Get("home.group_gentle_shake", spouse.Name));
+            terminal.WriteLine(Loc.Get("home.group_gentle_notinterested"));
+            terminal.WriteLine(Loc.Get("home.group_gentle_justus"));
             terminal.WriteLine();
 
             terminal.SetColor("gray");
@@ -2719,8 +2728,8 @@ public class HomeLocation : BaseLocation
     {
         terminal.WriteLine();
         terminal.SetColor("white");
-        terminal.WriteLine("\"I want to share something with you...\"");
-        terminal.WriteLine("\"I find the idea of watching... arousing.\"");
+        terminal.WriteLine(Loc.Get("home.voyeur_share_line1"));
+        terminal.WriteLine(Loc.Get("home.voyeur_share_line2"));
         terminal.WriteLine();
 
         await Task.Delay(1500);
@@ -2731,9 +2740,9 @@ public class HomeLocation : BaseLocation
         terminal.SetColor("bright_cyan");
         if (voyeurism > 0.6f || (adventurousness > 0.7f && voyeurism > 0.4f))
         {
-            terminal.WriteLine($"{spouse.Name} leans in closer, intrigued.");
-            terminal.WriteLine("\"Watching me with someone else? Or watching together?\"");
-            terminal.WriteLine("\"I have to admit... the idea excites me too.\"");
+            terminal.WriteLine(Loc.Get("home.voyeur_intrigued", spouse.Name));
+            terminal.WriteLine(Loc.Get("home.voyeur_watching_who"));
+            terminal.WriteLine(Loc.Get("home.voyeur_excites"));
             terminal.WriteLine();
 
             terminal.SetColor("bright_green");
@@ -2741,9 +2750,9 @@ public class HomeLocation : BaseLocation
         }
         else if (adventurousness > 0.5f)
         {
-            terminal.WriteLine($"{spouse.Name} tilts their head thoughtfully.");
-            terminal.WriteLine("\"That's... interesting. I've never really considered it.\"");
-            terminal.WriteLine("\"What exactly did you have in mind?\"");
+            terminal.WriteLine(Loc.Get("home.voyeur_thoughtful", spouse.Name));
+            terminal.WriteLine(Loc.Get("home.voyeur_interesting"));
+            terminal.WriteLine(Loc.Get("home.voyeur_what_mind"));
             terminal.WriteLine();
 
             terminal.SetColor("yellow");
@@ -2751,9 +2760,9 @@ public class HomeLocation : BaseLocation
         }
         else
         {
-            terminal.WriteLine($"{spouse.Name} looks puzzled.");
-            terminal.WriteLine("\"I'm not really into that sort of thing.\"");
-            terminal.WriteLine("\"I prefer to be the only one in your eyes.\"");
+            terminal.WriteLine(Loc.Get("home.voyeur_puzzled", spouse.Name));
+            terminal.WriteLine(Loc.Get("home.voyeur_not_into"));
+            terminal.WriteLine(Loc.Get("home.voyeur_only_one"));
             terminal.WriteLine();
 
             terminal.SetColor("gray");
@@ -2768,8 +2777,8 @@ public class HomeLocation : BaseLocation
     {
         terminal.WriteLine();
         terminal.SetColor("white");
-        terminal.WriteLine("\"There's something I want to confess...\"");
-        terminal.WriteLine("\"The idea of being watched... it excites me.\"");
+        terminal.WriteLine(Loc.Get("home.exhibit_confess_line1"));
+        terminal.WriteLine(Loc.Get("home.exhibit_confess_line2"));
         terminal.WriteLine();
 
         await Task.Delay(1500);
@@ -2780,9 +2789,9 @@ public class HomeLocation : BaseLocation
         terminal.SetColor("bright_cyan");
         if (exhibitionism > 0.6f || (adventurousness > 0.7f && exhibitionism > 0.4f))
         {
-            terminal.WriteLine($"{spouse.Name}'s eyes darken with desire.");
-            terminal.WriteLine("\"Really? Because I've had similar thoughts...\"");
-            terminal.WriteLine("\"The thrill of being seen, together...\"");
+            terminal.WriteLine(Loc.Get("home.exhibit_desire", spouse.Name));
+            terminal.WriteLine(Loc.Get("home.exhibit_similar"));
+            terminal.WriteLine(Loc.Get("home.exhibit_thrill"));
             terminal.WriteLine();
 
             terminal.SetColor("bright_green");
@@ -2790,9 +2799,9 @@ public class HomeLocation : BaseLocation
         }
         else if (adventurousness > 0.5f)
         {
-            terminal.WriteLine($"{spouse.Name} looks surprised but not put off.");
-            terminal.WriteLine("\"That's... bold. I never knew that about you.\"");
-            terminal.WriteLine("\"I'm not sure I'd be comfortable with it, but I don't judge.\"");
+            terminal.WriteLine(Loc.Get("home.exhibit_surprised", spouse.Name));
+            terminal.WriteLine(Loc.Get("home.exhibit_bold"));
+            terminal.WriteLine(Loc.Get("home.exhibit_no_judge"));
             terminal.WriteLine();
 
             terminal.SetColor("yellow");
@@ -2801,9 +2810,9 @@ public class HomeLocation : BaseLocation
         else
         {
             terminal.SetColor("red");
-            terminal.WriteLine($"{spouse.Name} looks uncomfortable.");
-            terminal.WriteLine("\"I could never do something like that.\"");
-            terminal.WriteLine("\"What we share should be private.\"");
+            terminal.WriteLine(Loc.Get("home.exhibit_uncomfortable", spouse.Name));
+            terminal.WriteLine(Loc.Get("home.exhibit_never"));
+            terminal.WriteLine(Loc.Get("home.exhibit_private"));
             terminal.WriteLine();
 
             terminal.SetColor("gray");
@@ -2824,7 +2833,7 @@ public class HomeLocation : BaseLocation
 
         terminal.SetColor("white");
         terminal.WriteLine(Loc.Get("home.alt_broach", spouse.Name));
-        terminal.WriteLine("\"I want to discuss some... unconventional relationship dynamics.\"");
+        terminal.WriteLine(Loc.Get("home.alt_unconventional"));
         terminal.WriteLine();
 
         await Task.Delay(1500);
@@ -2835,13 +2844,13 @@ public class HomeLocation : BaseLocation
         terminal.SetColor("bright_cyan");
         if (adventurousness > 0.5f)
         {
-            terminal.WriteLine($"{spouse.Name} raises an eyebrow but nods.");
-            terminal.WriteLine("\"I'm listening. What's on your mind?\"");
+            terminal.WriteLine(Loc.Get("home.alt_eyebrow", spouse.Name));
+            terminal.WriteLine(Loc.Get("home.alt_listening"));
         }
         else
         {
-            terminal.WriteLine($"{spouse.Name} looks uncertain.");
-            terminal.WriteLine("\"What do you mean by unconventional?\"");
+            terminal.WriteLine(Loc.Get("home.alt_uncertain", spouse.Name));
+            terminal.WriteLine(Loc.Get("home.alt_what_mean"));
         }
 
         terminal.WriteLine();
@@ -2851,19 +2860,19 @@ public class HomeLocation : BaseLocation
         terminal.SetColor("bright_yellow");
         terminal.Write("  [1]");
         terminal.SetColor("white");
-        terminal.WriteLine(" Hotwifing/Hothusbanding (your partner with others while you watch/know)");
+        terminal.WriteLine($" {Loc.Get("home.alt_opt_hotwife")}");
         terminal.SetColor("bright_yellow");
         terminal.Write("  [2]");
         terminal.SetColor("white");
-        terminal.WriteLine(" Cuckolding (a specific power dynamic version)");
+        terminal.WriteLine($" {Loc.Get("home.alt_opt_cuckold")}");
         terminal.SetColor("bright_yellow");
         terminal.Write("  [3]");
         terminal.SetColor("white");
-        terminal.WriteLine(" Stag/Vixen (you enjoy sharing your partner)");
+        terminal.WriteLine($" {Loc.Get("home.alt_opt_stag")}");
         terminal.SetColor("bright_yellow");
         terminal.Write("  [0]");
         terminal.SetColor("gray");
-        terminal.WriteLine(" Never mind");
+        terminal.WriteLine($" {Loc.Get("home.discuss_opt_nevermind")}");
         terminal.WriteLine();
 
         var input = await terminal.GetInput(Loc.Get("ui.choice"));
@@ -2892,9 +2901,9 @@ public class HomeLocation : BaseLocation
     {
         terminal.WriteLine();
         terminal.SetColor("white");
-        terminal.WriteLine("\"I've been thinking about something...\"");
-        terminal.WriteLine($"\"The idea of you being with someone else, with my blessing...\"");
-        terminal.WriteLine("\"It's called hotwifing. Or hothusbanding. Depending on the dynamic.\"");
+        terminal.WriteLine(Loc.Get("home.hw_thinking"));
+        terminal.WriteLine(Loc.Get("home.hw_idea_blessing"));
+        terminal.WriteLine(Loc.Get("home.hw_called"));
         terminal.WriteLine();
 
         await Task.Delay(2000);
@@ -2911,20 +2920,20 @@ public class HomeLocation : BaseLocation
         terminal.SetColor("bright_cyan");
         if (interested)
         {
-            terminal.WriteLine($"{spouse.Name} is quiet for a moment, processing.");
-            terminal.WriteLine("\"You're saying... you'd want me to be with others?\"");
-            terminal.WriteLine("\"And you'd... enjoy that? Knowing about it?\"");
+            terminal.WriteLine(Loc.Get("home.hw_quiet", spouse.Name));
+            terminal.WriteLine(Loc.Get("home.hw_with_others"));
+            terminal.WriteLine(Loc.Get("home.hw_enjoy_knowing"));
             terminal.WriteLine();
 
             await Task.Delay(1500);
 
             terminal.WriteLine(Loc.Get("home.alt_slow_smile"));
-            terminal.WriteLine("\"I never thought I'd hear you say that.\"");
-            terminal.WriteLine("\"I... I think I could enjoy that. With the right person.\"");
+            terminal.WriteLine(Loc.Get("home.hw_never_thought"));
+            terminal.WriteLine(Loc.Get("home.hw_could_enjoy"));
             terminal.WriteLine();
 
             terminal.SetColor("bright_green");
-            terminal.WriteLine($"{spouse.Name} agrees to try hotwifing/hothusbanding!");
+            terminal.WriteLine(Loc.Get("home.hw_agrees", spouse.Name));
 
             // Set up arrangement tracking
             spouseData.AcceptsPolyamory = true;
@@ -2941,11 +2950,11 @@ public class HomeLocation : BaseLocation
             terminal.SetColor("bright_yellow");
             terminal.Write("  [Y]");
             terminal.SetColor("white");
-            terminal.WriteLine(" Yes, let's try it");
+            terminal.WriteLine($" {Loc.Get("home.alt_yes_try")}");
             terminal.SetColor("bright_yellow");
             terminal.Write("  [N]");
             terminal.SetColor("white");
-            terminal.WriteLine(" No, maybe another time");
+            terminal.WriteLine($" {Loc.Get("home.alt_no_another_time")}");
             terminal.WriteLine();
 
             var input = await terminal.GetInput(Loc.Get("ui.choice"));
@@ -2956,9 +2965,9 @@ public class HomeLocation : BaseLocation
         }
         else if (adventurousness > 0.4f)
         {
-            terminal.WriteLine($"{spouse.Name} looks genuinely surprised.");
-            terminal.WriteLine("\"That's... a lot to take in.\"");
-            terminal.WriteLine("\"I'm not saying no, but I need time to think about it.\"");
+            terminal.WriteLine(Loc.Get("home.hw_surprised", spouse.Name));
+            terminal.WriteLine(Loc.Get("home.hw_a_lot"));
+            terminal.WriteLine(Loc.Get("home.hw_not_saying_no"));
             terminal.WriteLine();
 
             terminal.SetColor("yellow");
@@ -2967,9 +2976,9 @@ public class HomeLocation : BaseLocation
         else
         {
             terminal.SetColor("red");
-            terminal.WriteLine($"{spouse.Name}'s face flushes.");
-            terminal.WriteLine("\"What? You want me to be with other people?\"");
-            terminal.WriteLine("\"That's not something I'd ever be comfortable with.\"");
+            terminal.WriteLine(Loc.Get("home.hw_flushes", spouse.Name));
+            terminal.WriteLine(Loc.Get("home.hw_other_people"));
+            terminal.WriteLine(Loc.Get("home.hw_not_comfortable"));
             terminal.WriteLine();
 
             terminal.SetColor("yellow");
@@ -3011,21 +3020,21 @@ public class HomeLocation : BaseLocation
         string thirdGender = thirdParty.Sex == CharacterSex.Female ? "she" : "he";
 
         terminal.SetColor("white");
-        terminal.WriteLine($"{spouse.Name} gets ready for the evening, choosing {spousePossessive} most alluring outfit.");
+        terminal.WriteLine(Loc.Get("home.hw_gets_ready", spouse.Name, spousePossessive));
         terminal.WriteLine(Loc.Get("home.hw_prepares", spouseGender));
         terminal.WriteLine();
 
         await Task.Delay(2000);
 
         terminal.SetColor("cyan");
-        terminal.WriteLine($"\"{thirdName} asked me out last week,\" {spouseGender} admits.");
-        terminal.WriteLine($"\"I told {(thirdParty.Sex == CharacterSex.Female ? "her" : "him")} I was married, but now...\"");
-        terminal.WriteLine($"{spouseGender.ToUpperInvariant()[0]}{spouseGender.Substring(1)} smiles mischievously. \"Now I have your permission.\"");
+        terminal.WriteLine(Loc.Get("home.hw_asked_out", thirdName, spouseGender));
+        terminal.WriteLine(Loc.Get("home.hw_told_married", thirdParty.Sex == CharacterSex.Female ? "her" : "him"));
+        terminal.WriteLine(Loc.Get("home.hw_permission", $"{spouseGender.ToUpperInvariant()[0]}{spouseGender.Substring(1)}"));
         terminal.WriteLine();
 
         await Task.Delay(2000);
 
-        WriteSectionHeader($"{spouse.Name} leaves for {spousePossessive} date...", "gray");
+        WriteSectionHeader(Loc.Get("home.hw_leaves_date", spouse.Name, spousePossessive), "gray");
         terminal.WriteLine();
 
         await Task.Delay(1500);
@@ -3045,21 +3054,21 @@ public class HomeLocation : BaseLocation
 
         terminal.SetColor("white");
         terminal.WriteLine(Loc.Get("home.hw_returns", spouse.Name));
-        terminal.WriteLine($"{spouseGender.ToUpperInvariant()[0]}{spouseGender.Substring(1)} looks at you with smoldering eyes.");
+        terminal.WriteLine(Loc.Get("home.hw_smoldering", $"{spouseGender.ToUpperInvariant()[0]}{spouseGender.Substring(1)}"));
         terminal.WriteLine();
 
         await Task.Delay(1500);
 
         terminal.SetColor("cyan");
-        terminal.WriteLine($"\"{thirdName} was... very attentive,\" {spouseGender} whispers, coming closer.");
-        terminal.WriteLine($"\"We had dinner, then drinks, and then...\"");
+        terminal.WriteLine(Loc.Get("home.hw_attentive", thirdName, spouseGender));
+        terminal.WriteLine(Loc.Get("home.hw_dinner_drinks"));
         terminal.WriteLine();
 
         await Task.Delay(2000);
 
         // Spouse describes the encounter
         terminal.SetColor("bright_magenta");
-        terminal.WriteLine($"{spouseGender.ToUpperInvariant()[0]}{spouseGender.Substring(1)} tells you everything.");
+        terminal.WriteLine(Loc.Get("home.hw_tells_everything", $"{spouseGender.ToUpperInvariant()[0]}{spouseGender.Substring(1)}"));
         terminal.WriteLine(Loc.Get("home.hw_details", thirdName));
         terminal.WriteLine(Loc.Get("home.hw_whispered", spouseGender));
         terminal.WriteLine();
@@ -3067,8 +3076,8 @@ public class HomeLocation : BaseLocation
         await Task.Delay(2500);
 
         terminal.SetColor("white");
-        terminal.WriteLine($"\"But I came home to you,\" {spouseGender} breathes.");
-        terminal.WriteLine($"\"I always come home to you.\"");
+        terminal.WriteLine(Loc.Get("home.hw_came_home", spouseGender));
+        terminal.WriteLine(Loc.Get("home.hw_always_home"));
         terminal.WriteLine();
 
         await Task.Delay(1500);
@@ -3112,10 +3121,10 @@ public class HomeLocation : BaseLocation
     {
         terminal.WriteLine();
         terminal.SetColor("white");
-        terminal.WriteLine("\"This is difficult to explain, but I want to be honest with you...\"");
-        terminal.WriteLine("\"There's a dynamic called cuckolding. It involves power exchange.\"");
-        terminal.WriteLine("\"You would be with others, and I would... submit to that knowledge.\"");
-        terminal.WriteLine("\"Here. In our home. While I watch.\"");
+        terminal.WriteLine(Loc.Get("home.cuck_line1"));
+        terminal.WriteLine(Loc.Get("home.cuck_line2"));
+        terminal.WriteLine(Loc.Get("home.cuck_line3"));
+        terminal.WriteLine(Loc.Get("home.cuck_line4"));
         terminal.WriteLine();
 
         await Task.Delay(2500);
@@ -3130,20 +3139,20 @@ public class HomeLocation : BaseLocation
         terminal.SetColor("bright_cyan");
         if (compatible)
         {
-            terminal.WriteLine($"{spouse.Name} studies your face intently.");
-            terminal.WriteLine("\"So... you're saying you want me to be dominant?\"");
-            terminal.WriteLine("\"To take other lovers while you... watch? In our own home?\"");
+            terminal.WriteLine(Loc.Get("home.cuck_studies", spouse.Name));
+            terminal.WriteLine(Loc.Get("home.cuck_dominant"));
+            terminal.WriteLine(Loc.Get("home.cuck_other_lovers"));
             terminal.WriteLine();
 
             await Task.Delay(1500);
 
             terminal.WriteLine(Loc.Get("home.cuck_shift"));
-            terminal.WriteLine("\"I have to admit... the idea of having that power is intriguing.\"");
-            terminal.WriteLine("\"If that's what you truly want...\"");
+            terminal.WriteLine(Loc.Get("home.cuck_power_intriguing"));
+            terminal.WriteLine(Loc.Get("home.cuck_truly_want"));
             terminal.WriteLine();
 
             terminal.SetColor("bright_green");
-            terminal.WriteLine($"{spouse.Name} agrees to explore cuckolding!");
+            terminal.WriteLine(Loc.Get("home.cuck_agrees", spouse.Name));
 
             // Set up cuckold arrangement
             spouseData.AcceptsPolyamory = true;
@@ -3159,11 +3168,11 @@ public class HomeLocation : BaseLocation
             terminal.SetColor("bright_yellow");
             terminal.Write("  [Y]");
             terminal.SetColor("white");
-            terminal.WriteLine(" Yes, let's try it");
+            terminal.WriteLine($" {Loc.Get("home.alt_yes_try")}");
             terminal.SetColor("bright_yellow");
             terminal.Write("  [N]");
             terminal.SetColor("white");
-            terminal.WriteLine(" No, maybe another time");
+            terminal.WriteLine($" {Loc.Get("home.alt_no_another_time")}");
             terminal.WriteLine();
 
             var input = await terminal.GetInput(Loc.Get("ui.choice"));
@@ -3174,9 +3183,9 @@ public class HomeLocation : BaseLocation
         }
         else if (adventurousness > 0.4f)
         {
-            terminal.WriteLine($"{spouse.Name} looks confused.");
-            terminal.WriteLine("\"I... I'm not sure I understand what you're asking.\"");
-            terminal.WriteLine("\"This seems very complicated. Are you sure this is healthy?\"");
+            terminal.WriteLine(Loc.Get("home.cuck_confused", spouse.Name));
+            terminal.WriteLine(Loc.Get("home.cuck_not_understand_line"));
+            terminal.WriteLine(Loc.Get("home.cuck_complicated"));
             terminal.WriteLine();
 
             terminal.SetColor("yellow");
@@ -3188,9 +3197,9 @@ public class HomeLocation : BaseLocation
         else
         {
             terminal.SetColor("red");
-            terminal.WriteLine($"{spouse.Name} looks disturbed.");
-            terminal.WriteLine("\"Why would you want that? It sounds like punishment.\"");
-            terminal.WriteLine("\"I don't want that kind of relationship at all.\"");
+            terminal.WriteLine(Loc.Get("home.cuck_disturbed", spouse.Name));
+            terminal.WriteLine(Loc.Get("home.cuck_punishment"));
+            terminal.WriteLine(Loc.Get("home.cuck_dont_want"));
             terminal.WriteLine();
 
             terminal.SetColor("yellow");
@@ -3233,8 +3242,8 @@ public class HomeLocation : BaseLocation
         string thirdPossessive = thirdParty.Sex == CharacterSex.Female ? "her" : "his";
 
         terminal.SetColor("white");
-        terminal.WriteLine($"{spouse.Name} sends a message to {thirdName}.");
-        terminal.WriteLine($"\"Come over tonight. My spouse... wants to watch.\"");
+        terminal.WriteLine(Loc.Get("home.cuck_sends_message", spouse.Name, thirdName));
+        terminal.WriteLine(Loc.Get("home.cuck_come_over"));
         terminal.WriteLine();
 
         await Task.Delay(2000);
@@ -3245,18 +3254,18 @@ public class HomeLocation : BaseLocation
         await Task.Delay(1500);
 
         terminal.SetColor("white");
-        terminal.WriteLine($"{thirdName} enters, looking uncertain at first.");
-        terminal.WriteLine($"{spouse.Name} takes {thirdPossessive} hand confidently.");
-        terminal.WriteLine($"\"Don't worry about {(currentPlayer?.Sex == CharacterSex.Female ? "her" : "him")},\" {spouseGender} says.");
-        terminal.WriteLine($"\"{(currentPlayer?.Sex == CharacterSex.Female ? "She" : "He")} wants this. Don't you?\"");
+        terminal.WriteLine(Loc.Get("home.cuck_enters", thirdName));
+        terminal.WriteLine(Loc.Get("home.cuck_takes_hand", spouse.Name, thirdPossessive));
+        terminal.WriteLine(Loc.Get("home.cuck_dont_worry", currentPlayer?.Sex == CharacterSex.Female ? "her" : "him", spouseGender));
+        terminal.WriteLine(Loc.Get("home.cuck_wants_this", currentPlayer?.Sex == CharacterSex.Female ? "She" : "He"));
         terminal.WriteLine();
 
         await Task.Delay(2000);
 
         terminal.SetColor("cyan");
-        terminal.WriteLine($"{spouse.Name} looks at you with a new intensity in {spousePossessive} eyes.");
-        terminal.WriteLine($"\"Sit there,\" {spouseGender} commands, pointing to the chair in the corner.");
-        terminal.WriteLine($"\"And watch.\"");
+        terminal.WriteLine(Loc.Get("home.cuck_intensity", spouse.Name, spousePossessive));
+        terminal.WriteLine(Loc.Get("home.cuck_sit_there", spouseGender));
+        terminal.WriteLine(Loc.Get("home.cuck_and_watch"));
         terminal.WriteLine();
 
         await Task.Delay(2000);
@@ -3267,7 +3276,7 @@ public class HomeLocation : BaseLocation
         await Task.Delay(1500);
 
         terminal.SetColor("white");
-        terminal.WriteLine($"{spouse.Name} and {thirdName} move toward each other.");
+        terminal.WriteLine(Loc.Get("home.cuck_move_toward", spouse.Name, thirdName));
         terminal.WriteLine(Loc.Get("home.cuck_first_kiss"));
         terminal.WriteLine(Loc.Get("home.cuck_watch_chair"));
         terminal.WriteLine();
@@ -3275,7 +3284,7 @@ public class HomeLocation : BaseLocation
         await Task.Delay(2000);
 
         terminal.SetColor("bright_magenta");
-        terminal.WriteLine($"{spouse.Name} glances at you occasionally, making sure you're watching.");
+        terminal.WriteLine(Loc.Get("home.cuck_glances", spouse.Name));
         terminal.WriteLine(Loc.Get("home.cuck_power_gaze", spousePossessive));
         terminal.WriteLine(Loc.Get("home.cuck_owns_it", spouseGender));
         terminal.WriteLine();
@@ -3285,7 +3294,7 @@ public class HomeLocation : BaseLocation
         // The scene progresses
         terminal.SetColor("cyan");
         terminal.WriteLine(Loc.Get("home.cuck_clothing_falls"));
-        terminal.WriteLine($"{spouse.Name} is in complete control, directing every moment.");
+        terminal.WriteLine(Loc.Get("home.cuck_in_control", spouse.Name));
         terminal.WriteLine(Loc.Get("home.cuck_looks_at_you", spouseGender, spouseGender));
         terminal.WriteLine(Loc.Get("home.cuck_both_intense"));
         terminal.WriteLine();
@@ -3306,23 +3315,23 @@ public class HomeLocation : BaseLocation
         await Task.Delay(1500);
 
         terminal.SetColor("white");
-        terminal.WriteLine($"{thirdName} gathers {thirdPossessive} things and leaves.");
+        terminal.WriteLine(Loc.Get("home.cuck_gathers_leaves", thirdName, thirdPossessive));
         terminal.WriteLine(Loc.Get("home.cuck_nod_out"));
         terminal.WriteLine();
 
         await Task.Delay(1500);
 
         terminal.SetColor("cyan");
-        terminal.WriteLine($"{spouse.Name} lies back on the bed, satisfied, powerful.");
-        terminal.WriteLine($"\"{spouseGender.ToUpperInvariant()[0]}{spouseGender.Substring(1)} beckons you over.\"");
-        terminal.WriteLine($"\"You may approach now.\"");
+        terminal.WriteLine(Loc.Get("home.cuck_lies_back", spouse.Name));
+        terminal.WriteLine(Loc.Get("home.cuck_beckons", $"{spouseGender.ToUpperInvariant()[0]}{spouseGender.Substring(1)}"));
+        terminal.WriteLine(Loc.Get("home.cuck_approach"));
         terminal.WriteLine();
 
         await Task.Delay(2000);
 
         terminal.SetColor("white");
         terminal.WriteLine(Loc.Get("home.cuck_dynamic_shifted"));
-        terminal.WriteLine($"{spouse.Name} has discovered something in {spousePossessive}self.");
+        terminal.WriteLine(Loc.Get("home.cuck_discovered", spouse.Name, spousePossessive));
         terminal.WriteLine(Loc.Get("home.cuck_gave_power"));
         terminal.WriteLine();
 
@@ -3345,10 +3354,10 @@ public class HomeLocation : BaseLocation
     {
         terminal.WriteLine();
         terminal.SetColor("white");
-        terminal.WriteLine("\"I want to share something with you...\"");
-        terminal.WriteLine("\"The idea of you being with someone else, while I watch or participate...\"");
-        terminal.WriteLine("\"Not out of submission, but pride. Stag and Vixen, they call it.\"");
-        terminal.WriteLine("\"I want to show you off. Share you. Celebrate you.\"");
+        terminal.WriteLine(Loc.Get("home.stag_line1"));
+        terminal.WriteLine(Loc.Get("home.stag_line2"));
+        terminal.WriteLine(Loc.Get("home.stag_line3"));
+        terminal.WriteLine(Loc.Get("home.stag_line4"));
         terminal.WriteLine();
 
         await Task.Delay(2000);
@@ -3365,20 +3374,20 @@ public class HomeLocation : BaseLocation
         terminal.SetColor("bright_cyan");
         if (interested)
         {
-            terminal.WriteLine($"{spouse.Name}'s breath catches.");
-            terminal.WriteLine("\"You want to... watch me? Show me off?\"");
-            terminal.WriteLine("\"That's... actually kind of hot.\"");
+            terminal.WriteLine(Loc.Get("home.stag_breath", spouse.Name));
+            terminal.WriteLine(Loc.Get("home.stag_show_off"));
+            terminal.WriteLine(Loc.Get("home.stag_kind_hot"));
             terminal.WriteLine();
 
             await Task.Delay(1500);
 
             terminal.WriteLine(Loc.Get("home.stag_mischievous"));
-            terminal.WriteLine("\"I like being admired. And the idea of you being proud...\"");
-            terminal.WriteLine("\"Yes. I think I'd like to try that.\"");
+            terminal.WriteLine(Loc.Get("home.stag_admired"));
+            terminal.WriteLine(Loc.Get("home.stag_like_try"));
             terminal.WriteLine();
 
             terminal.SetColor("bright_green");
-            terminal.WriteLine($"{spouse.Name} agrees to explore the Stag/Vixen dynamic!");
+            terminal.WriteLine(Loc.Get("home.stag_agrees", spouse.Name));
 
             spouseData.AcceptsPolyamory = true;
             spouseData.KnowsAboutOthers = true;
@@ -3386,9 +3395,9 @@ public class HomeLocation : BaseLocation
         }
         else if (adventurousness > 0.4f)
         {
-            terminal.WriteLine($"{spouse.Name} considers this thoughtfully.");
-            terminal.WriteLine("\"It's flattering that you see me that way...\"");
-            terminal.WriteLine("\"But I'm not sure I'm comfortable being... shared.\"");
+            terminal.WriteLine(Loc.Get("home.stag_considers", spouse.Name));
+            terminal.WriteLine(Loc.Get("home.stag_flattering"));
+            terminal.WriteLine(Loc.Get("home.stag_not_comfortable"));
             terminal.WriteLine();
 
             terminal.SetColor("yellow");
@@ -3399,9 +3408,9 @@ public class HomeLocation : BaseLocation
         }
         else
         {
-            terminal.WriteLine($"{spouse.Name} shakes their head.");
-            terminal.WriteLine("\"I don't want to be with anyone else.\"");
-            terminal.WriteLine("\"You're all I need. Why isn't that enough?\"");
+            terminal.WriteLine(Loc.Get("home.stag_shakes", spouse.Name));
+            terminal.WriteLine(Loc.Get("home.stag_dont_want"));
+            terminal.WriteLine(Loc.Get("home.stag_all_need"));
             terminal.WriteLine();
 
             terminal.SetColor("gray");
@@ -3460,22 +3469,22 @@ public class HomeLocation : BaseLocation
             string spousePossessive = spouse.Sex == CharacterSex.Female ? "her" : "his";
 
             terminal.SetColor("white");
-            terminal.WriteLine($"{spouse.Name} is quiet for a very long time.");
+            terminal.WriteLine(Loc.Get("home.reject_quiet", spouse.Name));
             terminal.WriteLine(Loc.Get("home.reject_cold_voice", spouseGender, spousePossessive));
             terminal.WriteLine();
 
             await Task.Delay(2000);
 
             terminal.SetColor("bright_red");
-            terminal.WriteLine($"\"I've been trying to make this work. I really have.\"");
-            terminal.WriteLine($"\"But this... asking me about {topicName}...\"");
-            terminal.WriteLine($"\"It makes me realize we want very different things.\"");
+            terminal.WriteLine(Loc.Get("home.reject_trying"));
+            terminal.WriteLine(Loc.Get("home.reject_asking_about", topicName));
+            terminal.WriteLine(Loc.Get("home.reject_different_things"));
             terminal.WriteLine();
 
             await Task.Delay(2000);
 
             terminal.SetColor("red");
-            terminal.WriteLine($"\"I want a divorce.\"");
+            terminal.WriteLine(Loc.Get("home.reject_want_divorce"));
             terminal.WriteLine();
 
             await Task.Delay(1500);
@@ -3505,8 +3514,8 @@ public class HomeLocation : BaseLocation
 
                 terminal.SetColor("white");
                 terminal.WriteLine();
-                terminal.WriteLine("\"Please... I'm sorry. I didn't mean to hurt you.\"");
-                terminal.WriteLine("\"I love you. Can we please work through this?\"");
+                terminal.WriteLine(Loc.Get("home.reject_plead_sorry"));
+                terminal.WriteLine(Loc.Get("home.reject_plead_love"));
                 terminal.WriteLine();
 
                 await Task.Delay(2000);
@@ -3514,9 +3523,9 @@ public class HomeLocation : BaseLocation
                 if (random.NextDouble() < pleadSuccess)
                 {
                     terminal.SetColor("bright_cyan");
-                    terminal.WriteLine($"{spouse.Name}'s expression softens slightly.");
-                    terminal.WriteLine($"\"I... I don't know. Maybe we can try counseling.\"");
-                    terminal.WriteLine($"\"But if you ever bring up something like that again...\"");
+                    terminal.WriteLine(Loc.Get("home.reject_softens", spouse.Name));
+                    terminal.WriteLine(Loc.Get("home.reject_counseling"));
+                    terminal.WriteLine(Loc.Get("home.reject_never_again"));
                     terminal.WriteLine();
 
                     terminal.SetColor("yellow");
@@ -3529,8 +3538,8 @@ public class HomeLocation : BaseLocation
                 else
                 {
                     terminal.SetColor("red");
-                    terminal.WriteLine($"{spouse.Name} shakes {spousePossessive} head.");
-                    terminal.WriteLine($"\"No. I've made up my mind. This is over.\"");
+                    terminal.WriteLine(Loc.Get("home.reject_shakes_head", spouse.Name, spousePossessive));
+                    terminal.WriteLine(Loc.Get("home.reject_made_up_mind"));
                     terminal.WriteLine();
 
                     await ProcessSpouseDivorce(spouse, spouseData);
@@ -4432,7 +4441,7 @@ toResurrect.IsDead = false;
         else
         {
             terminal.SetColor("darkgray");
-            terminal.WriteLine("Empty");
+            terminal.WriteLine(Loc.Get("home.equip_empty"));
         }
         terminal.WriteLine("");
 

@@ -641,94 +641,137 @@ public class MainStreetLocation : BaseLocation
             terminal.SetColor(color); terminal.WriteLine(label);
         }
 
-        const int C = 16; // column width: [X](3) + 13 chars label
+        // Dynamic column width: 79 usable chars (80 - 1 leading space) / items per row
+        int RC(int items) => 79 / items;
 
         // Row 1 - Primary locations (D/I always, T/O tier 2+)
         terminal.Write(" ");
-        MI("D", Loc.Get("menu.action.dungeon"), "white", C);
-        MI("I", Loc.Get("menu.action.inn"), "white", C);
         if (tier >= 2)
         {
-            MI("T", Loc.Get("menu.action.temple"), "white", C);
+            int c = RC(4);
+            MI("D", Loc.Get("menu.action.dungeon"), "white", c);
+            MI("I", Loc.Get("menu.action.inn"), "white", c);
+            MI("T", Loc.Get("menu.action.temple"), "white", c);
             ML("O", Loc.Get("menu.action.old_church"), "white");
         }
         else
-            terminal.WriteLine("");
+        {
+            int c = RC(2);
+            MI("D", Loc.Get("menu.action.dungeon"), "white", c);
+            ML("I", Loc.Get("menu.action.inn"), "white");
+        }
 
         // Row 2 - Shops (W/A/M/U always, J tier 3+)
         terminal.Write(" ");
-        MI("W", Loc.Get("menu.action.weapon_shop"), "white", C);
-        MI("A", Loc.Get("menu.action.armor_shop"), "white", C);
-        MI("M", Loc.Get("menu.action.magic_shop"), "white", C);
         if (tier >= 3)
         {
-            MI("U", Loc.Get("menu.action.music_shop"), "cyan", C);
+            int c = RC(5);
+            MI("W", Loc.Get("menu.action.weapon_shop"), "white", c);
+            MI("A", Loc.Get("menu.action.armor_shop"), "white", c);
+            MI("M", Loc.Get("menu.action.magic_shop"), "white", c);
+            MI("U", Loc.Get("menu.action.music_shop"), "cyan", c);
             ML("J", Loc.Get("menu.action.auction_house"), "white");
         }
         else
         {
+            int c = RC(4);
+            MI("W", Loc.Get("menu.action.weapon_shop"), "white", c);
+            MI("A", Loc.Get("menu.action.armor_shop"), "white", c);
+            MI("M", Loc.Get("menu.action.magic_shop"), "white", c);
             ML("U", Loc.Get("menu.action.music_shop"), "cyan");
         }
 
         // Row 3 - Services (B tier 2+, 1/2/V always)
         terminal.Write(" ");
         if (tier >= 2)
-            MI("B", Loc.Get("menu.action.bank"), "white", C);
-        MI("1", Loc.Get("menu.action.healer"), "white", C);
-        MI("2", Loc.Get("menu.action.quest_hall"), "white", C);
-        ML("V", Loc.Get("menu.action.level_master"), "white");
+        {
+            int c = RC(4);
+            MI("B", Loc.Get("menu.action.bank"), "white", c);
+            MI("1", Loc.Get("menu.action.healer"), "white", c);
+            MI("2", Loc.Get("menu.action.quest_hall"), "white", c);
+            ML("V", Loc.Get("menu.action.level_master"), "white");
+        }
+        else
+        {
+            int c = RC(3);
+            MI("1", Loc.Get("menu.action.healer"), "white", c);
+            MI("2", Loc.Get("menu.action.quest_hall"), "white", c);
+            ML("V", Loc.Get("menu.action.level_master"), "white");
+        }
 
         // Row 4 - Important locations (K/H tier 2+, C/L/Z tier 3+)
         if (tier >= 2)
         {
             terminal.Write(" ");
-            MI("K", Loc.Get("menu.action.castle"), "white", C);
-            MI("H", Loc.Get("menu.action.home"), "white", C);
             if (tier >= 3)
             {
-                MI("C", Loc.Get("menu.action.challenges"), "white", C);
-                MI("L", Loc.Get("menu.action.lodging_short"), "white", C);
+                int c = RC(5);
+                MI("K", Loc.Get("menu.action.castle"), "white", c);
+                MI("H", Loc.Get("menu.action.home"), "white", c);
+                MI("C", Loc.Get("menu.action.challenges"), "white", c);
+                MI("L", Loc.Get("menu.action.lodging_short"), "white", c);
                 ML("Z", Loc.Get("menu.action.team_corner"), "white");
             }
             else
-                terminal.WriteLine("");
+            {
+                int c = RC(2);
+                MI("K", Loc.Get("menu.action.castle"), "white", c);
+                ML("H", Loc.Get("menu.action.home"), "white");
+            }
         }
 
         terminal.WriteLine("");
 
         // Row 5 - Information (S always, N/F/E tier 2+)
         terminal.Write(" ");
-        MI("S", Loc.Get("menu.action.status"), "white", C);
         if (tier >= 2)
         {
-            MI("N", Loc.Get("menu.action.news"), "white", C);
-            MI("F", Loc.Get("menu.action.fame"), "white", C);
+            int c = RC(4);
+            MI("S", Loc.Get("menu.action.status"), "white", c);
+            MI("N", Loc.Get("menu.action.news"), "white", c);
+            MI("F", Loc.Get("menu.action.fame"), "white", c);
             ML("E", Loc.Get("menu.action.explore"), "bright_green");
         }
         else
-            terminal.WriteLine("");
+        {
+            ML("S", Loc.Get("menu.action.status"), "white");
+        }
 
         // Row 6 - Stats & Progress (tier 3+)
         if (tier >= 3)
         {
             terminal.Write(" ");
-            MI("=", Loc.Get("menu.action.stats_record"), "white", C);
-            MI("P", Loc.Get("menu.action.progress"), "white", C);
             if (UsurperRemake.Systems.SettlementSystem.Instance?.State.IsEstablished == true)
+            {
+                int c = RC(3);
+                MI("=", Loc.Get("menu.action.stats_record"), "white", c);
+                MI("P", Loc.Get("menu.action.progress"), "white", c);
                 ML(">", Loc.Get("menu.action.settlement"), "bright_green");
+            }
             else
-                terminal.WriteLine("");
+            {
+                int c = RC(2);
+                MI("=", Loc.Get("menu.action.stats_record"), "white", c);
+                ML("P", Loc.Get("menu.action.progress"), "white");
+            }
         }
 
         // Row 7 - Shady areas + Quit (Y/X tier 3+, Q/~ always)
         terminal.Write(" ");
         if (tier >= 3)
         {
-            MI("Y", Loc.Get("menu.action.dark_alley"), "gray", C);
-            MI("X", Loc.Get("menu.action.love_street"), "magenta", C);
+            int c = RC(4);
+            MI("Y", Loc.Get("menu.action.dark_alley"), "gray", c);
+            MI("X", Loc.Get("menu.action.love_street"), "magenta", c);
+            MI("Q", Loc.Get("menu.action.quit_game"), "gray", c);
+            ML("~", Loc.Get("menu.action.settings"), "gray");
         }
-        MI("Q", Loc.Get("menu.action.quit_game"), "gray", C);
-        ML("~", Loc.Get("menu.action.settings"), "gray");
+        else
+        {
+            int c = RC(2);
+            MI("Q", Loc.Get("menu.action.quit_game"), "gray", c);
+            ML("~", Loc.Get("menu.action.settings"), "gray");
+        }
 
         // Online multiplayer section (only shown in online mode)
         if (DoorMode.IsOnlineMode && OnlineChatSystem.IsActive)
@@ -2056,18 +2099,6 @@ public class MainStreetLocation : BaseLocation
 
         terminal.SetColor("yellow");
         terminal.WriteLine($"  {Loc.Get("main_street.saving_progress")}");
-
-        // Track session end telemetry
-        if (currentPlayer != null)
-        {
-            int playtimeMinutes = (int)currentPlayer.Statistics.TotalPlayTime.TotalMinutes;
-            UsurperRemake.Systems.TelemetrySystem.Instance.TrackSessionEnd(
-                currentPlayer.Level,
-                playtimeMinutes,
-                (int)currentPlayer.MDefeats,
-                (int)currentPlayer.MKills
-            );
-        }
 
         // Actually save the game before quitting!
         await GameEngine.Instance.SaveCurrentGame();

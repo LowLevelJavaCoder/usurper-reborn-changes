@@ -541,11 +541,6 @@ public class HealerLocation : BaseLocation
         player.HP += (int)hpToHeal;
         if (player.HP > player.MaxHP) player.HP = player.MaxHP;
 
-        // Track healer telemetry
-        TelemetrySystem.Instance.TrackShopTransaction(
-            "healer", "heal", $"heal_{hpToHeal}hp", healTotalWithTax, player.Level, player.Gold
-        );
-
         terminal.WriteLine("");
         terminal.WriteLine(Loc.Get("healer.hands_on_wounds", Manager), "gray");
         await Task.Delay(1000);
@@ -682,11 +677,6 @@ public class HealerLocation : BaseLocation
         player.Statistics.RecordPurchase(potionTotalWithTax);
         CityControlSystem.Instance.ProcessSaleTax(cost);
         player.Healing += quantity;
-
-        // Track potion purchase telemetry
-        TelemetrySystem.Instance.TrackShopTransaction(
-            "healer", "buy", $"healing_potion_x{quantity}", potionTotalWithTax, player.Level, player.Gold
-        );
 
         terminal.WriteLine("");
         terminal.WriteLine(Loc.Get("healer.handed_potions", Manager, quantity, quantity > 1 ? "s" : ""), "gray");
@@ -1411,11 +1401,6 @@ public class HealerLocation : BaseLocation
         terminal.SetColor("cyan");
         terminal.WriteLine(Loc.Get("healer.free_chains", player.Name2));
         terminal.WriteLine(Loc.Get("healer.stay_clean", Manager), "gray");
-
-        // Track telemetry
-        TelemetrySystem.Instance.TrackShopTransaction(
-            "healer", "rehab", "addiction_rehab", totalWithTax, player.Level, player.Gold
-        );
 
         await terminal.PressAnyKey();
     }

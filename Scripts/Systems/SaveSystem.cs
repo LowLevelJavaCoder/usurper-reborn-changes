@@ -39,6 +39,15 @@ namespace UsurperRemake.Systems
         private const int AutoSaveIntervalSeconds = 60;
 
         /// <summary>
+        /// Reset the auto-save throttle so the next AutoSave() call saves immediately.
+        /// Call after critical state changes (e.g. chest deposit/withdraw) that must persist.
+        /// </summary>
+        public void ResetAutoSaveThrottle()
+        {
+            _lastAutoSaveTime = DateTime.MinValue;
+        }
+
+        /// <summary>
         /// The active save backend (FileSaveBackend for local, SqlSaveBackend for online)
         /// </summary>
         public ISaveBackend Backend => backend;
@@ -101,7 +110,6 @@ namespace UsurperRemake.Systems
                     WorldState = SerializeWorldState(),
                     Settings = SerializeDailySettings(),
                     StorySystems = SerializeStorySystems(),
-                    Telemetry = TelemetrySystem.Instance.Serialize()
                 };
 
                 var success = await backend.WriteGameData(playerName, saveData);
@@ -221,8 +229,7 @@ namespace UsurperRemake.Systems
                 NPCs = await SerializeNPCs(),
                 WorldState = SerializeWorldState(),
                 Settings = SerializeDailySettings(),
-                StorySystems = SerializeStorySystems(),
-                Telemetry = TelemetrySystem.Instance.Serialize()
+                StorySystems = SerializeStorySystems()
             };
 
             var success = await backend.WriteAutoSave(playerName, saveData);
@@ -1267,11 +1274,17 @@ namespace UsurperRemake.Systems
             var playerName = player.Name2 ?? player.Name1 ?? "";
             var allQuests = QuestSystem.GetAllQuests(includeCompleted: false);
 
+            // Also include abandoned quests so their status persists through save/load
+            var abandonedQuests = QuestSystem.GetAllQuests(includeCompleted: true)
+                .Where(q => q.IsAbandoned && !string.IsNullOrEmpty(q.Occupier) &&
+                    string.Equals(q.Occupier, playerName, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
             // Only serialize quests claimed by or offered to this player
             var playerQuests = allQuests.Where(q =>
                 (!string.IsNullOrEmpty(q.Occupier) && string.Equals(q.Occupier, playerName, StringComparison.OrdinalIgnoreCase)) ||
                 (!string.IsNullOrEmpty(q.OfferedTo) && string.Equals(q.OfferedTo, playerName, StringComparison.OrdinalIgnoreCase))
-            ).ToList();
+            ).Concat(abandonedQuests).DistinctBy(q => q.Id).ToList();
 
             var result = SerializeQuestList(playerQuests);
             return result;
@@ -1305,8 +1318,9 @@ namespace UsurperRemake.Systems
                     Title = quest.Title,
                     Initiator = quest.Initiator,
                     Comment = quest.Comment,
-                    Status = quest.Deleted ? QuestStatus.Completed :
-                             string.IsNullOrEmpty(quest.Occupier) ? QuestStatus.Active : QuestStatus.Active,
+                    Status = quest.IsAbandoned ? QuestStatus.Abandoned :
+                             quest.Deleted ? QuestStatus.Completed :
+                             QuestStatus.Active,
                     StartTime = quest.Date,
                     QuestType = (int)quest.QuestType,
                     QuestTarget = (int)quest.QuestTarget,

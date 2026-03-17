@@ -18,7 +18,6 @@ namespace UsurperRemake.Systems
     public static class Loc
     {
         private static readonly Dictionary<string, Dictionary<string, string>> _languages = new();
-        private static readonly Dictionary<string, string> _empty = new();
         private static bool _loaded = false;
         private static (string Code, string Name)[] _availableLanguages = Array.Empty<(string, string)>();
 
@@ -31,7 +30,7 @@ namespace UsurperRemake.Systems
         {
             { "en", "English" },
             { "es", "Español (AI Translated)" },
-            { "fr", "Français" },
+            { "fr", "Français (AI Translated)" },
             { "de", "Deutsch" },
             { "pt", "Português" },
             { "it", "Italiano (AI Translated)" },

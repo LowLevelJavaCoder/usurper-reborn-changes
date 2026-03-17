@@ -21,8 +21,6 @@ namespace UsurperRemake.Systems
         // Story systems
         public StorySystemsData StorySystems { get; set; } = new();
 
-        // Telemetry settings (opt-in)
-        public TelemetryData? Telemetry { get; set; }
     }
 
     /// <summary>

@@ -2697,7 +2697,7 @@ public class InnLocation : BaseLocation
             CombatRole.Tank => CharacterClass.Warrior,
             CombatRole.Healer => CharacterClass.Cleric,
             CombatRole.Damage => CharacterClass.Assassin,
-            CombatRole.Hybrid => CharacterClass.Paladin,
+            CombatRole.Hybrid => CharacterClass.Ranger,
             CombatRole.Bard => CharacterClass.Bard,
             _ => CharacterClass.Warrior
         };
@@ -3137,7 +3137,7 @@ public class InnLocation : BaseLocation
                 CombatRole.Tank => CharacterClass.Warrior,
                 CombatRole.Healer => CharacterClass.Cleric,
                 CombatRole.Damage => CharacterClass.Assassin,
-                CombatRole.Hybrid => CharacterClass.Paladin,
+                CombatRole.Hybrid => CharacterClass.Ranger,
                 CombatRole.Bard => CharacterClass.Bard,
                 _ => CharacterClass.Warrior
             },
@@ -3723,7 +3723,7 @@ public class InnLocation : BaseLocation
             CombatRole.Tank => CharacterClass.Warrior,
             CombatRole.Healer => CharacterClass.Cleric,
             CombatRole.Damage => CharacterClass.Assassin,
-            CombatRole.Hybrid => CharacterClass.Paladin,
+            CombatRole.Hybrid => CharacterClass.Ranger,
             CombatRole.Bard => CharacterClass.Bard,
             _ => CharacterClass.Warrior
         };

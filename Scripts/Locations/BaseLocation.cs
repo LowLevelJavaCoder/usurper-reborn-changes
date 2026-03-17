@@ -1391,6 +1391,7 @@ public abstract class BaseLocation
     /// </summary>
     protected virtual string GetNPCShout(NPC npc)
     {
+        var name = npc.Name2;
         var shouts = new List<string>();
 
         // Personality-based shouts
@@ -1398,39 +1399,39 @@ public abstract class BaseLocation
         {
             // Evil NPCs
             shouts.AddRange(new[] {
-                Loc.Get("base.shout_evil_glare"),
-                Loc.Get("base.shout_evil_curse"),
-                Loc.Get("base.shout_evil_gold"),
-                Loc.Get("base.shout_evil_spit"),
-                Loc.Get("base.shout_evil_dagger"),
-                Loc.Get("base.shout_evil_laugh"),
-                Loc.Get("base.shout_evil_sneer"),
+                Loc.Get("base.shout_evil_glare", name),
+                Loc.Get("base.shout_evil_curse", name),
+                Loc.Get("base.shout_evil_gold", name),
+                Loc.Get("base.shout_evil_spit", name),
+                Loc.Get("base.shout_evil_dagger", name),
+                Loc.Get("base.shout_evil_laugh", name),
+                Loc.Get("base.shout_evil_sneer", name),
             });
         }
         else if (npc.Chivalry > 500)
         {
             // Good NPCs
             shouts.AddRange(new[] {
-                Loc.Get("base.shout_good_nod"),
-                Loc.Get("base.shout_good_wave"),
-                Loc.Get("base.shout_good_news"),
-                Loc.Get("base.shout_good_rumor"),
-                Loc.Get("base.shout_good_sword"),
-                Loc.Get("base.shout_good_hum"),
-                Loc.Get("base.shout_good_smile"),
+                Loc.Get("base.shout_good_nod", name),
+                Loc.Get("base.shout_good_wave", name),
+                Loc.Get("base.shout_good_news", name),
+                Loc.Get("base.shout_good_rumor", name),
+                Loc.Get("base.shout_good_sword", name),
+                Loc.Get("base.shout_good_hum", name),
+                Loc.Get("base.shout_good_smile", name),
             });
         }
         else
         {
             // Neutral NPCs
             shouts.AddRange(new[] {
-                Loc.Get("base.shout_neutral_business"),
-                Loc.Get("base.shout_neutral_thought"),
-                Loc.Get("base.shout_neutral_merchandise"),
-                Loc.Get("base.shout_neutral_chat"),
-                Loc.Get("base.shout_neutral_stretch"),
-                Loc.Get("base.shout_neutral_gold"),
-                Loc.Get("base.shout_neutral_yawn"),
+                Loc.Get("base.shout_neutral_business", name),
+                Loc.Get("base.shout_neutral_thought", name),
+                Loc.Get("base.shout_neutral_merchandise", name),
+                Loc.Get("base.shout_neutral_chat", name),
+                Loc.Get("base.shout_neutral_stretch", name),
+                Loc.Get("base.shout_neutral_gold", name),
+                Loc.Get("base.shout_neutral_yawn", name),
             });
         }
 
@@ -1439,22 +1440,22 @@ public abstract class BaseLocation
         {
             case CharacterClass.Warrior:
             case CharacterClass.Barbarian:
-                shouts.Add(Loc.Get("base.shout_class_flex"));
-                shouts.Add(Loc.Get("base.shout_class_polish"));
+                shouts.Add(Loc.Get("base.shout_class_flex", name));
+                shouts.Add(Loc.Get("base.shout_class_polish", name));
                 break;
             case CharacterClass.Magician:
             case CharacterClass.Sage:
-                shouts.Add(Loc.Get("base.shout_class_tome"));
-                shouts.Add(Loc.Get("base.shout_class_arcane"));
+                shouts.Add(Loc.Get("base.shout_class_tome", name));
+                shouts.Add(Loc.Get("base.shout_class_arcane", name));
                 break;
             case CharacterClass.Cleric:
             case CharacterClass.Paladin:
-                shouts.Add(Loc.Get("base.shout_class_blessing"));
-                shouts.Add(Loc.Get("base.shout_class_pray"));
+                shouts.Add(Loc.Get("base.shout_class_blessing", name));
+                shouts.Add(Loc.Get("base.shout_class_pray", name));
                 break;
             case CharacterClass.Assassin:
-                shouts.Add(Loc.Get("base.shout_class_shadows"));
-                shouts.Add(Loc.Get("base.shout_class_blade"));
+                shouts.Add(Loc.Get("base.shout_class_shadows", name));
+                shouts.Add(Loc.Get("base.shout_class_blade", name));
                 break;
         }
 
@@ -1536,7 +1537,7 @@ public abstract class BaseLocation
                 // (e.g. "having a drink at the bar" while standing in the Church).
                 var activity = GetLocationContextActivity(npc);
 
-                terminal.WriteLine($"  {npc.Name2} is {activity}.");
+                terminal.WriteLine($"  {activity}");
             }
 
             // Show count of other NPCs not displayed
@@ -1557,68 +1558,69 @@ public abstract class BaseLocation
     /// </summary>
     protected virtual string GetLocationContextActivity(NPC npc)
     {
+        var name = npc.Name2;
         var location = LocationId;
         return location switch
         {
             GameLocation.TheInn or GameLocation.BobsBeer => _npcRandom.Next(3) switch
             {
-                0 => Loc.Get("base.activity_inn_drink"),
-                1 => Loc.Get("base.activity_inn_chat"),
-                _ => Loc.Get("base.activity_inn_corner")
+                0 => Loc.Get("base.activity_inn_drink", name),
+                1 => Loc.Get("base.activity_inn_chat", name),
+                _ => Loc.Get("base.activity_inn_corner", name)
             },
             GameLocation.Church => _npcRandom.Next(3) switch
             {
-                0 => Loc.Get("base.activity_church_pray"),
-                1 => Loc.Get("base.activity_church_candle"),
-                _ => Loc.Get("base.activity_church_priest")
+                0 => Loc.Get("base.activity_church_pray", name),
+                1 => Loc.Get("base.activity_church_candle", name),
+                _ => Loc.Get("base.activity_church_priest", name)
             },
             GameLocation.WeaponShop => _npcRandom.Next(3) switch
             {
-                0 => Loc.Get("base.activity_weapon_blade"),
-                1 => Loc.Get("base.activity_weapon_mace"),
-                _ => Loc.Get("base.activity_weapon_haggle")
+                0 => Loc.Get("base.activity_weapon_blade", name),
+                1 => Loc.Get("base.activity_weapon_mace", name),
+                _ => Loc.Get("base.activity_weapon_haggle", name)
             },
             GameLocation.ArmorShop => _npcRandom.Next(3) switch
             {
-                0 => Loc.Get("base.activity_armor_gauntlets"),
-                1 => Loc.Get("base.activity_armor_shield"),
-                _ => Loc.Get("base.activity_armor_chainmail")
+                0 => Loc.Get("base.activity_armor_gauntlets", name),
+                1 => Loc.Get("base.activity_armor_shield", name),
+                _ => Loc.Get("base.activity_armor_chainmail", name)
             },
             GameLocation.MagicShop => _npcRandom.Next(3) switch
             {
-                0 => Loc.Get("base.activity_magic_scroll"),
-                1 => Loc.Get("base.activity_magic_crystal"),
-                _ => Loc.Get("base.activity_magic_potion")
+                0 => Loc.Get("base.activity_magic_scroll", name),
+                1 => Loc.Get("base.activity_magic_crystal", name),
+                _ => Loc.Get("base.activity_magic_potion", name)
             },
             GameLocation.AuctionHouse => _npcRandom.Next(3) switch
             {
-                0 => Loc.Get("base.activity_auction_bid"),
-                1 => Loc.Get("base.activity_auction_browse"),
-                _ => Loc.Get("base.activity_auction_appraise")
+                0 => Loc.Get("base.activity_auction_bid", name),
+                1 => Loc.Get("base.activity_auction_browse", name),
+                _ => Loc.Get("base.activity_auction_appraise", name)
             },
             GameLocation.Healer => _npcRandom.Next(2) switch
             {
-                0 => Loc.Get("base.activity_healer_potions"),
-                _ => Loc.Get("base.activity_healer_waiting")
+                0 => Loc.Get("base.activity_healer_potions", name),
+                _ => Loc.Get("base.activity_healer_waiting", name)
             },
             GameLocation.MainStreet => _npcRandom.Next(4) switch
             {
-                0 => Loc.Get("base.activity_street_stroll"),
-                1 => Loc.Get("base.activity_street_lean"),
-                2 => Loc.Get("base.activity_street_talk"),
-                _ => Loc.Get("base.activity_street_business")
+                0 => Loc.Get("base.activity_street_stroll", name),
+                1 => Loc.Get("base.activity_street_lean", name),
+                2 => Loc.Get("base.activity_street_talk", name),
+                _ => Loc.Get("base.activity_street_business", name)
             },
             GameLocation.DarkAlley => _npcRandom.Next(3) switch
             {
-                0 => Loc.Get("base.activity_alley_lurk"),
-                1 => Loc.Get("base.activity_alley_whisper"),
-                _ => Loc.Get("base.activity_alley_watch")
+                0 => Loc.Get("base.activity_alley_lurk", name),
+                1 => Loc.Get("base.activity_alley_whisper", name),
+                _ => Loc.Get("base.activity_alley_watch", name)
             },
             GameLocation.Castle => _npcRandom.Next(3) switch
             {
-                0 => Loc.Get("base.activity_castle_court"),
-                1 => Loc.Get("base.activity_castle_guard"),
-                _ => Loc.Get("base.activity_castle_courtier")
+                0 => Loc.Get("base.activity_castle_court", name),
+                1 => Loc.Get("base.activity_castle_guard", name),
+                _ => Loc.Get("base.activity_castle_courtier", name)
             },
             _ => GetNPCShout(npc) // Fallback to the old system
         };
@@ -2586,7 +2588,7 @@ public abstract class BaseLocation
             WriteOnlineCmd("/ginfo <guild>", "Look up any guild");
 
             WriteBoxLine(() => { }, 0);
-            var groupCmdsLabel = "  Group Dungeon Commands";
+            var groupCmdsLabel = "  " + Loc.Get("base.help_group_commands");
             WriteBoxLine(() => { terminal.SetColor("white"); terminal.Write(groupCmdsLabel); }, groupCmdsLabel.Length);
 
             WriteOnlineCmd("/group <player>", "Invite player to dungeon group");
@@ -2660,7 +2662,7 @@ public abstract class BaseLocation
             terminal.WriteLine($"/gtransfer <player> - Transfer leadership");
             terminal.WriteLine($"/ginfo <guild> - Look up any guild");
             terminal.WriteLine("");
-            terminal.WriteLine("Group Dungeon Commands");
+            terminal.WriteLine(Loc.Get("base.help_group_commands"));
             terminal.WriteLine("/group <player> - Invite player to dungeon group");
             terminal.WriteLine("/leave - Leave your current group");
             terminal.WriteLine("/disband - Disband the group (leader)");
@@ -3357,7 +3359,6 @@ public abstract class BaseLocation
                 terminal.WriteLine($"  {Loc.Get("prefs.auto_heal")}: {(currentPlayer.AutoHeal ? Loc.Get("prefs.enabled") : Loc.Get("prefs.disabled"))}");
                 terminal.WriteLine($"  {Loc.Get("prefs.skip_intimate")}: {(currentPlayer.SkipIntimateScenes ? Loc.Get("prefs.enabled") : Loc.Get("prefs.disabled"))}");
                 terminal.WriteLine($"  {Loc.Get("prefs.screen_reader")}: {Loc.Get("prefs.enabled")}");
-                terminal.WriteLine($"  {Loc.Get("prefs.telemetry")}: {(UsurperRemake.Systems.TelemetrySystem.Instance.IsEnabled ? Loc.Get("prefs.enabled") : Loc.Get("prefs.disabled"))}");
                 terminal.WriteLine($"  {Loc.Get("prefs.color_theme")}: {ColorTheme.GetThemeName(currentPlayer.ColorTheme)}");
                 terminal.WriteLine($"  {Loc.Get("prefs.auto_level")}: {(currentPlayer.AutoLevelUp ? Loc.Get("prefs.enabled") : Loc.Get("prefs.disabled"))}");
                 terminal.WriteLine($"  {Loc.Get("prefs.compact_mode")}: {(currentPlayer.CompactMode ? Loc.Get("prefs.enabled") : Loc.Get("prefs.disabled"))}");
@@ -3369,7 +3370,6 @@ public abstract class BaseLocation
                 terminal.WriteLine($"2. {Loc.Get("prefs.toggle", Loc.Get("prefs.auto_heal"))}");
                 terminal.WriteLine($"3. {Loc.Get("prefs.toggle", Loc.Get("prefs.skip_intimate"))}");
                 terminal.WriteLine($"4. {Loc.Get("prefs.toggle", Loc.Get("prefs.screen_reader"))}");
-                terminal.WriteLine($"5. {Loc.Get("prefs.toggle", Loc.Get("prefs.telemetry"))}");
                 terminal.WriteLine($"6. {Loc.Get("prefs.color_theme")}");
                 if (IsRunningInWezTerm())
                     terminal.WriteLine($"7. {Loc.Get("prefs.terminal_font")}");
@@ -3407,9 +3407,6 @@ public abstract class BaseLocation
 
                 // Screen reader mode
                 terminal.WriteLine($"  {Loc.Get("prefs.screen_reader")}: {(currentPlayer.ScreenReaderMode ? Loc.Get("prefs.screen_reader.on") : Loc.Get("prefs.disabled"))}", "yellow");
-
-                // Telemetry
-                terminal.WriteLine($"  {Loc.Get("prefs.telemetry")}: {(UsurperRemake.Systems.TelemetrySystem.Instance.IsEnabled ? Loc.Get("prefs.telemetry.on") : Loc.Get("prefs.disabled"))}", "yellow");
 
                 // Color Theme
                 terminal.WriteLine($"  {Loc.Get("prefs.color_theme")}: {ColorTheme.GetThemeName(currentPlayer.ColorTheme)} - {ColorTheme.GetThemeDescription(currentPlayer.ColorTheme)}", "yellow");
@@ -3455,11 +3452,6 @@ public abstract class BaseLocation
                 terminal.Write("4");
                 terminal.SetColor("white");
                 terminal.WriteLine($"] {Loc.Get("prefs.toggle", Loc.Get("prefs.screen_reader"))}");
-                terminal.Write("[");
-                terminal.SetColor("bright_yellow");
-                terminal.Write("5");
-                terminal.SetColor("white");
-                terminal.WriteLine($"] {Loc.Get("prefs.toggle", Loc.Get("prefs.telemetry"))}");
                 terminal.Write("[");
                 terminal.SetColor("bright_yellow");
                 terminal.Write("6");
@@ -3557,28 +3549,6 @@ public abstract class BaseLocation
                     {
                         terminal.WriteLine(Loc.Get("base.pref_sr_disabled"), "green");
                         terminal.WriteLine(Loc.Get("base.pref_sr_disabled_desc"), "white");
-                    }
-                    await GameEngine.Instance.SaveCurrentGame();
-                    await Task.Delay(1200);
-                    break;
-
-                case "5":
-                    if (UsurperRemake.Systems.TelemetrySystem.Instance.IsEnabled)
-                    {
-                        UsurperRemake.Systems.TelemetrySystem.Instance.Disable();
-                        terminal.WriteLine(Loc.Get("base.pref_telemetry_disabled"), "green");
-                        terminal.WriteLine(Loc.Get("base.pref_telemetry_disabled_desc"), "white");
-                    }
-                    else
-                    {
-                        UsurperRemake.Systems.TelemetrySystem.Instance.Enable();
-                        terminal.WriteLine(Loc.Get("base.pref_telemetry_enabled"), "green");
-                        terminal.WriteLine(Loc.Get("base.pref_telemetry_enabled_desc"), "white");
-                        // Track session start when enabling
-                        UsurperRemake.Systems.TelemetrySystem.Instance.TrackSessionStart(
-                            GameConfig.Version,
-                            System.Environment.OSVersion.Platform.ToString()
-                        );
                     }
                     await GameEngine.Instance.SaveCurrentGame();
                     await Task.Delay(1200);
@@ -4373,17 +4343,17 @@ public abstract class BaseLocation
         if (openToPolyamory && lowJealousy)
         {
             terminal.SetColor("bright_green");
-            terminal.WriteLine("VERY LIKELY");
+            terminal.WriteLine(Loc.Get("base.poly_very_likely"));
         }
         else if (openToPolyamory || (lowJealousy && lowCommitment))
         {
             terminal.SetColor("yellow");
-            terminal.WriteLine("POSSIBLE");
+            terminal.WriteLine(Loc.Get("base.poly_possible"));
         }
         else
         {
             terminal.SetColor("red");
-            terminal.WriteLine("UNLIKELY");
+            terminal.WriteLine(Loc.Get("base.poly_unlikely"));
         }
 
         terminal.WriteLine("");
@@ -8153,7 +8123,7 @@ public abstract class BaseLocation
         if (item.WeaponPower > 0) stats.Add($"{Loc.Get("ui.stat_wp")}:{item.WeaponPower}");
         if (item.ArmorClass > 0) stats.Add($"{Loc.Get("ui.stat_ac")}:{item.ArmorClass}");
         if (item.ShieldBonus > 0) stats.Add($"{Loc.Get("ui.stat_block")}:{item.ShieldBonus}");
-        if (item.DefenceBonus > 0) stats.Add($"DEF:{item.DefenceBonus:+#;-#}");
+        if (item.DefenceBonus != 0) stats.Add($"{Loc.Get("ui.stat_def")}:{item.DefenceBonus:+#;-#}");
         if (item.StrengthBonus != 0) stats.Add($"{Loc.Get("ui.stat_str")}:{item.StrengthBonus:+#;-#}");
         if (item.DexterityBonus != 0) stats.Add($"{Loc.Get("ui.stat_dex")}:{item.DexterityBonus:+#;-#}");
         if (item.AgilityBonus != 0) stats.Add($"{Loc.Get("ui.stat_agi")}:{item.AgilityBonus:+#;-#}");
@@ -8161,8 +8131,8 @@ public abstract class BaseLocation
         if (item.IntelligenceBonus != 0) stats.Add($"{Loc.Get("ui.stat_int")}:{item.IntelligenceBonus:+#;-#}");
         if (item.WisdomBonus != 0) stats.Add($"{Loc.Get("ui.stat_wis")}:{item.WisdomBonus:+#;-#}");
         if (item.CharismaBonus != 0) stats.Add($"{Loc.Get("ui.stat_cha")}:{item.CharismaBonus:+#;-#}");
-        if (item.MaxHPBonus > 0) stats.Add($"{Loc.Get("ui.stat_hp")}:{item.MaxHPBonus:+#}");
-        if (item.MaxManaBonus > 0) stats.Add($"{Loc.Get("ui.stat_mp")}:{item.MaxManaBonus:+#}");
+        if (item.MaxHPBonus != 0) stats.Add($"{Loc.Get("ui.stat_hp")}:{item.MaxHPBonus:+#;-#}");
+        if (item.MaxManaBonus != 0) stats.Add($"{Loc.Get("ui.stat_mp")}:{item.MaxManaBonus:+#;-#}");
         if (item.CriticalChanceBonus > 0) stats.Add($"{Loc.Get("ui.stat_crit")}:{item.CriticalChanceBonus}%");
         if (item.LifeSteal > 0) stats.Add($"{Loc.Get("ui.stat_leech")}:{item.LifeSteal}%");
         if (item.MagicResistance > 0) stats.Add($"{Loc.Get("ui.stat_mr")}:{item.MagicResistance}%");
@@ -8207,12 +8177,12 @@ public abstract class BaseLocation
                 if (mainHand?.Handedness == WeaponHandedness.TwoHanded)
                 {
                     terminal.SetColor("darkgray");
-                    terminal.WriteLine("(using 2H weapon)");
+                    terminal.WriteLine(Loc.Get("base.equip_using_2h"));
                     return;
                 }
             }
             terminal.SetColor("darkgray");
-            terminal.WriteLine("Empty");
+            terminal.WriteLine(Loc.Get("base.equip_empty"));
         }
     }
 

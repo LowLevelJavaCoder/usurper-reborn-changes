@@ -503,9 +503,9 @@ public partial class CombatEngine
         terminal.SetColor("bright_red");
         // Screen reader friendly header
         if (player is Player p && p.ScreenReaderMode)
-            terminal.WriteLine("--- COMBAT ---");
+            terminal.WriteLine(Loc.Get("combat.header_sr"));
         else
-            terminal.WriteLine("═══ COMBAT ═══");
+            terminal.WriteLine(Loc.Get("combat.header_visual"));
         terminal.WriteLine("");
 
         if (monsters.Count == 1)
@@ -681,7 +681,7 @@ public partial class CombatEngine
             {
                 // Perfect detection — no free attacks
                 terminal.SetColor("bright_green");
-                terminal.WriteLine("*** You sensed the ambush! Your quick reflexes deny them a free strike! ***");
+                terminal.WriteLine(Loc.Get("combat.ambush_sensed"));
                 terminal.WriteLine("");
                 result.CombatLog.Add("Ambush detected! No monsters got a free attack.");
                 BroadcastGroupCombatEvent(result,
@@ -691,7 +691,7 @@ public partial class CombatEngine
             {
                 // Partial ambush
                 terminal.SetColor("yellow");
-                terminal.WriteLine($"*** PARTIAL AMBUSH! {ambushCount} of {totalMonsters} monsters catch you off guard! ***");
+                terminal.WriteLine(Loc.Get("combat.partial_ambush", ambushCount, totalMonsters));
                 terminal.WriteLine("");
                 result.CombatLog.Add($"Partial ambush! {ambushCount}/{totalMonsters} monsters attack first.");
                 BroadcastGroupCombatEvent(result,
@@ -701,7 +701,7 @@ public partial class CombatEngine
             {
                 // Full ambush — all monsters got through
                 terminal.SetColor("bright_red");
-                terminal.WriteLine("*** AMBUSH! The monsters strike before you can react! ***");
+                terminal.WriteLine(Loc.Get("combat.full_ambush"));
                 terminal.WriteLine("");
                 result.CombatLog.Add("Ambush! All monsters attack first!");
                 BroadcastGroupCombatEvent(result,
@@ -881,6 +881,9 @@ public partial class CombatEngine
                 terminal.WriteLine("");
             }
 
+            // Decrement Calm Waters debuff shield for player and all party members
+            DecrementCalmWatersShield(player, result);
+
             // Process plague/disease damage from world events and character conditions
             await ProcessPlagueDamage(player, result);
 
@@ -969,7 +972,7 @@ public partial class CombatEngine
                 {
                     // Auto-combat: automatically attack random living monster
                     terminal.SetColor("bright_cyan");
-                    terminal.WriteLine("[AUTO-COMBAT] Press any key to stop...");
+                    terminal.WriteLine(Loc.Get("combat.auto_running"));
                     terminal.WriteLine("");
 
                     // Check for key press to stop auto-combat (poll during delay)
@@ -1002,7 +1005,7 @@ public partial class CombatEngine
                     else if (player.HP < player.MaxHP * 0.5 && player.Healing > 0)
                     {
                         terminal.SetColor("bright_green");
-                        terminal.WriteLine("[AUTO-COMBAT] HP low - using healing potion...");
+                        terminal.WriteLine(Loc.Get("combat.auto_healing_potion"));
                         playerAction = new CombatAction
                         {
                             Type = CombatActionType.QuickHeal
@@ -1233,21 +1236,6 @@ public partial class CombatEngine
                 }
             }
 
-            // Track flee telemetry for multi-monster
-            int maxMonsterLevel = monsters.Any() ? monsters.Max(m => m.Level) : 0;
-            TelemetrySystem.Instance.TrackCombat(
-                "fled",
-                player.Level,
-                maxMonsterLevel,
-                monsters.Count,
-                result.TotalDamageDealt,
-                result.TotalDamageTaken,
-                monsters.FirstOrDefault()?.Name,
-                monsters.Any(m => m.IsBoss),
-                roundNumber,
-                player.Class.ToString()
-            );
-
             // Log to balance dashboard
             LogCombatEventToDb(result, "fled");
 
@@ -1300,7 +1288,7 @@ public partial class CombatEngine
                         terminal.SetColor("bright_yellow");
                         terminal.WriteLine("");
                         terminal.WriteLine($"  {Loc.Get("combat.divine_light_saves")}");
-                        terminal.WriteLine("  The gods arent done with you yet.");
+                        terminal.WriteLine($"  {Loc.Get("combat.gods_not_done")}");
                         terminal.SetColor("bright_green");
                         terminal.WriteLine($"  {Loc.Get("combat.divine_restored", player.HP)}");
                         terminal.WriteLine("");
@@ -1364,11 +1352,11 @@ public partial class CombatEngine
         terminal.SetColor("bright_red");
         // Screen reader friendly header
         if (player is Player p && p.ScreenReaderMode)
-            terminal.WriteLine("--- COMBAT ---");
+            terminal.WriteLine(Loc.Get("combat.header_sr"));
         else
-            terminal.WriteLine("═══ COMBAT ═══");
+            terminal.WriteLine(Loc.Get("combat.header_visual"));
         terminal.WriteLine("");
-        
+
         // Monster appearance
         if (!string.IsNullOrEmpty(monster.Phrase))
         {
@@ -1441,6 +1429,9 @@ public partial class CombatEngine
         {
             // Apply status ticks before player chooses action
             player.ProcessStatusEffects();
+
+            // Decrement Calm Waters debuff shield
+            DecrementCalmWatersShield(player, result);
 
             // Check if player can act due to status effects
             if (!player.CanAct())
@@ -2755,11 +2746,11 @@ public partial class CombatEngine
             // Show grief effect message for significant modifiers
             if (griefEffects.DamageModifier > 0.1f)
             {
-                terminal.WriteLine("  (Rage fuels your strikes)", "dark_red");
+                terminal.WriteLine($"  {Loc.Get("combat.grief_rage")}", "dark_red");
             }
             else if (griefEffects.AllStatModifier < -0.1f)
             {
-                terminal.WriteLine("  (Grief weighs on your arm)", "dark_gray");
+                terminal.WriteLine($"  {Loc.Get("combat.grief_weighs")}", "dark_gray");
             }
         }
 
@@ -3058,9 +3049,9 @@ public partial class CombatEngine
         if (BossContext != null && player.PotionCooldownRounds > 0)
         {
             terminal.SetColor("yellow");
-            terminal.WriteLine($"  Potions are still recharging! ({player.PotionCooldownRounds} rounds remaining)");
+            terminal.WriteLine($"  {Loc.Get("combat.potion_recharging", player.PotionCooldownRounds)}");
             terminal.SetColor("gray");
-            terminal.WriteLine("  Your healer can still heal you!");
+            terminal.WriteLine($"  {Loc.Get("combat.healer_can_heal")}");
             await Task.Delay(GetCombatDelay(1000));
             return;
         }
@@ -3175,7 +3166,7 @@ public partial class CombatEngine
         }
 
         terminal.SetColor("bright_green");
-        terminal.WriteLine("=== HERB POUCH ===");
+        terminal.WriteLine(Loc.Get("combat.herb_pouch_header"));
         terminal.WriteLine("");
 
         var options = new List<HerbType>();
@@ -3194,7 +3185,7 @@ public partial class CombatEngine
         }
         terminal.WriteLine("");
         terminal.SetColor("cyan");
-        terminal.WriteLine("  [0] Cancel");
+        terminal.WriteLine($"  {Loc.Get("combat.cancel_option")}");
         terminal.Write(Loc.Get("ui.choice"), "white");
 
         string input = (await terminal.ReadLineAsync())?.Trim() ?? "";
@@ -3244,9 +3235,9 @@ public partial class CombatEngine
         // Show poison selection menu
         terminal.WriteLine("");
         terminal.SetColor("dark_green");
-        terminal.WriteLine(GameConfig.ScreenReaderMode ? "Select Poison:" : "═══ Select Poison ═══");
+        terminal.WriteLine(GameConfig.ScreenReaderMode ? Loc.Get("combat.select_poison_sr") : Loc.Get("combat.select_poison"));
         terminal.SetColor("gray");
-        terminal.WriteLine($"Vials remaining: {player.PoisonVials}");
+        terminal.WriteLine(Loc.Get("combat.vials_remaining", player.PoisonVials));
         terminal.WriteLine("");
 
         for (int i = 0; i < available.Count; i++)
@@ -4238,16 +4229,16 @@ public partial class CombatEngine
             if (player.Class == CharacterClass.Voidreaver)
             {
                 terminal.SetColor("dark_red");
-                terminal.WriteLine($"Void Shroud reflects {reflectDamage} damage back at {monster.Name}!");
+                terminal.WriteLine(Loc.Get("combat.void_shroud_reflect", reflectDamage, monster.Name));
             }
             else
             {
                 terminal.SetColor("bright_magenta");
-                terminal.WriteLine($"Harmonic energy reflects {reflectDamage} damage back at {monster.Name}!");
+                terminal.WriteLine(Loc.Get("combat.harmonic_reflect", reflectDamage, monster.Name));
             }
             if (monster.HP <= 0)
             {
-                terminal.WriteLine($"The reflected energy destroys {monster.Name}!", "bright_white");
+                terminal.WriteLine(Loc.Get("combat.reflection_destroy", monster.Name), "bright_white");
                 if (!result.DefeatedMonsters.Contains(monster))
                     result.DefeatedMonsters.Add(monster);
             }
@@ -4332,8 +4323,8 @@ public partial class CombatEngine
                     player.DeathsEmbraceActive = false;
                     player.DodgeNextAttack = true;
                     terminal.SetColor("bright_red");
-                    terminal.WriteLine("DEATH'S EMBRACE TRIGGERS! You cheat death and rise with newfound fury!");
-                    terminal.WriteLine($"Revived with {player.HP} HP! Next attack will miss!", "dark_red");
+                    terminal.WriteLine(Loc.Get("combat.deaths_embrace_trigger"));
+                    terminal.WriteLine(Loc.Get("combat.deaths_embrace_revived", player.HP), "dark_red");
                 }
 
                 terminal.WriteLine(Loc.Get("combat.you_take_damage", actualDamage), "red");
@@ -4358,13 +4349,18 @@ public partial class CombatEngine
             }
             else if (player.Class == CharacterClass.Cyclebreaker && random.Next(100) < (int)(GameConfig.CyclebreakerDebuffResistChance * 100))
             {
-                terminal.WriteLine($"Probability Manipulation negates {abilityResult.InflictStatus}!", "bright_magenta");
+                terminal.WriteLine(Loc.Get("combat.probability_negates", abilityResult.InflictStatus), "bright_magenta");
                 result.CombatLog.Add($"Cyclebreaker resists {abilityResult.InflictStatus} (Probability Manipulation)");
             }
             else if (player.Class == CharacterClass.Paladin && random.Next(100) < (int)(GameConfig.PaladinDivineResolveStatusResist * 100))
             {
-                terminal.WriteLine($"Divine Resolve! Your faith shields you from {abilityResult.InflictStatus}!", "bright_white");
+                terminal.WriteLine(Loc.Get("combat.divine_resolve", abilityResult.InflictStatus), "bright_white");
                 result.CombatLog.Add($"Paladin resists {abilityResult.InflictStatus} (Divine Resolve)");
+            }
+            else if (player.CalmWatersRounds > 0 && random.Next(100) < (int)(GameConfig.CalmWatersResistChance * 100))
+            {
+                terminal.WriteLine($"  Calm waters shield deflects {abilityResult.InflictStatus}!", "bright_cyan");
+                result.CombatLog.Add($"Player resists {abilityResult.InflictStatus} (Calm Waters shield)");
             }
             else if (random.Next(100) < abilityResult.StatusChance)
             {
@@ -4562,9 +4558,17 @@ public partial class CombatEngine
             {
                 if (!player.HasStatus(StatusEffect.Cursed))
                 {
-                    player.ApplyStatus(StatusEffect.Cursed, 3);
-                    terminal.WriteLine($"  {monster.Name} uses {abilityName}!", "dark_magenta");
-                    terminal.WriteLine($"  Your strength falters! (-2 all stats for 3 rounds)", "yellow");
+                    if (player.CalmWatersRounds > 0 && random.Next(100) < (int)(GameConfig.CalmWatersResistChance * 100))
+                    {
+                        terminal.WriteLine($"  {monster.Name} uses {abilityName}!", "dark_magenta");
+                        terminal.WriteLine($"  Calm waters shield deflects the curse!", "bright_cyan");
+                    }
+                    else
+                    {
+                        player.ApplyStatus(StatusEffect.Cursed, 3);
+                        terminal.WriteLine($"  {monster.Name} uses {abilityName}!", "dark_magenta");
+                        terminal.WriteLine($"  Your strength falters! (-2 all stats for 3 rounds)", "yellow");
+                    }
                 }
                 else
                 {
@@ -4590,9 +4594,17 @@ public partial class CombatEngine
             {
                 if (!player.HasStatusImmunity && !player.HasStatus(StatusEffect.Stunned))
                 {
-                    player.ApplyStatus(StatusEffect.Stunned, 1);
-                    terminal.WriteLine($"  {monster.Name} uses {abilityName}!", "bright_yellow");
-                    terminal.WriteLine($"  You are stunned!", "yellow");
+                    if (player.CalmWatersRounds > 0 && random.Next(100) < (int)(GameConfig.CalmWatersResistChance * 100))
+                    {
+                        terminal.WriteLine($"  {monster.Name} uses {abilityName}!", "bright_yellow");
+                        terminal.WriteLine($"  Calm waters shield deflects the stun!", "bright_cyan");
+                    }
+                    else
+                    {
+                        player.ApplyStatus(StatusEffect.Stunned, 1);
+                        terminal.WriteLine($"  {monster.Name} uses {abilityName}!", "bright_yellow");
+                        terminal.WriteLine($"  You are stunned!", "yellow");
+                    }
                 }
                 else
                 {
@@ -4678,9 +4690,17 @@ public partial class CombatEngine
             {
                 if (!player.HasStatusImmunity && !player.HasStatus(StatusEffect.Feared))
                 {
-                    player.ApplyStatus(StatusEffect.Feared, 2);
-                    terminal.WriteLine($"  {monster.Name} uses {abilityName}!", "dark_red");
-                    terminal.WriteLine($"  Terror grips your heart!", "yellow");
+                    if (player.CalmWatersRounds > 0 && random.Next(100) < (int)(GameConfig.CalmWatersResistChance * 100))
+                    {
+                        terminal.WriteLine($"  {monster.Name} uses {abilityName}!", "dark_red");
+                        terminal.WriteLine($"  Calm waters shield deflects the fear!", "bright_cyan");
+                    }
+                    else
+                    {
+                        player.ApplyStatus(StatusEffect.Feared, 2);
+                        terminal.WriteLine($"  {monster.Name} uses {abilityName}!", "dark_red");
+                        terminal.WriteLine($"  Terror grips your heart!", "yellow");
+                    }
                 }
                 else
                 {
@@ -4694,8 +4714,8 @@ public partial class CombatEngine
             case "The Offer":
             {
                 terminal.WriteLine("");
-                terminal.WriteLine($"  {monster.Name} pauses mid-combat.", "bright_yellow");
-                terminal.WriteLine($"  \"Enough. I offer you peace. Will you accept?\"", "yellow");
+                terminal.WriteLine($"  {Loc.Get("combat.manwe_offer_pause", monster.Name)}", "bright_yellow");
+                terminal.WriteLine($"  {Loc.Get("combat.manwe_offer_peace")}", "yellow");
                 terminal.WriteLine("");
                 // Narrative moment, but doesn't stop combat for non-Manwe gods
                 // Just a brief moment of hesitation — the god skips their attack
@@ -4724,8 +4744,8 @@ public partial class CombatEngine
             {
                 long healAmt = (long)(monster.MaxHP * 0.08);
                 monster.HP = Math.Min(monster.MaxHP, monster.HP + healAmt);
-                terminal.WriteLine("  Manwe speaks a word that predates language.", "bright_yellow");
-                terminal.WriteLine($"  Reality mends around him. Manwe heals {healAmt:N0} HP!", "green");
+                terminal.WriteLine($"  {Loc.Get("combat.manwe_word_creation")}", "bright_yellow");
+                terminal.WriteLine($"  {Loc.Get("combat.manwe_heals", healAmt)}", "green");
                 result.CombatLog.Add($"Manwe heals {healAmt} via Word of Creation");
                 return true;
             }
@@ -4735,13 +4755,13 @@ public partial class CombatEngine
                 long damage = Math.Min(maxDmg, Math.Max(1, (long)(baseDamage * 2.5) - player.Defence));
                 if (player.HasStatus(StatusEffect.Invulnerable))
                 {
-                    terminal.WriteLine("  Manwe tries to unmake you, but your shield holds!", "bright_white");
+                    terminal.WriteLine($"  {Loc.Get("combat.manwe_unmake_shield")}", "bright_white");
                 }
                 else
                 {
                     player.HP -= damage;
-                    terminal.WriteLine("  Manwe gestures and part of you simply... stops existing.", "bright_red");
-                    terminal.WriteLine($"  You take {damage:N0} damage!", "red");
+                    terminal.WriteLine($"  {Loc.Get("combat.manwe_unmake_hit")}", "bright_red");
+                    terminal.WriteLine($"  {Loc.Get("combat.you_take_damage", damage)}", "red");
                 }
                 result.CombatLog.Add($"Manwe uses Unmake for {damage} damage");
                 return true;
@@ -4756,23 +4776,23 @@ public partial class CombatEngine
                 if (player is Player pp && pp.Darkness > pp.Chivalry)
                 {
                     mult = 2.25; // 50% bonus
-                    flavor = "  Your dark deeds burn under his gaze! (bonus damage)";
+                    flavor = $"  {Loc.Get("combat.manwe_judgment_dark")}";
                 }
                 else
                 {
-                    flavor = "  The Creator's judgment falls upon you!";
+                    flavor = $"  {Loc.Get("combat.manwe_judgment_normal")}";
                 }
                 long damage = Math.Min(maxDmg, Math.Max(1, (long)(baseDamage * mult) - player.Defence));
                 if (player.HasStatus(StatusEffect.Invulnerable))
                 {
-                    terminal.WriteLine("  Your divine shield deflects Manwe's judgment!", "bright_white");
+                    terminal.WriteLine($"  {Loc.Get("combat.manwe_judgment_block")}", "bright_white");
                 }
                 else
                 {
                     player.HP -= damage;
-                    terminal.WriteLine("  Manwe raises his hand. Light and shadow converge.", "bright_yellow");
+                    terminal.WriteLine($"  {Loc.Get("combat.manwe_judgment_cast")}", "bright_yellow");
                     terminal.WriteLine(flavor, "red");
-                    terminal.WriteLine($"  You take {damage:N0} damage!", "red");
+                    terminal.WriteLine($"  {Loc.Get("combat.you_take_damage", damage)}", "red");
                 }
                 result.CombatLog.Add($"Manwe uses Divine Judgment for {damage} damage");
                 return true;
@@ -4782,13 +4802,21 @@ public partial class CombatEngine
             {
                 if (!player.HasStatusImmunity && !player.HasStatus(StatusEffect.Stunned))
                 {
-                    player.ApplyStatus(StatusEffect.Stunned, 1);
-                    terminal.WriteLine("  Manwe snaps his fingers. Time freezes.", "bright_cyan");
-                    terminal.WriteLine("  You are trapped between moments! (Stunned 1 round)", "yellow");
+                    if (player.CalmWatersRounds > 0 && random.Next(100) < (int)(GameConfig.CalmWatersResistChance * 100))
+                    {
+                        terminal.WriteLine($"  {Loc.Get("combat.manwe_time_freeze")}", "bright_cyan");
+                        terminal.WriteLine($"  Calm waters shield deflects the time magic!", "bright_cyan");
+                    }
+                    else
+                    {
+                        player.ApplyStatus(StatusEffect.Stunned, 1);
+                        terminal.WriteLine($"  {Loc.Get("combat.manwe_time_freeze")}", "bright_cyan");
+                        terminal.WriteLine($"  {Loc.Get("combat.manwe_time_trapped")}", "yellow");
+                    }
                 }
                 else
                 {
-                    terminal.WriteLine("  Manwe tries to freeze time, but your will shatters the moment!", "bright_white");
+                    terminal.WriteLine($"  {Loc.Get("combat.manwe_time_resist")}", "bright_white");
                 }
                 result.CombatLog.Add("Manwe uses Time Stop");
                 return true;
@@ -4802,8 +4830,8 @@ public partial class CombatEngine
                     // Heal Manwe 5%
                     long healAmt = (long)(monster.MaxHP * 0.05);
                     monster.HP = Math.Min(monster.MaxHP, monster.HP + healAmt);
-                    terminal.WriteLine("  Reality shifts. Manwe's wounds knit themselves together.", "bright_magenta");
-                    terminal.WriteLine($"  Manwe heals {healAmt:N0} HP!", "green");
+                    terminal.WriteLine($"  {Loc.Get("combat.manwe_reality_heal")}", "bright_magenta");
+                    terminal.WriteLine($"  {Loc.Get("combat.manwe_heals", healAmt)}", "green");
                     result.CombatLog.Add($"Reality Warp heals Manwe {healAmt}");
                 }
                 else if (effect == 1)
@@ -4813,8 +4841,8 @@ public partial class CombatEngine
                     if (!player.HasStatus(StatusEffect.Invulnerable))
                     {
                         player.HP -= damage;
-                        terminal.WriteLine("  The world inverts. Pain becomes your reality.", "bright_magenta");
-                        terminal.WriteLine($"  You take {damage:N0} damage!", "red");
+                        terminal.WriteLine($"  {Loc.Get("combat.manwe_pain_inverts")}", "bright_magenta");
+                        terminal.WriteLine($"  {Loc.Get("combat.you_take_damage", damage)}", "red");
                     }
                     result.CombatLog.Add($"Reality Warp deals {damage} damage");
                 }
@@ -4823,9 +4851,17 @@ public partial class CombatEngine
                     // Debuff defense
                     if (!player.HasStatus(StatusEffect.Cursed))
                     {
-                        player.ApplyStatus(StatusEffect.Cursed, 2);
-                        terminal.WriteLine("  Reality warps around you. Your armor feels like paper.", "bright_magenta");
-                        terminal.WriteLine("  Your defenses are weakened! (Cursed 2 rounds)", "yellow");
+                        if (player.CalmWatersRounds > 0 && random.Next(100) < (int)(GameConfig.CalmWatersResistChance * 100))
+                        {
+                            terminal.WriteLine($"  {Loc.Get("combat.manwe_armor_weakness")}", "bright_magenta");
+                            terminal.WriteLine($"  Calm waters shield deflects the curse!", "bright_cyan");
+                        }
+                        else
+                        {
+                            player.ApplyStatus(StatusEffect.Cursed, 2);
+                            terminal.WriteLine($"  {Loc.Get("combat.manwe_armor_weakness")}", "bright_magenta");
+                            terminal.WriteLine($"  {Loc.Get("combat.manwe_cursed")}", "yellow");
+                        }
                     }
                     else
                     {
@@ -4833,8 +4869,8 @@ public partial class CombatEngine
                         if (!player.HasStatus(StatusEffect.Invulnerable))
                         {
                             player.HP -= damage;
-                            terminal.WriteLine("  Reality convulses!", "bright_magenta");
-                            terminal.WriteLine($"  You take {damage:N0} damage!", "red");
+                            terminal.WriteLine($"  {Loc.Get("combat.manwe_convulse")}", "bright_magenta");
+                            terminal.WriteLine($"  {Loc.Get("combat.you_take_damage", damage)}", "red");
                         }
                     }
                     result.CombatLog.Add("Reality Warp (debuff/damage)");
@@ -4866,11 +4902,11 @@ public partial class CombatEngine
                     monsterList.Add(shadow);
                     result.Monsters.Add(shadow);
                     terminal.WriteLine("");
-                    terminal.WriteLine("  Manwe splits into two beings!", "bright_magenta");
-                    terminal.WriteLine("  Light and shadow separate — a dark reflection steps forward.", "dark_magenta");
-                    terminal.WriteLine("  \"We are the question you must answer.\"", "bright_yellow");
+                    terminal.WriteLine($"  {Loc.Get("combat.manwe_split1")}", "bright_magenta");
+                    terminal.WriteLine($"  {Loc.Get("combat.manwe_split2")}", "dark_magenta");
+                    terminal.WriteLine($"  {Loc.Get("combat.manwe_split3")}", "bright_yellow");
                     terminal.WriteLine("");
-                    terminal.WriteLine("  Shadow of Manwe appears! (25,000 HP)", "red");
+                    terminal.WriteLine($"  {Loc.Get("combat.manwe_shadow_appears")}", "red");
                     result.CombatLog.Add("Manwe uses Split Form — Shadow of Manwe appears");
                 }
                 else
@@ -4880,8 +4916,8 @@ public partial class CombatEngine
                     if (!player.HasStatus(StatusEffect.Invulnerable))
                     {
                         player.HP -= damage;
-                        terminal.WriteLine("  Light and shadow strike in unison!", "bright_magenta");
-                        terminal.WriteLine($"  You take {damage:N0} damage!", "red");
+                        terminal.WriteLine($"  {Loc.Get("combat.manwe_dual_strike")}", "bright_magenta");
+                        terminal.WriteLine($"  {Loc.Get("combat.you_take_damage", damage)}", "red");
                     }
                     result.CombatLog.Add($"Manwe dual-strikes for {damage} damage");
                 }
@@ -4893,14 +4929,14 @@ public partial class CombatEngine
                 long damage = Math.Min(maxDmg, Math.Max(1, (long)(baseDamage * 3.0) - player.Defence));
                 if (player.HasStatus(StatusEffect.Invulnerable))
                 {
-                    terminal.WriteLine("  Your divine shield absorbs the radiance!", "bright_white");
+                    terminal.WriteLine($"  {Loc.Get("combat.manwe_light_block")}", "bright_white");
                 }
                 else
                 {
                     player.HP -= damage;
-                    terminal.WriteLine("  Manwe becomes pure light. It burns.", "bright_white");
-                    terminal.WriteLine("  Every shadow in the room screams.", "bright_yellow");
-                    terminal.WriteLine($"  You take {damage:N0} damage!", "red");
+                    terminal.WriteLine($"  {Loc.Get("combat.manwe_light1")}", "bright_white");
+                    terminal.WriteLine($"  {Loc.Get("combat.manwe_light2")}", "bright_yellow");
+                    terminal.WriteLine($"  {Loc.Get("combat.you_take_damage", damage)}", "red");
                 }
                 result.CombatLog.Add($"Manwe uses Light Incarnate for {damage} damage");
                 return true;
@@ -4912,14 +4948,14 @@ public partial class CombatEngine
                 long healAmt = damage * 30 / 100;
                 if (player.HasStatus(StatusEffect.Invulnerable))
                 {
-                    terminal.WriteLine("  Your divine shield deflects the darkness!", "bright_white");
+                    terminal.WriteLine($"  {Loc.Get("combat.manwe_darkness_block")}", "bright_white");
                 }
                 else
                 {
                     player.HP -= damage;
                     monster.HP = Math.Min(monster.MaxHP, monster.HP + healAmt);
-                    terminal.WriteLine("  Manwe becomes living darkness. It hungers.", "dark_magenta");
-                    terminal.WriteLine($"  You take {damage:N0} damage! Manwe absorbs {healAmt:N0} HP!", "red");
+                    terminal.WriteLine($"  {Loc.Get("combat.manwe_darkness1")}", "dark_magenta");
+                    terminal.WriteLine($"  {Loc.Get("combat.manwe_darkness_damage", damage, healAmt)}", "red");
                 }
                 result.CombatLog.Add($"Manwe uses Shadow Incarnate: {damage} damage, heals {healAmt}");
                 return true;
@@ -4932,16 +4968,13 @@ public partial class CombatEngine
                 if (random.Next(2) == 0)
                 {
                     // Philosophical pause — Manwe skips his attack
-                    string[] questions = {
-                        "\"Was creation worth the suffering it caused?\"",
-                        "\"If you could unmake everything, would you?\"",
-                        "\"What makes a mortal life worth living?\"",
-                        "\"Is it better to be the wave, or the ocean?\"",
-                        "\"Can a creator be forgiven for what he creates?\""
+                    string[] questionKeys = {
+                        "combat.manwe_q1", "combat.manwe_q2", "combat.manwe_q3",
+                        "combat.manwe_q4", "combat.manwe_q5"
                     };
-                    terminal.WriteLine($"  Manwe pauses. {questions[random.Next(questions.Length)]}", "bright_yellow");
-                    terminal.WriteLine("  He waits for an answer that never comes.", "gray");
-                    terminal.WriteLine("  (Manwe skips his attack, lost in thought)", "dark_gray");
+                    terminal.WriteLine($"  {Loc.Get("combat.manwe_pauses", Loc.Get(questionKeys[random.Next(questionKeys.Length)]))}", "bright_yellow");
+                    terminal.WriteLine($"  {Loc.Get("combat.manwe_waits")}", "gray");
+                    terminal.WriteLine($"  {Loc.Get("combat.manwe_lost_in_thought")}", "dark_gray");
                     result.CombatLog.Add("Manwe asks The Question (skips attack)");
                 }
                 else
@@ -4951,9 +4984,9 @@ public partial class CombatEngine
                     if (!player.HasStatus(StatusEffect.Invulnerable))
                     {
                         player.HP -= damage;
-                        terminal.WriteLine("  \"WHAT WILL YOU DO WITH THE POWER OF CREATION?\"", "bright_yellow");
-                        terminal.WriteLine("  The question itself tears at your soul!", "bright_red");
-                        terminal.WriteLine($"  You take {damage:N0} damage!", "red");
+                        terminal.WriteLine($"  {Loc.Get("combat.manwe_creation_question")}", "bright_yellow");
+                        terminal.WriteLine($"  {Loc.Get("combat.manwe_tears_soul")}", "bright_red");
+                        terminal.WriteLine($"  {Loc.Get("combat.you_take_damage", damage)}", "red");
                     }
                     result.CombatLog.Add($"Manwe uses The Question as attack for {damage} damage");
                 }
@@ -4967,14 +5000,14 @@ public partial class CombatEngine
                 long damage = Math.Min(maxDmg, Math.Max(1, (long)(baseDamage * 4.0) - player.Defence));
                 if (player.HasStatus(StatusEffect.Invulnerable))
                 {
-                    terminal.WriteLine("  Your divine shield barely holds against the Final Word!", "bright_white");
+                    terminal.WriteLine($"  {Loc.Get("combat.manwe_final_word_block")}", "bright_white");
                 }
                 else
                 {
                     player.HP -= damage;
-                    terminal.WriteLine("  Manwe speaks the Word that began everything.", "bright_white");
-                    terminal.WriteLine("  And the Word echoes: ENOUGH.", "bright_yellow");
-                    terminal.WriteLine($"  You take {damage:N0} damage!", "bright_red");
+                    terminal.WriteLine($"  {Loc.Get("combat.manwe_final_word1")}", "bright_white");
+                    terminal.WriteLine($"  {Loc.Get("combat.manwe_final_word2")}", "bright_yellow");
+                    terminal.WriteLine($"  {Loc.Get("combat.you_take_damage", damage)}", "bright_red");
                 }
                 result.CombatLog.Add($"Manwe uses Final Word for {damage} damage");
                 return true;
@@ -4992,9 +5025,9 @@ public partial class CombatEngine
                         if (!player.HasStatus(StatusEffect.Invulnerable))
                         {
                             player.HP -= damage;
-                            terminal.WriteLine("  Manwe tries to unmake you entirely!", "bright_red");
-                            terminal.WriteLine("  The Worldstone pulses — reality holds!", "bright_cyan");
-                            terminal.WriteLine($"  You take {damage:N0} damage instead of instant death!", "yellow");
+                            terminal.WriteLine($"  {Loc.Get("combat.manwe_unmake_entirely")}", "bright_red");
+                            terminal.WriteLine($"  {Loc.Get("combat.manwe_worldstone_holds")}", "bright_cyan");
+                            terminal.WriteLine($"  {Loc.Get("combat.manwe_worldstone_damage", damage)}", "yellow");
                         }
                         result.CombatLog.Add($"Creation's End blocked by Worldstone ({damage} damage)");
                     }
@@ -5002,9 +5035,9 @@ public partial class CombatEngine
                     {
                         // Instant kill
                         player.HP = 0;
-                        terminal.WriteLine("  Manwe reaches out and touches your forehead.", "bright_white");
-                        terminal.WriteLine("  \"I take back what I gave.\"", "bright_yellow");
-                        terminal.WriteLine("  You cease to exist.", "dark_red");
+                        terminal.WriteLine($"  {Loc.Get("combat.manwe_touch_forehead")}", "bright_white");
+                        terminal.WriteLine($"  {Loc.Get("combat.manwe_take_back")}", "bright_yellow");
+                        terminal.WriteLine($"  {Loc.Get("combat.manwe_cease_exist")}", "dark_red");
                         result.CombatLog.Add("Creation's End — instant kill (no Worldstone)");
                     }
                 }
@@ -5015,9 +5048,9 @@ public partial class CombatEngine
                     if (!player.HasStatus(StatusEffect.Invulnerable))
                     {
                         player.HP -= damage;
-                        terminal.WriteLine("  Manwe begins to speak the word of ending...", "bright_red");
-                        terminal.WriteLine("  Your life force resists annihilation — barely!", "yellow");
-                        terminal.WriteLine($"  You take {damage:N0} damage!", "red");
+                        terminal.WriteLine($"  {Loc.Get("combat.manwe_word_ending")}", "bright_red");
+                        terminal.WriteLine($"  {Loc.Get("combat.manwe_resist_annihilation")}", "yellow");
+                        terminal.WriteLine($"  {Loc.Get("combat.you_take_damage", damage)}", "red");
                     }
                     result.CombatLog.Add($"Creation's End deals {damage} damage (HP too high for instant kill)");
                 }
@@ -5030,34 +5063,34 @@ public partial class CombatEngine
                 {
                     _manweOfferUsed = true;
                     terminal.WriteLine("");
-                    terminal.WriteLine("  Manwe drops his hands. The stars stop shaking.", "bright_yellow");
+                    terminal.WriteLine($"  {Loc.Get("combat.manwe_drops_hands")}", "bright_yellow");
                     terminal.WriteLine("");
-                    terminal.WriteLine("  \"Enough.\"", "bright_white");
+                    terminal.WriteLine($"  {Loc.Get("combat.manwe_enough")}", "bright_white");
                     terminal.WriteLine("");
-                    terminal.WriteLine("  His voice is barely a whisper now.", "gray");
-                    terminal.WriteLine("  \"You have proven yourself. More than anyone before you.\"", "bright_yellow");
-                    terminal.WriteLine("  \"I offer you this: walk away. Take my power peacefully.\"", "bright_yellow");
-                    terminal.WriteLine("  \"No more death. No more pain. Just... an ending.\"", "bright_yellow");
+                    terminal.WriteLine($"  {Loc.Get("combat.manwe_whisper")}", "gray");
+                    terminal.WriteLine($"  {Loc.Get("combat.manwe_proven")}", "bright_yellow");
+                    terminal.WriteLine($"  {Loc.Get("combat.manwe_walk_away")}", "bright_yellow");
+                    terminal.WriteLine($"  {Loc.Get("combat.manwe_no_more")}", "bright_yellow");
                     terminal.WriteLine("");
-                    terminal.Write("  Accept Manwe's offer? [Y/N]: ", "bright_white");
+                    terminal.Write($"  {Loc.Get("combat.manwe_accept_prompt")}", "bright_white");
                     string response = (await terminal.GetKeyInput()).ToUpperInvariant();
                     terminal.WriteLine("");
 
                     if (response == "Y")
                     {
                         // Peaceful resolution — mark as spared
-                        terminal.WriteLine("  You lower your weapon.", "bright_cyan");
-                        terminal.WriteLine("  Manwe smiles. For the first time in eternity.", "bright_yellow");
-                        terminal.WriteLine("  \"Thank you.\"", "bright_white");
+                        terminal.WriteLine($"  {Loc.Get("combat.manwe_lower_weapon")}", "bright_cyan");
+                        terminal.WriteLine($"  {Loc.Get("combat.manwe_smiles")}", "bright_yellow");
+                        terminal.WriteLine($"  {Loc.Get("combat.manwe_thank_you")}", "bright_white");
                         if (BossContext != null) BossContext.BossSaved = true;
                         monster.HP = 0; // End combat peacefully
                         result.CombatLog.Add("Player accepts The Offer — Manwe spared");
                     }
                     else
                     {
-                        terminal.WriteLine("  \"No. You don't get to quit.\"", "bright_red");
-                        terminal.WriteLine("  Manwe's eyes harden.", "yellow");
-                        terminal.WriteLine("  \"Then finish it.\"", "bright_yellow");
+                        terminal.WriteLine($"  {Loc.Get("combat.manwe_no_quit")}", "bright_red");
+                        terminal.WriteLine($"  {Loc.Get("combat.manwe_eyes_harden")}", "yellow");
+                        terminal.WriteLine($"  {Loc.Get("combat.manwe_finish_it")}", "bright_yellow");
                         result.CombatLog.Add("Player refuses The Offer — combat continues");
                     }
                 }
@@ -5068,8 +5101,8 @@ public partial class CombatEngine
                     if (!player.HasStatus(StatusEffect.Invulnerable))
                     {
                         player.HP -= damage;
-                        terminal.WriteLine("  \"There are no second offers.\"", "bright_yellow");
-                        terminal.WriteLine($"  You take {damage:N0} damage!", "bright_red");
+                        terminal.WriteLine($"  {Loc.Get("combat.manwe_no_second")}", "bright_yellow");
+                        terminal.WriteLine($"  {Loc.Get("combat.you_take_damage", damage)}", "bright_red");
                     }
                     result.CombatLog.Add($"Manwe attacks (Offer already made) for {damage} damage");
                 }
@@ -5127,7 +5160,7 @@ public partial class CombatEngine
             monster.HP = Math.Max(0, monster.HP - damage);
 
             if (isOffHandAttack)
-                terminal.WriteLine($"{teammate.DisplayName} strikes with off-hand at {monster.Name} for {damage} damage!", "cyan");
+                terminal.WriteLine(Loc.Get("combat.tm_offhand_strike", teammate.DisplayName, monster.Name, damage), "cyan");
             else
                 terminal.WriteLine(Loc.Get("combat.companion_hits", teammate.DisplayName, monster.Name, damage), "cyan");
             result.CombatLog.Add($"{teammate.DisplayName} attacks {monster.Name} for {damage} damage");
@@ -5162,19 +5195,6 @@ public partial class CombatEngine
                 result.Player.Fame = Math.Max(0, result.Player.Fame - 1);
             }
 
-            // Track flee telemetry
-            TelemetrySystem.Instance.TrackCombat(
-                "fled",
-                result.Player.Level,
-                result.Monster.Level,
-                1,
-                result.TotalDamageDealt,
-                result.TotalDamageTaken,
-                result.Monster.Name,
-                result.Monster.IsBoss,
-                0, // Round count not tracked in single combat
-                result.Player.Class.ToString()
-            );
         }
         else if (!result.Player.IsAlive)
         {
@@ -5190,7 +5210,7 @@ public partial class CombatEngine
                     terminal.SetColor("bright_yellow");
                     terminal.WriteLine("");
                     terminal.WriteLine($"  {Loc.Get("combat.divine_light_saves")}");
-                    terminal.WriteLine("  The gods arent done with you yet.");
+                    terminal.WriteLine($"  {Loc.Get("combat.gods_not_done")}");
                     terminal.SetColor("bright_green");
                     terminal.WriteLine($"  {Loc.Get("combat.divine_restored", result.Player.HP)}");
                     terminal.WriteLine("");
@@ -5250,7 +5270,7 @@ public partial class CombatEngine
         {
             long corruptHeal = Math.Max(1, (long)(result.Player.MaxHP * GameConfig.AbysswardenCorruptionHealPercent));
             result.Player.HP = Math.Min(result.Player.MaxHP, result.Player.HP + corruptHeal);
-            terminal.WriteLine($"Corruption Harvest absorbs {corruptHeal} HP from the poisoned corpse!", "dark_red");
+            terminal.WriteLine(Loc.Get("combat.corruption_harvest", corruptHeal), "dark_red");
         }
 
         // Voidreaver Void Hunger: heal 10% max HP on every kill
@@ -5258,14 +5278,14 @@ public partial class CombatEngine
         {
             long voidHeal = Math.Max(1, (long)(result.Player.MaxHP * GameConfig.VoidreaverVoidHungerPercent));
             result.Player.HP = Math.Min(result.Player.MaxHP, result.Player.HP + voidHeal);
-            terminal.WriteLine($"Void Hunger absorbs {voidHeal} HP from the fallen!", "dark_red");
+            terminal.WriteLine(Loc.Get("combat.void_hunger", voidHeal), "dark_red");
 
             // Soul Eater: restore 15% max mana on killing blow
             if (result.Player.IsManaClass)
             {
                 int manaRestore = Math.Max(1, (int)(result.Player.MaxMana * GameConfig.VoidreaverSoulEaterManaPercent));
                 result.Player.Mana = Math.Min(result.Player.MaxMana, result.Player.Mana + manaRestore);
-                terminal.WriteLine($"Soul Eater drains {manaRestore} mana from the victim's essence!", "dark_magenta");
+                terminal.WriteLine(Loc.Get("combat.soul_eater", manaRestore), "dark_magenta");
             }
         }
 
@@ -5465,30 +5485,6 @@ public partial class CombatEngine
 
         // Log to balance dashboard
         LogCombatEventToDb(result, "victory", playerXP, goldReward);
-
-        // Track telemetry for combat victory
-        TelemetrySystem.Instance.TrackCombat(
-            "victory",
-            result.Player.Level,
-            result.Monster?.Level ?? 0,
-            1,
-            result.TotalDamageDealt,
-            result.TotalDamageTaken,
-            result.Monster?.Name,
-            isBoss,
-            0, // Round count not tracked in single combat
-            result.Player.Class.ToString()
-        );
-
-        // Track boss kill milestone
-        if (isBoss)
-        {
-            TelemetrySystem.Instance.TrackMilestone(
-                $"boss_defeated_{result.Monster.Name.Replace(" ", "_").ToLower()}",
-                result.Player.Level,
-                result.Player.Class.ToString()
-            );
-        }
 
         // Track archetype (Hero for combat, with bonus for bosses and rare monsters)
         ArchetypeTracker.Instance.RecordMonsterKill(result.Monster.Level, result.Monster.IsUnique);
@@ -5740,7 +5736,7 @@ public partial class CombatEngine
         }
 
         terminal.WriteLine("");
-        terminal.WriteLine("A wandering monk approaches you...", "cyan");
+        terminal.WriteLine(Loc.Get("combat.monk_approaches"), "cyan");
 
         // Calculate costs (scales with level)
         int healCostPerPotion = 50 + (player.Level * 10);
@@ -5748,27 +5744,27 @@ public partial class CombatEngine
 
         // Show what's available
         if (canBuyHealing && canBuyMana)
-            terminal.WriteLine($"\"I have potions for body and mind, traveler.\"", "white");
+            terminal.WriteLine(Loc.Get("combat.monk_both"), "white");
         else if (canBuyHealing)
-            terminal.WriteLine($"\"Would you like to buy healing potions?\"", "white");
+            terminal.WriteLine(Loc.Get("combat.monk_healing"), "white");
         else
-            terminal.WriteLine($"\"I sense your arcane reserves are low. Need mana potions?\"", "white");
+            terminal.WriteLine(Loc.Get("combat.monk_mana"), "white");
         terminal.WriteLine("");
 
         // --- Healing potions ---
         if (canBuyHealing)
         {
-            terminal.WriteLine($"[H]ealing Potions - {healCostPerPotion}g each ({player.Healing}/{player.MaxPotions})", "green");
+            terminal.WriteLine(Loc.Get("combat.monk_healing_option", healCostPerPotion, player.Healing, player.MaxPotions), "green");
         }
 
         // --- Mana potions ---
         if (canBuyMana)
         {
-            terminal.WriteLine($"[M]ana Potions - {manaCostPerPotion}g each ({player.ManaPotions}/{player.MaxManaPotions})", "blue");
+            terminal.WriteLine(Loc.Get("combat.monk_mana_option", manaCostPerPotion, player.ManaPotions, player.MaxManaPotions), "blue");
         }
 
-        terminal.WriteLine($"[N]o thanks", "gray");
-        terminal.WriteLine($"Your gold: {player.Gold:N0}", "yellow");
+        terminal.WriteLine(Loc.Get("combat.monk_no_thanks"), "gray");
+        terminal.WriteLine(Loc.Get("combat.monk_your_gold", player.Gold), "yellow");
         terminal.WriteLine("");
 
         string choice;
@@ -5820,14 +5816,14 @@ public partial class CombatEngine
         if (maxCanBuy <= 0)
         {
             if (roomForPotions <= 0)
-                terminal.WriteLine($"You already have the maximum number of {potionType} potions!", "yellow");
+                terminal.WriteLine(Loc.Get("combat.monk_max_potions", potionType), "yellow");
             else
                 terminal.WriteLine(Loc.Get("ui.not_enough_gold"), "red");
             await Task.Delay(GetCombatDelay(1500));
             return;
         }
 
-        terminal.WriteLine($"How many {potionType} potions? (Max: {maxCanBuy})", "cyan");
+        terminal.WriteLine(Loc.Get("combat.monk_how_many", potionType, maxCanBuy), "cyan");
         var amountInput = await terminal.GetInput("> ");
 
         if (!int.TryParse(amountInput.Trim(), out int amount) || amount < 1)
@@ -5839,7 +5835,7 @@ public partial class CombatEngine
 
         if (amount > maxCanBuy)
         {
-            terminal.WriteLine($"You can only buy {maxCanBuy}!", "yellow");
+            terminal.WriteLine(Loc.Get("combat.monk_buy_limit", maxCanBuy), "yellow");
             amount = maxCanBuy;
         }
 
@@ -5850,8 +5846,8 @@ public partial class CombatEngine
 
         string color = potionType == "mana" ? "blue" : "green";
         terminal.WriteLine("");
-        terminal.WriteLine($"You purchase {amount} {potionType} potion{(amount > 1 ? "s" : "")} for {totalCost:N0} gold.", color);
-        terminal.WriteLine($"Gold remaining: {player.Gold:N0}", "yellow");
+        terminal.WriteLine(Loc.Get("combat.monk_purchase", amount, potionType, totalCost), color);
+        terminal.WriteLine(Loc.Get("combat.monk_gold_remaining", player.Gold), "yellow");
     }
 
     /// <summary>
@@ -5955,15 +5951,15 @@ public partial class CombatEngine
             {
                 int tmCleansed = CleanseCombatStatuses(tm);
                 if (tmCleansed > 0)
-                    terminal.WriteLine($"  {tm.DisplayName} is purified! ({tmCleansed} affliction{(tmCleansed > 1 ? "s" : "")} removed)", "bright_cyan");
+                    terminal.WriteLine($"  {Loc.Get("combat.tm_purified", tm.DisplayName, tmCleansed)}", "bright_cyan");
             }
         }
 
         terminal.SetColor("bright_cyan");
         if (cleansed > 0)
-            terminal.WriteLine($"  A cleansing melody washes over the party! ({cleansed} affliction{(cleansed > 1 ? "s" : "")} purged from you)");
+            terminal.WriteLine($"  {Loc.Get("combat.cleansing_melody_count", cleansed)}");
         else
-            terminal.WriteLine("  A cleansing melody washes over the party!");
+            terminal.WriteLine($"  {Loc.Get("combat.cleansing_melody")}");
     }
 
     /// <summary>
@@ -5991,6 +5987,33 @@ public partial class CombatEngine
     }
 
     /// <summary>
+    /// Decrement Calm Waters debuff shield duration for player and all living party members.
+    /// Shows expiry message when shield fades.
+    /// </summary>
+    private void DecrementCalmWatersShield(Character player, CombatResult result)
+    {
+        if (player.CalmWatersRounds > 0)
+        {
+            player.CalmWatersRounds--;
+            if (player.CalmWatersRounds <= 0)
+                terminal.WriteLine($"  {player.DisplayName}'s calm waters shield fades.", "gray");
+        }
+        var teammates = result.Teammates?.Where(t => t.IsAlive).ToList();
+        if (teammates != null)
+        {
+            foreach (var tm in teammates)
+            {
+                if (tm.CalmWatersRounds > 0)
+                {
+                    tm.CalmWatersRounds--;
+                    if (tm.CalmWatersRounds <= 0)
+                        terminal.WriteLine($"  {tm.DisplayName}'s calm waters shield fades.", "gray");
+                }
+            }
+        }
+    }
+
+    /// <summary>
     /// Apply Alchemist party effects (heals, buffs, cleanses) to all living teammates.
     /// </summary>
     private void ApplyAlchemistPartyEffect(Character alchemist, ClassAbilityResult abilityResult, CombatResult result, string effectType, bool isPlayer = true)
@@ -6008,8 +6031,8 @@ public partial class CombatEngine
                 {
                     alchemist.HP += selfHeal;
                     terminal.WriteLine(isPlayer
-                        ? $"  You recover {selfHeal} HP from the mist!"
-                        : $"  {alchemist.DisplayName} recovers {selfHeal} HP from the mist!", "bright_green");
+                        ? $"  {Loc.Get("combat.alch_mist_self", selfHeal)}"
+                        : $"  {Loc.Get("combat.alch_mist_other", alchemist.DisplayName, selfHeal)}", "bright_green");
                 }
                 // Teammates get 75%
                 if (teammates != null)
@@ -6020,7 +6043,7 @@ public partial class CombatEngine
                         if (tmHeal > 0)
                         {
                             tm.HP += tmHeal;
-                            terminal.WriteLine($"  {tm.DisplayName} recovers {tmHeal} HP!", "bright_green");
+                            terminal.WriteLine($"  {Loc.Get("combat.tm_recovers_hp", tm.DisplayName, tmHeal)}", "bright_green");
                         }
                     }
                 }
@@ -6032,8 +6055,8 @@ public partial class CombatEngine
                 alchemist.TempAttackBonus += abilityResult.AttackBonus;
                 alchemist.TempAttackBonusDuration = Math.Max(alchemist.TempAttackBonusDuration, abilityResult.Duration);
                 terminal.WriteLine(isPlayer
-                    ? $"  You feel the stimulant surge through you! (+{abilityResult.AttackBonus} ATK)"
-                    : $"  {alchemist.DisplayName} is surging with stimulant! (+{abilityResult.AttackBonus} ATK)", "bright_yellow");
+                    ? $"  {Loc.Get("combat.alch_stimulant_self", abilityResult.AttackBonus)}"
+                    : $"  {Loc.Get("combat.alch_stimulant_other", alchemist.DisplayName, abilityResult.AttackBonus)}", "bright_yellow");
                 // Teammates get 75%
                 if (teammates != null)
                 {
@@ -6042,7 +6065,7 @@ public partial class CombatEngine
                     {
                         tm.TempAttackBonus += tmBonus;
                         tm.TempAttackBonusDuration = Math.Max(tm.TempAttackBonusDuration, abilityResult.Duration);
-                        terminal.WriteLine($"  {tm.DisplayName} is energized! (+{tmBonus} ATK)", "yellow");
+                        terminal.WriteLine($"  {Loc.Get("combat.tm_energized", tm.DisplayName, tmBonus)}", "yellow");
                     }
                 }
                 break;
@@ -6053,8 +6076,8 @@ public partial class CombatEngine
                 alchemist.TempDefenseBonus += abilityResult.DefenseBonus;
                 alchemist.TempDefenseBonusDuration = Math.Max(alchemist.TempDefenseBonusDuration, abilityResult.Duration);
                 terminal.WriteLine(isPlayer
-                    ? $"  You vanish into the smoke! (+{abilityResult.DefenseBonus} DEF)"
-                    : $"  {alchemist.DisplayName} vanishes into the smoke! (+{abilityResult.DefenseBonus} DEF)", "gray");
+                    ? $"  {Loc.Get("combat.alch_smoke_self", abilityResult.DefenseBonus)}"
+                    : $"  {Loc.Get("combat.alch_smoke_other", alchemist.DisplayName, abilityResult.DefenseBonus)}", "gray");
                 // Teammates get full value
                 if (teammates != null)
                 {
@@ -6062,7 +6085,7 @@ public partial class CombatEngine
                     {
                         tm.TempDefenseBonus += abilityResult.DefenseBonus;
                         tm.TempDefenseBonusDuration = Math.Max(tm.TempDefenseBonusDuration, abilityResult.Duration);
-                        terminal.WriteLine($"  {tm.DisplayName} is obscured by smoke! (+{abilityResult.DefenseBonus} DEF)", "gray");
+                        terminal.WriteLine($"  {Loc.Get("combat.tm_obscured", tm.DisplayName, abilityResult.DefenseBonus)}", "gray");
                     }
                 }
                 break;
@@ -6075,8 +6098,8 @@ public partial class CombatEngine
                 alchemist.TempDefenseBonus += abilityResult.DefenseBonus;
                 alchemist.TempDefenseBonusDuration = Math.Max(alchemist.TempDefenseBonusDuration, abilityResult.Duration);
                 terminal.WriteLine(isPlayer
-                    ? $"  You feel invincible! (+{abilityResult.AttackBonus} ATK, +{abilityResult.DefenseBonus} DEF)"
-                    : $"  {alchemist.DisplayName} is empowered! (+{abilityResult.AttackBonus} ATK, +{abilityResult.DefenseBonus} DEF)", "bright_cyan");
+                    ? $"  {Loc.Get("combat.alch_brew_self", abilityResult.AttackBonus, abilityResult.DefenseBonus)}"
+                    : $"  {Loc.Get("combat.alch_brew_other", alchemist.DisplayName, abilityResult.AttackBonus, abilityResult.DefenseBonus)}", "bright_cyan");
                 // Teammates get 75%
                 if (teammates != null)
                 {
@@ -6088,7 +6111,7 @@ public partial class CombatEngine
                         tm.TempAttackBonusDuration = Math.Max(tm.TempAttackBonusDuration, abilityResult.Duration);
                         tm.TempDefenseBonus += tmDef;
                         tm.TempDefenseBonusDuration = Math.Max(tm.TempDefenseBonusDuration, abilityResult.Duration);
-                        terminal.WriteLine($"  {tm.DisplayName} is empowered! (+{tmAtk} ATK, +{tmDef} DEF)", "cyan");
+                        terminal.WriteLine($"  {Loc.Get("combat.tm_empowered", tm.DisplayName, tmAtk, tmDef)}", "cyan");
                     }
                 }
                 break;
@@ -6104,8 +6127,8 @@ public partial class CombatEngine
                 alchemist.Measles = false;
                 alchemist.Leprosy = false;
                 terminal.WriteLine(isPlayer
-                    ? "  Your ailments are neutralized!"
-                    : $"  {alchemist.DisplayName}'s ailments are neutralized!", "bright_green");
+                    ? $"  {Loc.Get("combat.alch_antidote_self")}"
+                    : $"  {Loc.Get("combat.alch_antidote_other", alchemist.DisplayName)}", "bright_green");
                 // Cleanse teammates
                 if (teammates != null)
                 {
@@ -6115,7 +6138,7 @@ public partial class CombatEngine
                         tm.PoisonTurns = 0;
                         tm.RemoveStatus(StatusEffect.Poisoned);
                         if (tm is Character c) { c.Plague = false; c.Smallpox = false; c.Measles = false; c.Leprosy = false; }
-                        terminal.WriteLine($"  {tm.DisplayName}'s ailments are cured!", "bright_green");
+                        terminal.WriteLine($"  {Loc.Get("combat.tm_ailments_cured", tm.DisplayName)}", "bright_green");
                     }
                 }
                 break;
@@ -6125,8 +6148,8 @@ public partial class CombatEngine
                 // Full heal self + cleanse
                 int selfHeal = (int)Math.Min(abilityResult.Healing, alchemist.MaxHP - alchemist.HP);
                 if (selfHeal > 0) { alchemist.HP += selfHeal; terminal.WriteLine(isPlayer
-                    ? $"  You are fully restored! (+{selfHeal} HP)"
-                    : $"  {alchemist.DisplayName} is fully restored! (+{selfHeal} HP)", "bright_green"); }
+                    ? $"  {Loc.Get("combat.alch_restored_self", selfHeal)}"
+                    : $"  {Loc.Get("combat.alch_restored_other", alchemist.DisplayName, selfHeal)}", "bright_green"); }
                 alchemist.Poison = 0; alchemist.PoisonTurns = 0; alchemist.RemoveStatus(StatusEffect.Poisoned);
                 alchemist.RemoveStatus(StatusEffect.Bleeding); alchemist.RemoveStatus(StatusEffect.Burning);
                 alchemist.RemoveStatus(StatusEffect.Cursed); alchemist.RemoveStatus(StatusEffect.Weakened);
@@ -6142,7 +6165,7 @@ public partial class CombatEngine
                         tm.RemoveStatus(StatusEffect.Bleeding); tm.RemoveStatus(StatusEffect.Burning);
                         tm.RemoveStatus(StatusEffect.Cursed); tm.RemoveStatus(StatusEffect.Weakened);
                         if (tm is Character c) { c.Plague = false; c.Smallpox = false; c.Measles = false; c.Leprosy = false; }
-                        terminal.WriteLine($"  {tm.DisplayName} is fully restored! (+{tmHeal} HP, all ailments cured)", "bright_green");
+                        terminal.WriteLine($"  {Loc.Get("combat.tm_fully_restored", tm.DisplayName, tmHeal)}", "bright_green");
                     }
                 }
                 break;
@@ -6167,8 +6190,8 @@ public partial class CombatEngine
                 {
                     cleric.HP += selfHeal;
                     terminal.WriteLine(isPlayer
-                        ? $"  You are bathed in divine light! (+{selfHeal} HP)"
-                        : $"  {cleric.DisplayName} is bathed in divine light! (+{selfHeal} HP)", "bright_green");
+                        ? $"  {Loc.Get("combat.cleric_divine_self", selfHeal)}"
+                        : $"  {Loc.Get("combat.cleric_divine_other", cleric.DisplayName, selfHeal)}", "bright_green");
                 }
                 // Teammates get 75%
                 if (teammates != null)
@@ -6179,7 +6202,7 @@ public partial class CombatEngine
                         if (tmHeal > 0)
                         {
                             tm.HP += tmHeal;
-                            terminal.WriteLine($"  {tm.DisplayName} is healed by divine light! (+{tmHeal} HP)", "bright_green");
+                            terminal.WriteLine($"  {Loc.Get("combat.tm_divine_heal", tm.DisplayName, tmHeal)}", "bright_green");
                         }
                     }
                 }
@@ -6196,8 +6219,8 @@ public partial class CombatEngine
                 cleric.TempDefenseBonus += abilityResult.DefenseBonus;
                 cleric.TempDefenseBonusDuration = Math.Max(cleric.TempDefenseBonusDuration, abilityResult.Duration);
                 terminal.WriteLine(isPlayer
-                    ? $"  You radiate divine light! (+{selfHeal} HP, +{abilityResult.DefenseBonus} DEF for {abilityResult.Duration} rounds)"
-                    : $"  {cleric.DisplayName} radiates divine light! (+{selfHeal} HP, +{abilityResult.DefenseBonus} DEF for {abilityResult.Duration} rounds)", "bright_yellow");
+                    ? $"  {Loc.Get("combat.cleric_beacon_self", selfHeal, abilityResult.DefenseBonus, abilityResult.Duration)}"
+                    : $"  {Loc.Get("combat.cleric_beacon_other", cleric.DisplayName, selfHeal, abilityResult.DefenseBonus, abilityResult.Duration)}", "bright_yellow");
                 // Teammates get full defense buff + 75% heal
                 if (teammates != null)
                 {
@@ -6207,7 +6230,7 @@ public partial class CombatEngine
                         if (tmHeal > 0) { tm.HP += tmHeal; }
                         tm.TempDefenseBonus += abilityResult.DefenseBonus;
                         tm.TempDefenseBonusDuration = Math.Max(tm.TempDefenseBonusDuration, abilityResult.Duration);
-                        terminal.WriteLine($"  {tm.DisplayName} is shielded by the beacon! (+{tmHeal} HP, +{abilityResult.DefenseBonus} DEF)", "yellow");
+                        terminal.WriteLine($"  {Loc.Get("combat.tm_shielded_beacon", tm.DisplayName, tmHeal, abilityResult.DefenseBonus)}", "yellow");
                     }
                 }
                 break;
@@ -6220,8 +6243,8 @@ public partial class CombatEngine
                 {
                     cleric.HP += selfHeal;
                     terminal.WriteLine(isPlayer
-                        ? $"  The holy covenant restores you! (+{selfHeal} HP)"
-                        : $"  The holy covenant restores {cleric.DisplayName}! (+{selfHeal} HP)", "bright_green");
+                        ? $"  {Loc.Get("combat.cleric_covenant_self", selfHeal)}"
+                        : $"  {Loc.Get("combat.cleric_covenant_other", cleric.DisplayName, selfHeal)}", "bright_green");
                 }
                 cleric.Poison = 0; cleric.PoisonTurns = 0; cleric.RemoveStatus(StatusEffect.Poisoned);
                 cleric.RemoveStatus(StatusEffect.Bleeding); cleric.RemoveStatus(StatusEffect.Burning);
@@ -6229,8 +6252,8 @@ public partial class CombatEngine
                 cleric.RemoveStatus(StatusEffect.Stunned); cleric.RemoveStatus(StatusEffect.Frozen);
                 cleric.Plague = false; cleric.Smallpox = false; cleric.Measles = false; cleric.Leprosy = false;
                 terminal.WriteLine(isPlayer
-                    ? "  All your afflictions are cleansed!"
-                    : $"  All of {cleric.DisplayName}'s afflictions are cleansed!", "bright_cyan");
+                    ? $"  {Loc.Get("combat.cleric_cleansed_self")}"
+                    : $"  {Loc.Get("combat.cleric_cleansed_other", cleric.DisplayName)}", "bright_cyan");
                 // Teammates get 75% heal + full cleanse
                 if (teammates != null)
                 {
@@ -6243,7 +6266,7 @@ public partial class CombatEngine
                         tm.RemoveStatus(StatusEffect.Cursed); tm.RemoveStatus(StatusEffect.Weakened);
                         tm.RemoveStatus(StatusEffect.Stunned); tm.RemoveStatus(StatusEffect.Frozen);
                         if (tm is Character c) { c.Plague = false; c.Smallpox = false; c.Measles = false; c.Leprosy = false; }
-                        terminal.WriteLine($"  {tm.DisplayName} is restored and cleansed! (+{tmHeal} HP)", "bright_green");
+                        terminal.WriteLine($"  {Loc.Get("combat.tm_restored_cleansed", tm.DisplayName, tmHeal)}", "bright_green");
                     }
                 }
                 break;
@@ -6269,7 +6292,7 @@ public partial class CombatEngine
             if (isPlayer)
                 terminal.WriteLine(Loc.Get("combat.dark_power_drain", lifesteal), "dark_magenta");
             else
-                terminal.WriteLine($"{attackerName}'s dark power drains {lifesteal} life!", "dark_magenta");
+                terminal.WriteLine(Loc.Get("combat.tm_dark_drain", attackerName, lifesteal), "dark_magenta");
         }
 
         // Equipment lifesteal (Lifedrinker enchant)
@@ -6281,7 +6304,7 @@ public partial class CombatEngine
             if (isPlayer)
                 terminal.WriteLine(Loc.Get("combat.lifedrinker", stolen), "dark_green");
             else
-                terminal.WriteLine($"{attackerName}'s weapon drains {stolen} life! (Lifedrinker)", "dark_green");
+                terminal.WriteLine(Loc.Get("combat.tm_lifedrinker", attackerName, stolen), "dark_green");
         }
 
         // Divine Boon lifesteal (from worshipped player-god)
@@ -6292,7 +6315,7 @@ public partial class CombatEngine
             if (isPlayer)
                 terminal.WriteLine(Loc.Get("combat.boon_drain", boonSteal), "dark_cyan");
             else
-                terminal.WriteLine($"{attackerName}'s divine power drains {boonSteal} life! (Boon)", "dark_cyan");
+                terminal.WriteLine(Loc.Get("combat.tm_boon_drain", attackerName, boonSteal), "dark_cyan");
         }
 
         // Abysswarden Abyssal Siphon passive: 10% lifesteal on all attacks
@@ -6301,9 +6324,9 @@ public partial class CombatEngine
             long siphon = Math.Max(1, (long)(damage * GameConfig.AbysswardenAbyssalSiphonPercent));
             attacker.HP = Math.Min(attacker.MaxHP, attacker.HP + siphon);
             if (isPlayer)
-                terminal.WriteLine($"Abyssal Siphon drains {siphon} HP!", "dark_red");
+                terminal.WriteLine(Loc.Get("combat.abyssal_siphon", siphon), "dark_red");
             else
-                terminal.WriteLine($"{attackerName}'s Abyssal Siphon drains {siphon} HP!", "dark_red");
+                terminal.WriteLine(Loc.Get("combat.tm_abyssal_siphon", attackerName, siphon), "dark_red");
         }
 
         // Ability-granted lifesteal (StatusEffect.Lifesteal from Abysswarden/Voidreaver/Assassin abilities)
@@ -6312,9 +6335,9 @@ public partial class CombatEngine
             long statusSteal = Math.Max(1, damage * attacker.StatusLifestealPercent / 100);
             attacker.HP = Math.Min(attacker.MaxHP, attacker.HP + statusSteal);
             if (isPlayer)
-                terminal.WriteLine($"Dark energy siphons {statusSteal} HP!", "dark_red");
+                terminal.WriteLine(Loc.Get("combat.dark_energy_siphon", statusSteal), "dark_red");
             else
-                terminal.WriteLine($"{attackerName}'s dark energy siphons {statusSteal} HP!", "dark_red");
+                terminal.WriteLine(Loc.Get("combat.tm_dark_energy_siphon", attackerName, statusSteal), "dark_red");
         }
 
         // Elemental enchant procs
@@ -7869,27 +7892,27 @@ public partial class CombatEngine
                 otherTerm.SetColor("magenta");
                 otherTerm.WriteLine($"  {unidName}");
                 otherTerm.SetColor("gray");
-                otherTerm.WriteLine("  The item's properties are unknown.");
+                otherTerm.WriteLine($"  {Loc.Get("combat.item_unknown")}");
             }
 
             otherTerm.WriteLine("");
             if (!otherCanUse && otherCantUseReason != null)
             {
                 otherTerm.SetColor("red");
-                otherTerm.WriteLine($"  You cannot equip this item. {otherCantUseReason}");
+                otherTerm.WriteLine($"  {Loc.Get("combat.cant_equip_reason", otherCantUseReason)}");
                 otherTerm.SetColor("white");
                 otherTerm.WriteLine("");
             }
 
             if (lootItem.IsIdentified && otherCanUse)
-                otherTerm.WriteLine("(E)quip immediately");
-            otherTerm.WriteLine("(T)ake to inventory");
-            otherTerm.WriteLine("(P)ass");
+                otherTerm.WriteLine(Loc.Get("combat.equip_immediately"));
+            otherTerm.WriteLine(Loc.Get("combat.take_inventory"));
+            otherTerm.WriteLine(Loc.Get("combat.pass_loot"));
             otherTerm.WriteLine("");
 
             // Notify leader
             terminal.SetColor("bright_yellow");
-            terminal.WriteLine($"  Offering loot to {otherName}...");
+            terminal.WriteLine($"  {Loc.Get("combat.offering_loot", otherName)}");
 
             // Read with 10-second timeout (shorter than primary — cascaded offers shouldn't block long)
             string otherChoice = "P";
@@ -7907,14 +7930,14 @@ public partial class CombatEngine
                     if (!valid)
                     {
                         otherTerm.SetColor("yellow");
-                        otherTerm.WriteLine("Invalid choice — passing.");
+                        otherTerm.WriteLine(Loc.Get("combat.invalid_choice_pass"));
                         otherChoice = "P";
                     }
                 }
                 else
                 {
                     otherTerm.SetColor("yellow");
-                    otherTerm.WriteLine("(Timed out — passing)");
+                    otherTerm.WriteLine(Loc.Get("combat.timed_out_pass"));
                 }
             }
             catch { otherChoice = "P"; }
@@ -7950,17 +7973,17 @@ public partial class CombatEngine
                 otherPlayer.Inventory?.Add(lootItem);
                 otherTerm.SetColor("cyan");
                 string invName = lootItem.IsIdentified ? lootItem.Name : LootGenerator.GetUnidentifiedName(lootItem);
-                otherTerm.WriteLine($"Added {invName} to your inventory.");
+                otherTerm.WriteLine(Loc.Get("combat.added_to_inventory", invName));
                 terminal.SetColor("cyan");
-                terminal.WriteLine($"  {otherName} takes {lootItem.Name} to inventory.");
+                terminal.WriteLine($"  {Loc.Get("combat.other_takes", otherName, lootItem.Name)}");
                 return true;
             }
             else
             {
                 otherTerm.SetColor("gray");
-                otherTerm.WriteLine("You pass on the item.");
+                otherTerm.WriteLine(Loc.Get("combat.pass_on_item"));
                 terminal.SetColor("gray");
-                terminal.WriteLine($"  {otherName} passes on {lootItem.Name}.");
+                terminal.WriteLine($"  {Loc.Get("combat.other_passes", otherName, lootItem.Name)}");
             }
         }
 
@@ -8225,7 +8248,7 @@ public partial class CombatEngine
                 else
                 {
                     terminal.SetColor("yellow");
-                    terminal.WriteLine("(same)");
+                    terminal.WriteLine(Loc.Get("combat.same"));
                 }
             }
             else if (lootItem.Type == global::ObjType.Fingers || lootItem.Type == global::ObjType.Neck)
@@ -8259,7 +8282,7 @@ public partial class CombatEngine
                 else
                 {
                     terminal.SetColor("yellow");
-                    terminal.WriteLine("(same)");
+                    terminal.WriteLine(Loc.Get("combat.same"));
                 }
             }
             else if (lootItem.Type == global::ObjType.Shield)
@@ -8302,7 +8325,7 @@ public partial class CombatEngine
                     else
                     {
                         terminal.SetColor("yellow");
-                        terminal.WriteLine("(same)");
+                        terminal.WriteLine(Loc.Get("combat.same"));
                     }
                 }
             }
@@ -8327,7 +8350,7 @@ public partial class CombatEngine
                 else
                 {
                     terminal.SetColor("yellow");
-                    terminal.WriteLine("(same)");
+                    terminal.WriteLine(Loc.Get("combat.same"));
                 }
             }
 
@@ -8365,14 +8388,14 @@ public partial class CombatEngine
             {
                 terminal.SetColor("gray");
                 if (currentBonuses.Count > 0)
-                    terminal.WriteLine($"  Current bonuses: {string.Join(", ", currentBonuses)}");
+                    terminal.WriteLine($"  {Loc.Get("combat.current_bonuses", string.Join(", ", currentBonuses))}");
                 else
-                    terminal.WriteLine("  Current bonuses: (none)");
+                    terminal.WriteLine($"  {Loc.Get("combat.current_bonuses_none")}");
 
                 if (newBonuses.Count > 0)
-                    terminal.WriteLine($"  New bonuses: {string.Join(", ", newBonuses)}");
+                    terminal.WriteLine($"  {Loc.Get("combat.new_bonuses", string.Join(", ", newBonuses))}");
                 else
-                    terminal.WriteLine("  New bonuses: (none)");
+                    terminal.WriteLine($"  {Loc.Get("combat.new_bonuses_none")}");
             }
         }
 
@@ -8398,7 +8421,7 @@ public partial class CombatEngine
         var offHandItem = player.GetEquipment(EquipmentSlot.OffHand);
 
         terminal.SetColor("white");
-        terminal.Write("  (M) Main Hand: ");
+        terminal.Write($"  {Loc.Get("combat.main_hand_label")}");
         if (mainHandItem != null)
         {
             terminal.SetColor("yellow");
@@ -8411,7 +8434,7 @@ public partial class CombatEngine
         }
 
         terminal.SetColor("white");
-        terminal.Write("  (O) Off-Hand:  ");
+        terminal.Write($"  {Loc.Get("combat.off_hand_label")}");
         if (offHandItem != null)
         {
             terminal.SetColor("yellow");
@@ -8424,7 +8447,7 @@ public partial class CombatEngine
         }
 
         terminal.SetColor("white");
-        terminal.WriteLine("  (C) Cancel - Add to inventory instead");
+        terminal.WriteLine($"  {Loc.Get("combat.cancel_to_inventory")}");
         terminal.WriteLine("");
 
         terminal.Write(Loc.Get("ui.your_choice"));
@@ -8449,7 +8472,7 @@ public partial class CombatEngine
         var rightRing = player.GetEquipment(EquipmentSlot.RFinger);
 
         terminal.SetColor("white");
-        terminal.Write("  (L) Left Finger:  ");
+        terminal.Write($"  {Loc.Get("combat.left_finger_label")}");
         if (leftRing != null)
         {
             terminal.SetColor("yellow");
@@ -8462,7 +8485,7 @@ public partial class CombatEngine
         }
 
         terminal.SetColor("white");
-        terminal.Write("  (R) Right Finger: ");
+        terminal.Write($"  {Loc.Get("combat.right_finger_label")}");
         if (rightRing != null)
         {
             terminal.SetColor("yellow");
@@ -8475,7 +8498,7 @@ public partial class CombatEngine
         }
 
         terminal.SetColor("white");
-        terminal.WriteLine("  (I) Add to inventory instead");
+        terminal.WriteLine($"  {Loc.Get("combat.inventory_instead")}");
         terminal.WriteLine("");
 
         terminal.Write(Loc.Get("ui.your_choice"));
@@ -9333,7 +9356,7 @@ public partial class CombatEngine
                 {
                     result.Player.HP += bloodlustHeal;
                     terminal.SetColor("bright_red");
-                    terminal.WriteLine($"BLOODLUST! You feast on the kill and recover {bloodlustHeal} HP!");
+                    terminal.WriteLine(Loc.Get("combat.bloodlust_trigger", bloodlustHeal));
                 }
             }
 
@@ -9434,7 +9457,7 @@ public partial class CombatEngine
             {
                 var preventingStatus = player.ActiveStatuses.Keys.FirstOrDefault(s => s.PreventsAction());
                 terminal.SetColor("yellow");
-                terminal.WriteLine($"You are {preventingStatus.ToString().ToLower()} and cannot act!");
+                terminal.WriteLine(Loc.Get("combat.cannot_act", preventingStatus.ToString().ToLower()));
                 await Task.Delay(GetCombatDelay(1500));
                 return (new CombatAction { Type = CombatActionType.None }, false);
             }
@@ -9589,12 +9612,12 @@ public partial class CombatEngine
                     };
                     string newSpeedName = player.CombatSpeed switch
                     {
-                        CombatSpeed.Instant => "Instant (no delays)",
-                        CombatSpeed.Fast => "Fast (50% delays)",
-                        _ => "Normal (full delays)"
+                        CombatSpeed.Instant => Loc.Get("combat.speed_instant"),
+                        CombatSpeed.Fast => Loc.Get("combat.speed_fast"),
+                        _ => Loc.Get("combat.speed_normal")
                     };
                     terminal.SetColor("gray");
-                    terminal.WriteLine($"Combat speed set to: {newSpeedName}");
+                    terminal.WriteLine(Loc.Get("combat.speed_set", newSpeedName));
                     terminal.WriteLine("");
                     await Task.Delay(GetCombatDelay(500));
                     continue; // Show menu again
@@ -11146,6 +11169,27 @@ public partial class CombatEngine
                 }
                 break;
 
+            case "debuff_shield":
+                {
+                    int duration = GameConfig.CalmWatersShieldDuration;
+                    // Apply to self
+                    player.CalmWatersRounds = duration;
+                    terminal.SetColor("bright_cyan");
+                    terminal.WriteLine($"  Calm waters wash over the battlefield...");
+                    terminal.WriteLine($"  {player.DisplayName} gains debuff resistance for {duration} rounds!", "cyan");
+                    // Apply to all living teammates
+                    var shieldTargets = result.Teammates?.Where(t => t.IsAlive).ToList();
+                    if (shieldTargets != null)
+                    {
+                        foreach (var tm in shieldTargets)
+                        {
+                            tm.CalmWatersRounds = duration;
+                            terminal.WriteLine($"  {tm.DisplayName} gains debuff resistance for {duration} rounds!", "cyan");
+                        }
+                    }
+                }
+                break;
+
             case "vanish":
                 player.DodgeNextAttack = true;
                 if (!player.ActiveStatuses.ContainsKey(StatusEffect.Hidden))
@@ -11400,7 +11444,7 @@ public partial class CombatEngine
                     int manaRestored = (int)(player.MaxMana * 0.25);
                     player.Mana = Math.Min(player.MaxMana, player.Mana + manaRestored);
                     terminal.SetColor("bright_magenta");
-                    terminal.WriteLine($"The Ocean restores {manaRestored} mana. (Mana: {player.Mana}/{player.MaxMana})");
+                    terminal.WriteLine(Loc.Get("combat.ocean_mana_restore", manaRestored, player.Mana, player.MaxMana));
                 }
                 // Also heal companions
                 if (result?.Teammates != null)
@@ -11795,7 +11839,7 @@ public partial class CombatEngine
                 terminal.SetColor("bright_magenta");
                 terminal.WriteLine(Loc.Get("combat.ability_chrono_surge"));
                 if (cdReduced > 0)
-                    terminal.WriteLine($"Chrono Surge accelerates time — {cdReduced} ability cooldown(s) reduced by 2 rounds!", "bright_magenta");
+                    terminal.WriteLine(Loc.Get("combat.chrono_surge_cooldown", cdReduced), "bright_magenta");
                 break;
             }
 
@@ -12170,7 +12214,7 @@ public partial class CombatEngine
                         if (abilityCooldowns.ContainsKey("reap"))
                         {
                             abilityCooldowns["reap"] = 0;
-                            terminal.WriteLine("Reap cooldown reset!", "bright_red");
+                            terminal.WriteLine(Loc.Get("combat.reap_cooldown_reset"), "bright_red");
                         }
                     }
                 }
@@ -12389,7 +12433,7 @@ public partial class CombatEngine
         }
 
         terminal.SetColor("cyan");
-        terminal.WriteLine($"Combat Stamina: {player.CurrentCombatStamina}/{player.MaxCombatStamina}");
+        terminal.WriteLine(Loc.Get("combat.stamina_display", player.CurrentCombatStamina, player.MaxCombatStamina));
         terminal.WriteLine("");
         terminal.WriteLine(Loc.Get("combat.available_abilities"), "white");
         terminal.WriteLine("");
@@ -12862,7 +12906,7 @@ public partial class CombatEngine
                     long bonusDmg = Math.Max(1, target.ArmPow);
                     target.HP -= bonusDmg;
                     terminal.SetColor("dark_red");
-                    terminal.WriteLine($"The void bolt pierces all defenses for {bonusDmg} bonus damage!");
+                    terminal.WriteLine(Loc.Get("combat.void_bolt_pierce", bonusDmg));
                     if (target.HP <= 0)
                     {
                         target.HP = 0;
@@ -12878,7 +12922,7 @@ public partial class CombatEngine
                 {
                     long shadowBonus = Math.Max(1, target.ArmPow);
                     target.HP -= shadowBonus;
-                    terminal.WriteLine($"The shadow strike bypasses all defenses for {shadowBonus} bonus damage!", "dark_red");
+                    terminal.WriteLine(Loc.Get("combat.shadow_strike_bypass", shadowBonus), "dark_red");
                     if (target.HP <= 0)
                     {
                         target.HP = 0;
@@ -12895,7 +12939,7 @@ public partial class CombatEngine
                     player.HP = player.MaxHP;
                     player.Mana = player.MaxMana;
                     terminal.SetColor("bright_red");
-                    terminal.WriteLine($"Reality unravels! {player.DisplayName} absorbs the void — full HP and mana restored!");
+                    terminal.WriteLine(Loc.Get("combat.reality_unravels", player.DisplayName));
                 }
                 break;
 
@@ -12905,7 +12949,7 @@ public partial class CombatEngine
                 target.ConfusedDuration = Math.Max(target.ConfusedDuration, 3);
                 target.IsSlowed = true;
                 target.SlowDuration = Math.Max(target.SlowDuration, 3);
-                terminal.WriteLine($"Probability warps around {target.Name} — accuracy and power diminished!", "cyan");
+                terminal.WriteLine(Loc.Get("combat.probability_shift", target.Name), "cyan");
                 break;
 
             case "ignore_half_defense":
@@ -12915,7 +12959,7 @@ public partial class CombatEngine
                     long halfDefBonus = Math.Max(1, target.ArmPow / 2);
                     target.HP -= halfDefBonus;
                     terminal.SetColor("cyan");
-                    terminal.WriteLine($"Future echo bypasses half of {target.Name}'s defense for {halfDefBonus} bonus damage!");
+                    terminal.WriteLine(Loc.Get("combat.future_echo", target.Name, halfDefBonus));
                     if (target.HP <= 0)
                     {
                         target.HP = 0;
@@ -12928,19 +12972,19 @@ public partial class CombatEngine
             case "angel":
                 // Summoned angel shields caster
                 player.DodgeNextAttack = true;
-                terminal.WriteLine($"The angel shields {player.DisplayName} from the next attack!", "bright_yellow");
+                terminal.WriteLine(Loc.Get("combat.angel_shield", player.DisplayName), "bright_yellow");
                 break;
 
             case "demon":
                 // Summoned demon shields caster
                 player.DodgeNextAttack = true;
-                terminal.WriteLine($"The demon shields {player.DisplayName} from the next attack!", "dark_red");
+                terminal.WriteLine(Loc.Get("combat.demon_shield", player.DisplayName), "dark_red");
                 break;
 
             case "dodge_next":
                 // Deja Vu: dodge the next incoming attack
                 player.DodgeNextAttack = true;
-                terminal.WriteLine($"{player.DisplayName} glimpses the future — next attack will miss!", "cyan");
+                terminal.WriteLine(Loc.Get("combat.deja_vu", player.DisplayName), "cyan");
                 break;
 
             case "psychic":
@@ -13111,7 +13155,7 @@ public partial class CombatEngine
         }
 
         terminal.SetColor("gray");
-        terminal.WriteLine("[0] Cancel");
+        terminal.WriteLine(Loc.Get("combat.cancel_option"));
         terminal.WriteLine("");
 
         terminal.SetColor("white");
@@ -13160,12 +13204,12 @@ public partial class CombatEngine
                 int hpPercent = ally.MaxHP > 0 ? (int)(100 * ally.HP / ally.MaxHP) : 100;
                 string hpColor = hpPercent < 25 ? "red" : hpPercent < 50 ? "yellow" : hpPercent < 100 ? "bright_green" : "green";
                 terminal.SetColor(hpColor);
-                string status = hpPercent >= 100 ? " (Full)" : "";
+                string status = hpPercent >= 100 ? Loc.Get("combat.full_status") : "";
                 terminal.WriteLine($"  [{i + 1}] {ally.DisplayName} - HP: {ally.HP}/{ally.MaxHP} ({hpPercent}%){status}");
             }
         }
         terminal.SetColor("gray");
-        terminal.WriteLine("  [0] Cancel");
+        terminal.WriteLine($"  {Loc.Get("combat.cancel_option")}");
         terminal.WriteLine("");
 
         terminal.SetColor("white");
@@ -13224,7 +13268,7 @@ public partial class CombatEngine
                 terminal.WriteLine($"[F] Fully restore (uses up to {potionsNeeded} potions)");
             }
             terminal.SetColor("gray");
-            terminal.WriteLine("[0] Cancel");
+            terminal.WriteLine(Loc.Get("combat.cancel_option"));
             terminal.WriteLine("");
 
             terminal.SetColor("white");
@@ -13312,7 +13356,7 @@ public partial class CombatEngine
                 terminal.WriteLine($"[F] Fully heal (uses up to {potionsNeeded} potions)");
             }
             terminal.SetColor("gray");
-            terminal.WriteLine("[0] Cancel");
+            terminal.WriteLine(Loc.Get("combat.cancel_option"));
             terminal.WriteLine("");
 
             terminal.SetColor("white");
@@ -13409,7 +13453,7 @@ public partial class CombatEngine
                 terminal.WriteLine($"  [{i + 1}] {spell.Name} - Mana: {spell.ManaCost}");
             }
             terminal.SetColor("gray");
-            terminal.WriteLine("  [0] Cancel");
+            terminal.WriteLine($"  {Loc.Get("combat.cancel_option")}");
             terminal.WriteLine("");
 
             terminal.SetColor("white");
@@ -14382,11 +14426,11 @@ public partial class CombatEngine
         await Task.Delay(1000);
 
         terminal.SetColor("bright_white");
-        terminal.WriteLine($"As the killing blow descends upon you...");
+        terminal.WriteLine(Loc.Get("combat.sacrifice_killing_blow"));
         await Task.Delay(800);
 
         terminal.SetColor("bright_cyan");
-        terminal.WriteLine($"{sacrificingCompanion.Name} throws themselves in the way!");
+        terminal.WriteLine(Loc.Get("combat.sacrifice_throws", sacrificingCompanion.Name));
         terminal.WriteLine("");
         await Task.Delay(1000);
 
@@ -14394,14 +14438,14 @@ public partial class CombatEngine
         string sacrificeLine = sacrificingCompanion.Id switch
         {
             UsurperRemake.Systems.CompanionId.Aldric =>
-                "\"NOT THIS TIME!\" Aldric roars, shield raised high.",
+                Loc.Get("combat.sacrifice_aldric"),
             UsurperRemake.Systems.CompanionId.Lyris =>
-                "\"I finally understand why I found you...\" Lyris whispers, stepping forward.",
+                Loc.Get("combat.sacrifice_lyris"),
             UsurperRemake.Systems.CompanionId.Mira =>
-                "\"Perhaps... this is what I was seeking all along.\" Mira smiles gently.",
+                Loc.Get("combat.sacrifice_mira"),
             UsurperRemake.Systems.CompanionId.Vex =>
-                "\"Heh. Always wanted to go out doing something that mattered.\" Vex grins.",
-            _ => $"\"{sacrificingCompanion.Name} leaps to your defense!\""
+                Loc.Get("combat.sacrifice_vex"),
+            _ => Loc.Get("combat.sacrifice_generic", sacrificingCompanion.Name)
         };
 
         terminal.SetColor("yellow");
@@ -14411,7 +14455,7 @@ public partial class CombatEngine
 
         // The companion takes the full damage and dies
         terminal.SetColor("dark_red");
-        terminal.WriteLine($"The blow strikes {sacrificingCompanion.Name} instead...");
+        terminal.WriteLine(Loc.Get("combat.sacrifice_blow_strikes", sacrificingCompanion.Name));
         await Task.Delay(1000);
 
         // Remove companion from teammates
@@ -14701,7 +14745,11 @@ public partial class CombatEngine
                     }
                     if (abilityResult.InflictStatus != StatusEffect.None && abilityResult.StatusChance > 0)
                     {
-                        if (random.Next(100) < abilityResult.StatusChance)
+                        if (companion.CalmWatersRounds > 0 && random.Next(100) < (int)(GameConfig.CalmWatersResistChance * 100))
+                        {
+                            terminal.WriteLine($"  {companion.DisplayName}'s calm waters shield deflects {abilityResult.InflictStatus}!", "bright_cyan");
+                        }
+                        else if (random.Next(100) < abilityResult.StatusChance)
                         {
                             companion.ApplyStatus(abilityResult.InflictStatus, abilityResult.StatusDuration);
                             terminal.WriteLine($"{companion.DisplayName} is afflicted with {abilityResult.InflictStatus}!", "yellow");
@@ -15338,21 +15386,6 @@ public partial class CombatEngine
         // Log to balance dashboard
         LogCombatEventToDb(result, "victory", playerXPmm, adjustedGold);
 
-        // Track telemetry for multi-monster combat victory
-        bool hasBoss = result.DefeatedMonsters.Any(m => m.IsBoss);
-        TelemetrySystem.Instance.TrackCombat(
-            "victory",
-            result.Player.Level,
-            result.DefeatedMonsters.Any() ? result.DefeatedMonsters.Max(m => m.Level) : 0,
-            result.DefeatedMonsters.Count,
-            result.TotalDamageDealt,
-            result.TotalDamageTaken,
-            result.DefeatedMonsters.FirstOrDefault()?.Name,
-            hasBoss,
-            0, // Round count tracked separately in flee tracking
-            result.Player.Class.ToString()
-        );
-
         // Award per-slot XP to teammates based on percentage allocation
         DistributeTeamSlotXP(result.Player, result.Teammates, totalXPPotMM, terminal);
         // Sync companion level-ups to active Character wrappers so stats update mid-dungeon
@@ -15973,13 +16006,6 @@ public partial class CombatEngine
         }
         StrangerEncounterSystem.Instance.RecordGameEvent(StrangerContextEvent.PlayerDied);
 
-        // Track telemetry for player death
-        TelemetrySystem.Instance.TrackDeath(
-            result.Player.Level,
-            result.Monster?.Name ?? "unknown",
-            result.Monster?.Level ?? 0 // use monster level as proxy for dungeon depth
-        );
-
         // Nightmare mode = permadeath — no resurrection, save deleted
         if (DifficultySystem.IsPermadeath())
         {
@@ -16489,8 +16515,8 @@ public partial class CombatEngine
         if (BossContext != null && player.PotionCooldownRounds > 0)
         {
             terminal.SetColor("yellow");
-            terminal.WriteLine($"  Potions are on cooldown! ({player.PotionCooldownRounds} round{(player.PotionCooldownRounds > 1 ? "s" : "")} remaining)");
-            terminal.WriteLine("  Rely on your healer to sustain the party!", "gray");
+            terminal.WriteLine($"  {Loc.Get("combat.potion_on_cooldown", player.PotionCooldownRounds)}");
+            terminal.WriteLine($"  {Loc.Get("combat.potion_cooldown_rely")}", "gray");
             await Task.Delay(GetCombatDelay(1000));
             return;
         }
@@ -16643,7 +16669,7 @@ public partial class CombatEngine
 
         // Display available abilities with cooldown and stamina info
         terminal.SetColor("cyan");
-        terminal.WriteLine($"Combat Stamina: {player.CurrentCombatStamina}/{player.MaxCombatStamina}");
+        terminal.WriteLine(Loc.Get("combat.stamina_display", player.CurrentCombatStamina, player.MaxCombatStamina));
         terminal.WriteLine("");
         terminal.WriteLine(Loc.Get("combat.available_abilities"), "white");
         terminal.WriteLine("");
@@ -17291,6 +17317,25 @@ public partial class CombatEngine
                 }
                 break;
 
+            case "debuff_shield":
+                {
+                    int duration = GameConfig.CalmWatersShieldDuration;
+                    player.CalmWatersRounds = duration;
+                    terminal.SetColor("bright_cyan");
+                    terminal.WriteLine($"  Calm waters wash over the battlefield...");
+                    terminal.WriteLine($"  {player.DisplayName} gains debuff resistance for {duration} rounds!", "cyan");
+                    var shieldTargets = result.Teammates?.Where(t => t.IsAlive).ToList();
+                    if (shieldTargets != null)
+                    {
+                        foreach (var tm in shieldTargets)
+                        {
+                            tm.CalmWatersRounds = duration;
+                            terminal.WriteLine($"  {tm.DisplayName} gains debuff resistance for {duration} rounds!", "cyan");
+                        }
+                    }
+                }
+                break;
+
             case "vanish":
                 player.DodgeNextAttack = true;
                 if (!player.ActiveStatuses.ContainsKey(StatusEffect.Hidden))
@@ -17551,7 +17596,7 @@ public partial class CombatEngine
                     int manaRestored = (int)(player.MaxMana * 0.25);
                     player.Mana = Math.Min(player.MaxMana, player.Mana + manaRestored);
                     terminal.SetColor("bright_magenta");
-                    terminal.WriteLine($"The Ocean restores {manaRestored} mana. (Mana: {player.Mana}/{player.MaxMana})");
+                    terminal.WriteLine(Loc.Get("combat.ocean_mana_restore", manaRestored, player.Mana, player.MaxMana));
                 }
                 // Also heal companions
                 if (result?.Teammates != null)
@@ -18275,7 +18320,7 @@ public partial class CombatEngine
                         if (abilityCooldowns.ContainsKey("reap"))
                         {
                             abilityCooldowns["reap"] = 0;
-                            terminal.WriteLine("Reap cooldown reset!", "bright_red");
+                            terminal.WriteLine(Loc.Get("combat.reap_cooldown_reset"), "bright_red");
                         }
                     }
                 }
@@ -18748,7 +18793,7 @@ public partial class CombatEngine
         {
             attackPower = (long)(attackPower * 1.5);
             terminal.SetColor("bright_yellow");
-            terminal.WriteLine("CRITICAL HIT!");
+            terminal.WriteLine(Loc.Get("combat.critical_hit"));
         }
 
         // Check for shield block on defender
@@ -18829,7 +18874,7 @@ public partial class CombatEngine
                 terminal.WriteLine($"  [{i + 1}] {sp.Name} (Level {sp.Level}, Cost: {sp.ManaCost})", "white");
             }
 
-            var choice = await terminal.GetInput("Cast which spell? ");
+            var choice = await terminal.GetInput(Loc.Get("combat.cast_which_spell"));
             if (int.TryParse(choice, out int spellIndex) && spellIndex >= 1 && spellIndex <= spells.Count)
             {
                 chosen = spells[spellIndex - 1];
@@ -19399,7 +19444,7 @@ public partial class CombatEngine
             terminal.WriteLine($"{i + 1}. {spell.Name} (Level {spell.Level}) - {manaCost} mana");
             if (!canCast)
             {
-                terminal.WriteLine("   (Not enough mana)");
+                terminal.WriteLine($"   {Loc.Get("combat.not_enough_mana")}");
             }
         }
         
@@ -21487,9 +21532,9 @@ public partial class CombatEngine
 
         target.DoomCountdown = rounds;
         terminal.SetColor("bright_red");
-        terminal.WriteLine($"  *** {target.DisplayName} has been marked with DOOM! ({rounds} rounds) ***");
+        terminal.WriteLine($"  *** {Loc.Get("combat.doom_marked", target.DisplayName, rounds)} ***");
         terminal.SetColor("yellow");
-        terminal.WriteLine("  A healer must dispel this or they will die!");
+        terminal.WriteLine($"  {Loc.Get("combat.doom_healer_warning")}");
     }
 
     /// <summary>
@@ -21505,10 +21550,10 @@ public partial class CombatEngine
         boss.ChannelingAbilityName = ctx.ChannelAbilityName;
 
         terminal.SetColor("bright_magenta");
-        terminal.WriteLine($"  {boss.Name} begins channeling {ctx.ChannelAbilityName}!");
+        terminal.WriteLine($"  {Loc.Get("combat.boss_channeling_ability", boss.Name, ctx.ChannelAbilityName)}");
         terminal.SetColor("yellow");
-        terminal.WriteLine("  *** Interrupt the channel or face devastating damage! ***");
-        terminal.WriteLine("  (Fast characters with high Agility can interrupt)");
+        terminal.WriteLine($"  {Loc.Get("combat.channel_interrupt_warning")}");
+        terminal.WriteLine($"  {Loc.Get("combat.channel_interrupt_hint")}");
     }
 
     /// <summary>
@@ -21638,12 +21683,12 @@ public partial class CombatEngine
         if (tank != null)
         {
             terminal.SetColor("bright_cyan");
-            terminal.WriteLine($"  {tank.DisplayName}'s taunt absorbs {(int)(absorptionRate * 100)}% of the blast for allies!");
+            terminal.WriteLine($"  {Loc.Get("combat.tank_absorbs", tank.DisplayName, (int)(absorptionRate * 100))}");
         }
         else
         {
             terminal.SetColor("yellow");
-            terminal.WriteLine("  No tank is absorbing damage — the full blast hits everyone!");
+            terminal.WriteLine($"  {Loc.Get("combat.no_tank_aoe")}");
         }
 
         await Task.Delay(GetCombatDelay(500));
@@ -21901,14 +21946,14 @@ public partial class CombatEngine
         if (!boss.CanBeSaved)
         {
             terminal.SetColor("red");
-            terminal.WriteLine($"  {boss.Name} cannot be saved.");
+            terminal.WriteLine($"  {Loc.Get("combat.boss_cannot_save", boss.Name)}");
             return false;
         }
 
         if (!ArtifactSystem.Instance.HasArtifact(ArtifactType.SoulweaversLoom))
         {
             terminal.SetColor("red");
-            terminal.WriteLine("  You need the Soulweaver's Loom!");
+            terminal.WriteLine($"  {Loc.Get("combat.loom_needed")}");
             return false;
         }
 
@@ -21917,9 +21962,9 @@ public partial class CombatEngine
         if (hpPercent > 0.5)
         {
             terminal.SetColor("yellow");
-            terminal.WriteLine($"  {boss.Name} is too strong to save yet.");
+            terminal.WriteLine($"  {Loc.Get("combat.boss_too_strong", boss.Name)}");
             terminal.SetColor("gray");
-            terminal.WriteLine("  Weaken them first.");
+            terminal.WriteLine($"  {Loc.Get("combat.weaken_first")}");
             return false;
         }
 
@@ -21927,17 +21972,17 @@ public partial class CombatEngine
         if (player.Chivalry - player.Darkness < 200)
         {
             terminal.SetColor("dark_red");
-            terminal.WriteLine("  Your heart is too dark to use the Loom.");
+            terminal.WriteLine($"  {Loc.Get("combat.heart_too_dark")}");
             return false;
         }
 
         terminal.WriteLine("");
         terminal.SetColor("bright_magenta");
-        terminal.WriteLine("  The Soulweaver's Loom glows with ancient power.");
+        terminal.WriteLine($"  {Loc.Get("combat.loom_glows")}");
         await Task.Delay(800);
 
         terminal.SetColor("white");
-        terminal.WriteLine($"  You reach out to {boss.Name}'s corrupted essence...");
+        terminal.WriteLine($"  {Loc.Get("combat.reach_essence", boss.Name)}");
         await Task.Delay(1000);
 
         // Display save dialogue
@@ -22055,7 +22100,7 @@ public partial class CombatEngine
                 {
                     // Timeout — auto-attack weakest
                     terminal.SetColor("yellow");
-                    terminal.WriteLine("  (Timed out — auto-attacking!)");
+                    terminal.WriteLine($"  {Loc.Get("combat.timed_out_auto")}");
                     input = "A";
                 }
                 catch
@@ -22081,7 +22126,7 @@ public partial class CombatEngine
                 if (retreatRoll <= retreatChance)
                 {
                     terminal.SetColor("yellow");
-                    terminal.WriteLine("  You successfully retreat from combat!");
+                    terminal.WriteLine($"  {Loc.Get("combat.retreat_success")}");
                     // Remove from combat
                     result.Teammates?.Remove(teammate);
                     if (teammate.CombatInputChannel != null)
@@ -22097,7 +22142,7 @@ public partial class CombatEngine
                 else
                 {
                     terminal.SetColor("red");
-                    terminal.WriteLine("  You failed to retreat!");
+                    terminal.WriteLine($"  {Loc.Get("combat.retreat_failed")}");
                     BroadcastGroupedPlayerAction(
                         $"\u001b[31m  {teammate.DisplayName} tries to retreat but fails!\u001b[0m", teammate);
                 }

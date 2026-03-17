@@ -545,6 +545,9 @@ public class Character
     public float GodSlayerDefenseBonus { get; set; } = 0f; // +defense% while buff active
     public bool HasGodSlayerBuff => GodSlayerCombats > 0;
 
+    // Calm Waters debuff shield (Wavecaller ability, v0.52.13)
+    public int CalmWatersRounds { get; set; } = 0;             // Rounds remaining with debuff resistance shield
+
     // Dark Pact buff (Evil Deeds ritual, v0.49.4)
     public int DarkPactCombats { get; set; }
     public float DarkPactDamageBonus { get; set; }

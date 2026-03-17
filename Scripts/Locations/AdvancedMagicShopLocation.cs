@@ -220,7 +220,7 @@ public class AdvancedMagicShopLocation : BaseLocation
                 return false;
                 
             default:
-                terminal.WriteLine($"{GameConfig.ErrorColor}Invalid choice.{GameConfig.TextColor}");
+                terminal.WriteLine($"{GameConfig.ErrorColor}{Loc.Get("adv_magic.invalid_choice")}{GameConfig.TextColor}");
                 await terminal.WaitForKeyPress();
                 return false;
         }
@@ -268,15 +268,15 @@ public class AdvancedMagicShopLocation : BaseLocation
 
         if (unidentifiedItems.Count == 0)
         {
-            terminal.WriteLine($"\n{GameConfig.WarningColor}You have no unidentified items!{GameConfig.TextColor}");
+            terminal.WriteLine($"\n{GameConfig.WarningColor}{Loc.Get("adv_magic.no_unidentified")}{GameConfig.TextColor}");
             await terminal.WaitForKeyPress();
             return;
         }
 
-        terminal.WriteLine("\nUnidentified items:");
+        terminal.WriteLine($"\n{Loc.Get("adv_magic.unidentified_items")}");
         for (int i = 0; i < unidentifiedItems.Count; i++)
         {
-            terminal.WriteLine($"{i + 1}. {GameConfig.ItemColor}???{GameConfig.TextColor} (Unknown item)");
+            terminal.WriteLine($"{i + 1}. {GameConfig.ItemColor}???{GameConfig.TextColor} ({Loc.Get("adv_magic.unknown_item")})");
         }
 
         terminal.Write($"\nWhich item to identify (1-{unidentifiedItems.Count}, 0 to cancel): ");
@@ -351,7 +351,7 @@ public class AdvancedMagicShopLocation : BaseLocation
         
         if (player.Gold < potionCost)
         {
-            terminal.WriteLine($"\n{GameConfig.ErrorColor}You cannot afford any healing potions!{GameConfig.TextColor}");
+            terminal.WriteLine($"\n{GameConfig.ErrorColor}{Loc.Get("adv_magic.cant_afford_potions")}{GameConfig.TextColor}");
             await terminal.WaitForKeyPress();
             return;
         }
@@ -359,7 +359,7 @@ public class AdvancedMagicShopLocation : BaseLocation
         int potionRoom = (int)Math.Max(0, GameConfig.MaxHealingPotions - player.Healing);
         if (potionRoom <= 0)
         {
-            terminal.WriteLine($"\n{GameConfig.ErrorColor}You're already at max potions ({GameConfig.MaxHealingPotions})!{GameConfig.TextColor}");
+            terminal.WriteLine($"\n{GameConfig.ErrorColor}{Loc.Get("adv_magic.max_potions", GameConfig.MaxHealingPotions)}{GameConfig.TextColor}");
             await terminal.WaitForKeyPress();
             return;
         }
@@ -407,12 +407,12 @@ public class AdvancedMagicShopLocation : BaseLocation
             return;
         }
 
-        terminal.Write("Confirm purchase? (Y/N): ");
+        terminal.Write(Loc.Get("adv_magic.confirm_purchase"));
 
         var confirm = await terminal.GetKeyCharAsync();
         if (char.ToUpper(confirm) != 'Y')
         {
-            terminal.WriteLine("Purchase cancelled.");
+            terminal.WriteLine(Loc.Get("adv_magic.purchase_cancelled"));
             await terminal.WaitForKeyPress();
             return;
         }
@@ -442,8 +442,8 @@ public class AdvancedMagicShopLocation : BaseLocation
         
         if (availableItems.Count == 0)
         {
-            terminal.WriteLine($"\n{GameConfig.WarningColor}The shop is currently out of stock!{GameConfig.TextColor}");
-            terminal.WriteLine($"{GameConfig.TalkColor}\"{ownerName} says: Come back later, I might have new items!\"");
+            terminal.WriteLine($"\n{GameConfig.WarningColor}{Loc.Get("adv_magic.out_of_stock")}{GameConfig.TextColor}");
+            terminal.WriteLine($"{GameConfig.TalkColor}\"{Loc.Get("adv_magic.come_back_later", ownerName)}\"");
             await terminal.WaitForKeyPress();
             return;
         }
@@ -508,7 +508,7 @@ public class AdvancedMagicShopLocation : BaseLocation
 
         if (player.Gold < buyTotalWithTax)
         {
-            terminal.WriteLine($"\n{GameConfig.ErrorColor}You cannot afford this item!{GameConfig.TextColor}");
+            terminal.WriteLine($"\n{GameConfig.ErrorColor}{Loc.Get("adv_magic.cant_afford_item")}{GameConfig.TextColor}");
             await terminal.WaitForKeyPress();
             return;
         }
@@ -517,7 +517,7 @@ public class AdvancedMagicShopLocation : BaseLocation
         int emptySlot = FindEmptyInventorySlot(player);
         if (emptySlot == -1)
         {
-            terminal.WriteLine($"\n{GameConfig.ErrorColor}Your inventory is full!{GameConfig.TextColor}");
+            terminal.WriteLine($"\n{GameConfig.ErrorColor}{Loc.Get("adv_magic.inventory_full")}{GameConfig.TextColor}");
             await terminal.WaitForKeyPress();
             return;
         }
@@ -592,12 +592,12 @@ public class AdvancedMagicShopLocation : BaseLocation
 
         if (sellableItems.Count == 0)
         {
-            terminal.WriteLine($"\n{GameConfig.WarningColor}You have no items to sell!{GameConfig.TextColor}");
+            terminal.WriteLine($"\n{GameConfig.WarningColor}{Loc.Get("adv_magic.no_items_sell")}{GameConfig.TextColor}");
             await terminal.WaitForKeyPress();
             return;
         }
 
-        terminal.WriteLine("Items you can sell:");
+        terminal.WriteLine(Loc.Get("adv_magic.items_to_sell"));
         for (int i = 0; i < sellableItems.Count; i++)
         {
             var item = GetItemDetails(player.Item[sellableItems[i]], player.ItemType[sellableItems[i]]);
@@ -622,7 +622,7 @@ public class AdvancedMagicShopLocation : BaseLocation
         await Task.Delay(1000);
         
         terminal.WriteLine($"{GameConfig.TalkColor}\"I can offer you {GameConfig.GoldColor}{sellPrice:N0}{GameConfig.TextColor} gold for this.\"");
-        terminal.Write("Accept offer? (Y/N): ");
+        terminal.Write(Loc.Get("adv_magic.accept_offer"));
         
         var confirm = await terminal.GetKeyCharAsync();
         if (char.ToUpper(confirm) == 'Y')
@@ -638,7 +638,7 @@ public class AdvancedMagicShopLocation : BaseLocation
         }
         else
         {
-            terminal.WriteLine("Sale cancelled.");
+            terminal.WriteLine(Loc.Get("adv_magic.sale_cancelled"));
         }
         
         await terminal.WaitForKeyPress();
@@ -649,33 +649,33 @@ public class AdvancedMagicShopLocation : BaseLocation
     /// </summary>
     private async Task TalkToOwner(Character player, TerminalEmulator terminal)
     {
-        terminal.WriteLine($"\n{GameConfig.TalkColor}=== Conversation with {ownerName} ==={GameConfig.TextColor}");
-        
+        terminal.WriteLine($"\n{GameConfig.TalkColor}=== {Loc.Get("adv_magic.conversation_with", ownerName)} ==={GameConfig.TextColor}");
+
         // Random owner phrases (Pascal conversation logic)
-        string[] ownerPhrases = {
-            "Welcome to my humble magic shop!",
-            "I have the finest magical items in the realm!",
-            "These potions have been blessed by ancient spirits!",
-            "Be careful with those magical artifacts - they're quite powerful!",
-            "I've been studying the arcane arts for over 200 years!",
-            "That amulet there? It once belonged to a great wizard!",
-            "Magic is not to be taken lightly, young adventurer!",
-            "Perhaps you need some healing potions for your journey?"
+        string[] phraseKeys = {
+            "adv_magic.phrase_welcome",
+            "adv_magic.phrase_finest",
+            "adv_magic.phrase_blessed",
+            "adv_magic.phrase_careful",
+            "adv_magic.phrase_studying",
+            "adv_magic.phrase_amulet",
+            "adv_magic.phrase_not_lightly",
+            "adv_magic.phrase_potions"
         };
-        
-        string phrase = ownerPhrases[random.Next(ownerPhrases.Length)];
-        
-        terminal.WriteLine($"{GameConfig.TalkColor}\"{ownerName} says: {phrase}\"");
-        
+
+        string phrase = Loc.Get(phraseKeys[random.Next(phraseKeys.Length)]);
+
+        terminal.WriteLine($"{GameConfig.TalkColor}\"{ownerName}: {phrase}\"");
+
         // Additional conversation based on player state
         if (player.HP < player.MaxHP / 2)
         {
-            terminal.WriteLine($"\n{GameConfig.TalkColor}\"You look injured! Perhaps some healing potions would help?\"");
+            terminal.WriteLine($"\n{GameConfig.TalkColor}\"{Loc.Get("adv_magic.phrase_injured")}\"");
         }
-        
+
         if (player.Class == CharacterClass.Magician || player.Class == CharacterClass.Cleric || player.Class == CharacterClass.Sage)
         {
-            terminal.WriteLine($"\n{GameConfig.TalkColor}\"Ah, a fellow practitioner of the magical arts! Welcome!\"");
+            terminal.WriteLine($"\n{GameConfig.TalkColor}\"{Loc.Get("adv_magic.phrase_fellow_mage")}\"");
         }
         
         await terminal.WaitForKeyPress();

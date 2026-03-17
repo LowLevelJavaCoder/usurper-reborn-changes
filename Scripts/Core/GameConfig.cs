@@ -837,6 +837,10 @@ public static partial class GameConfig
     public const float WavecallerHarmonicResonanceBonus = 0.25f; // Wavecaller: +25% healing from abilities and spells
     public const float WavecallerReflectionPercent = 0.15f;      // Wavecaller: 15% damage reflection when Reflecting
     public const float WavecallerOceansVoiceCritBonus = 0.20f;   // Wavecaller: +20% crit chance from Ocean's Voice
+
+    // Calm Waters debuff shield (Wavecaller ability)
+    public const int CalmWatersShieldDuration = 5;              // Rounds the debuff shield lasts
+    public const float CalmWatersResistChance = 0.50f;          // 50% chance to resist each incoming debuff
     // Cyclebreaker Passives
     public const float CyclebreakerDebuffResistChance = 0.25f;  // Cyclebreaker: 25% chance to resist incoming debuffs
     public const float CyclebreakerCycleXPBonus = 0.05f;        // Cyclebreaker: +5% XP bonus per NG+ cycle (max +25%)

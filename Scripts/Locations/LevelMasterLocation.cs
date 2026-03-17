@@ -486,27 +486,6 @@ public class LevelMasterLocation : BaseLocation
                 currentPlayer.Statistics.RecordLevelUp(startLevel + i + 1);
             }
 
-            // Track telemetry for level up with full stats
-            UsurperRemake.Systems.TelemetrySystem.Instance.TrackLevelUp(
-                currentPlayer.Level,
-                currentPlayer.Class.ToString(),
-                (int)currentPlayer.Strength,
-                (int)currentPlayer.Dexterity,
-                (int)currentPlayer.Constitution,
-                (int)currentPlayer.Intelligence,
-                (int)currentPlayer.Wisdom,
-                (int)currentPlayer.Charisma
-            );
-
-            // Update user properties in PostHog so level is current for dashboards
-            UsurperRemake.Systems.TelemetrySystem.Instance.SetUserProperties(
-                new System.Collections.Generic.Dictionary<string, object>
-                {
-                    ["level"] = currentPlayer.Level,
-                    ["max_level_reached"] = currentPlayer.Level
-                }
-            );
-
             // Log level up
             UsurperRemake.Systems.DebugLogger.Instance.LogLevelUp(currentPlayer.Name, startLevel, currentPlayer.Level);
 
@@ -1120,26 +1099,6 @@ public class LevelMasterLocation : BaseLocation
                 if (lvl % 10 == 0)
                     player.Fame += 5;
             }
-
-            // Telemetry
-            UsurperRemake.Systems.TelemetrySystem.Instance.TrackLevelUp(
-                player.Level,
-                player.Class.ToString(),
-                (int)player.Strength,
-                (int)player.Dexterity,
-                (int)player.Constitution,
-                (int)player.Intelligence,
-                (int)player.Wisdom,
-                (int)player.Charisma
-            );
-
-            UsurperRemake.Systems.TelemetrySystem.Instance.SetUserProperties(
-                new System.Collections.Generic.Dictionary<string, object>
-                {
-                    ["level"] = player.Level,
-                    ["max_level_reached"] = player.Level
-                }
-            );
 
             // Log level up
             UsurperRemake.Systems.DebugLogger.Instance.LogLevelUp(player.Name, startLevel, player.Level);

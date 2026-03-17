@@ -5762,13 +5762,6 @@ public class DungeonLocation : BaseLocation
         }
         terminal.WriteLine("");
 
-        // Track telemetry
-        TelemetrySystem.Instance.TrackDungeonEvent(
-            "floor_cleared", player.Level, floorLevel,
-            details: isSpecialFloor ? "boss_floor" : "normal",
-            xpGained: xpBonus, goldChange: goldBonus
-        );
-
         // Mark special floors as cleared in persistent player data
         if (isSpecialFloor)
         {
@@ -5857,14 +5850,6 @@ public class DungeonLocation : BaseLocation
         roomsExploredThisFloor = floorResult.WasRestored ? currentFloor.Rooms.Count(r => r.IsExplored) : 0;
         hasCampedThisFloor = false;
         consecutiveMonsterRooms = 0;
-
-        // Track dungeon floor telemetry
-        if (player != null)
-        {
-            TelemetrySystem.Instance.TrackDungeonEvent(
-                "enter_floor", player.Level, currentDungeonLevel
-            );
-        }
 
         // Update quest progress for reaching this floor
         if (player != null)

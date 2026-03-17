@@ -105,21 +105,114 @@ Four fixes to the Old God boss encounter system addressing crash risks, state co
 
 ---
 
+## Quest Abandon Persistence Fix
+
+Abandoning a quest showed "Quest abandoned" but the quest could reappear in the quest log after save/load cycles. Three issues: `AbandonQuest()` cleared the quest's `Occupier` field, causing it to fall out of the player's serialization scope entirely (silently dropped from saves instead of saved as abandoned); `SerializeQuestList()` mapped all deleted quests to `QuestStatus.Completed` regardless of how they were deleted; and `RestoreFromSaveData()` / `MergePlayerQuests()` only checked for `Completed` or `Failed` status when restoring the `Deleted` flag, not `Abandoned`. Added `IsAbandoned` property to Quest, `AbandonQuest()` now preserves occupier and marks all matching quests (defense against duplicates), serialization maps abandoned quests to `QuestStatus.Abandoned`, and all three deserialization paths restore abandoned quests as deleted.
+
+---
+
+## NPC Activity Text Localization Fix
+
+NPC location flavor text used a hardcoded English pattern: `"{name} is {activity}."` where activity was a gerund fragment like "nursing a drink at the bar". Hungarian has no equivalent "is" copula in present tense, making translations grammatically impossible — users reported seeing broken text like "Aldric Everhart van egy italt iszik". Changed to full self-contained sentences with `{0}` for the NPC name: `"{0} nurses a drink at the bar."` Each language can now structure the sentence naturally. Converted 59 keys (30 location activities + 29 personality/class shouts) from gerund fragments to active-voice sentences across all 5 languages (English, Spanish, Hungarian, Italian, French).
+
+---
+
+## Home Chest Item Loss Fix (Online Mode)
+
+Items deposited into the home chest in online mode could disappear on disconnect. The 60-second auto-save throttle meant chest deposits/withdrawals within the throttle window were never persisted — if the player disconnected before the next save cycle, the items were lost. Chest operations now reset the auto-save throttle so the next location loop iteration saves immediately.
+
+---
+
+## Shop & Equipment Stat Display Consistency Fix
+
+Weapon Shop and Armor Shop item listings were truncating stat bonuses to only 3 per item (e.g. showing "Str:+17, Dex:+17, Wis:+49" on an item that also has Agi:+17, Con:+93, Int:+17, Cha:+34). All stat bonuses now display in shop listings, matching the inventory and comparison views. Also fixed `WriteEquipmentStatSummary()` using hardcoded "DEF" instead of the localized stat label, and using `> 0` instead of `!= 0` for DefenceBonus/MaxHPBonus/MaxManaBonus (which would hide negative values on cursed items).
+
+---
+
+## Companion Lyris Class Display Fix
+
+Lyris showed as "Paladin" class on the Inn companion management screens (equipment, abilities, ability toggle) despite being a Ranger with Ranger abilities. The canonical `CombatRole.Hybrid → CharacterClass.Ranger` mapping in CompanionSystem was updated in v0.52.3, but three copies of the mapping in InnLocation.cs were missed. All three now correctly map to Ranger.
+
+---
+
+## Localization Pass — Dialogue, Prison Walk, Street Encounters
+
+Continued localization audit converting hardcoded English UI strings to `Loc.Get()` calls across three player-facing files.
+
+**PrisonWalkLocation.cs** — 79 new localization keys. All menu text, status display, prisoner list, prison break narrative, guard combat messages, success/failure outcomes, and help commands converted. Full Spanish translations; Hungarian, Italian, French get English placeholders.
+
+**StreetEncounterSystem.cs** — 5 new localization keys for the remaining hardcoded combat result messages (honor duel victory, brawl victory, defeated NPC, lost to NPC, bounty collected).
+
+**VisualNovelDialogueSystem.cs** — 88 new localization keys covering all UI narration strings: charisma flavor text, conversation option labels, player status warnings, chat/flirt/compliment/confession/kiss/proposition/provocation narration, affair decision menu and outcomes, and the full wedding ceremony sequence. NPC dialogue responses (~220 strings) kept as game data — not localized.
+
+---
+
+## Main Street Menu Layout Fix
+
+The Main Street menu used a fixed column width of 16 characters, which caused label overflow and broken alignment in non-English languages where translated labels exceeded the available space. The menu now computes column widths dynamically per-row based on the number of items displayed (e.g., 5-item rows get 15 chars each, 4-item rows get 19 chars). Combined with shortened translated labels across all languages, the menu now renders cleanly in English, Spanish, Hungarian, Italian, and French at all menu tiers.
+
+---
+
+## Calm Waters Redesign (Wavecaller)
+
+Calm Waters has been redesigned from a one-time cleanse into a party-wide debuff resistance shield. Previously, the ability claimed to "Remove all negative effects from allies" but only cleansed the player who used it — teammates and companions were never affected. Worse, a one-time cleanse had limited value since monster debuffs are constantly reapplied.
+
+**New behavior:** When used, Calm Waters grants all party members (player, companions, NPC teammates) a 50% chance to resist incoming debuffs for 5 rounds. When the shield blocks a debuff, a "Calm waters shield deflects X!" message appears in bright cyan. The shield works against all debuff sources:
+- Standard monster ability debuffs (poison, stun, fear, bleed, etc.)
+- Monster debuffs targeting companions
+- Old God boss debuffs (curse, stun, fear, Time Stop)
+- Manwe Phase 3 defense curse
+
+This makes Calm Waters especially valuable in Old God boss fights where corruption, stuns, and curses are constantly applied — the original use case the player community identified.
+
+---
+
+## PostHog Telemetry Removed
+
+The opt-in PostHog analytics system (`TelemetrySystem.cs`) has been completely removed. This was a feature that sent anonymous gameplay events (combat stats, shop transactions, level-ups, quest completions) to an external analytics service. All tracking calls removed from 14 source files, the telemetry opt-in prompt during character creation removed, the telemetry toggle removed from preferences, and 22 localization keys cleaned up. Steam achievements, the balance dashboard, player statistics, and debug logging are all unaffected — they use separate local systems.
+
+---
+
 ## Files Changed
 
-- `Scripts/Core/GameConfig.cs` — Version 0.52.12; boss enrage damage 2.0x→2.5x; enrage extra attacks 2→3
+- `Scripts/Core/GameConfig.cs` — Version 0.52.12; boss enrage damage 2.0x→2.5x; enrage extra attacks 2→3; Calm Waters shield constants (`CalmWatersShieldDuration`, `CalmWatersResistChance`)
 - `Scripts/Data/OldGodsData.cs` — All 7 Old God boss stats rebalanced (HP, STR, DEF, AGI, WIS, AttacksPerRound)
 - `Scripts/Systems/OldGodBossSystem.cs` — All boss party mechanics retuned (enrage timers, AoE damage, channel damage, corruption per stack); `SemaphoreSlim` lock on `StartBossEncounter()`; `ClearPlayerModifiers()` clears all temp bonuses; `GetDivineArmorReduction()` null-safe weapon name check; `CanEncounterBoss()` auto-recovers non-saveable gods stuck in Awakened state
-- `Scripts/Systems/SaveSystem.cs` — OldGodStates deserialization skips `Unknown` status; logs warning for unrecognized god types
+- `Scripts/Systems/SaveSystem.cs` — OldGodStates deserialization skips `Unknown` status; logs warning for unrecognized god types; `ResetAutoSaveThrottle()` method for critical state changes; removed telemetry serialization
 - `Scripts/Systems/DailySystemManager.cs` — Online mode daily reset skips display banner and mode-specific processing; single-player path unchanged
 - `Scripts/Systems/CompanionSystem.cs` — `GetCompanionMaxHP()` helper; fixed 7 `BaseStats.HP` references in `GetCompanionsAsCharacters()`, `DamageCompanion()`, `HealCompanion()`, `GetCompanionHP()`, `RestoreCompanionHP()`, and level-up
-- `Scripts/Systems/CombatEngine.cs` — Multi-target spell skip target prompt; monster ability display fix; group loot NPC-first priority; cascade timeout 30s→10s; group follower XP multiplier parity (Blood Moon, Child, Study, Settlement, Guild, HQ Training); gold distribution uses post-multiplier amount
+- `Scripts/Systems/TelemetrySystem.cs` — **DELETED** — PostHog analytics system removed
+- `Scripts/Systems/CombatEngine.cs` — Calm Waters redesign: new `"debuff_shield"` effect handler in both combat paths applies party-wide shield; `DecrementCalmWatersShield()` helper; Calm Waters resist checks at 6 debuff application points (standard monster abilities, companion debuffs, boss curse/stun/fear, Manwe Time Stop, Manwe Phase 3 curse); multi-target spell skip target prompt; monster ability display fix; group loot NPC-first priority; cascade timeout 30s→10s; group follower XP multiplier parity (Blood Moon, Child, Study, Settlement, Guild, HQ Training); gold distribution uses post-multiplier amount; removed telemetry calls
 - `Scripts/Systems/CombatMessages.cs` — Removed markup tags from `GetVictoryMessage()`
 - `Scripts/Systems/TeamSystem.cs` — `new Random()` → `Random.Shared` (4 instances)
 - `Scripts/Locations/TeamCornerLocation.cs` — `SaveAllSharedState()` after SackMember and ChangeTeamPassword; removed dead duplicate case "!"; `new Random()` → `Random.Shared`
-- `Scripts/Locations/InnLocation.cs` — Companion summary uses `GetCompanionMaxHP()` for display
-- `Scripts/Locations/DungeonLocation.cs` — Party HP readout uses `GetCompanionMaxHP()`
-- `Localization/en.json` — `home.upgrades` shortened to "Renovations"
-- `Localization/es.json` — `home.upgrades` shortened to "Renovaciones"
-- `Localization/it.json` — `home.upgrades` shortened to "Ristrutturazioni"
-- `Localization/hu.json` — `home.upgrades` unchanged (already short: "Felújítások")
+- `Scripts/Locations/InnLocation.cs` — Companion summary uses `GetCompanionMaxHP()` for display; fixed 3 stale `CombatRole.Hybrid → Paladin` mappings to `Ranger` for Lyris class display
+- `Scripts/Locations/HomeLocation.cs` — `ResetAutoSaveThrottle()` after chest deposit and withdraw to prevent item loss on disconnect
+- `Scripts/Locations/ArmorShopLocation.cs` — `GetBonusDescription()` removed `.Take(3)` limit; shows all stat bonuses
+- `Scripts/Locations/WeaponShopLocation.cs` — `GetBonusDescription()` removed `.Take(3)` limit; shows all stat bonuses
+- `Scripts/Locations/BaseLocation.cs` — `WriteEquipmentStatSummary()`: DEF uses localized label; DefenceBonus/MaxHPBonus/MaxManaBonus use `!= 0` instead of `> 0` to show negative values; telemetry toggle removed from preferences
+- `Scripts/Locations/DungeonLocation.cs` — Party HP readout uses `GetCompanionMaxHP()`; removed telemetry calls
+- `Scripts/Locations/MainStreetLocation.cs` — Dynamic column width per-row in `ShowClassicMenu()` (replaces fixed `const int C = 16`); removed telemetry session end call
+- `Scripts/Locations/MagicShopLocation.cs` — Removed 4 telemetry calls
+- `Scripts/Locations/HealerLocation.cs` — Removed 3 telemetry calls
+- `Scripts/Locations/LevelMasterLocation.cs` — Removed telemetry level-up and user property calls
+- `Scripts/Systems/QuestSystem.cs` — Removed telemetry quest tracking calls
+- `Scripts/Systems/AchievementSystem.cs` — Removed telemetry achievement call
+- `Scripts/Systems/SaveDataStructures.cs` — Removed `Telemetry` property from SaveData
+- `Scripts/Core/GameEngine.cs` — Removed telemetry opt-in prompt, session tracking, and serialization calls
+- `Scripts/Core/Character.cs` — `CalmWatersRounds` property for debuff shield duration tracking
+- `Scripts/Systems/ClassAbilitySystem.cs` — Calm Waters: description updated, SpecialEffect `"cleanse"` → `"debuff_shield"`
+- `Scripts/Core/Quest.cs` — `IsAbandoned` property for tracking abandoned quest state
+- `Scripts/Systems/QuestSystem.cs` — `AbandonQuest()` marks all matching quests with `IsAbandoned`, preserves occupier; `RestoreFromSaveData()`, `MergePlayerQuests()`, `MergeWorldQuests()` handle `QuestStatus.Abandoned` as `Deleted`
+- `Scripts/Systems/SaveSystem.cs` — `SerializeQuestList()` maps `IsAbandoned` to `QuestStatus.Abandoned`; `SerializePlayerQuests()` includes abandoned quests in save data
+- `Scripts/Locations/BaseLocation.cs` — Removed hardcoded ` is ` from NPC activity display; `GetLocationContextActivity()` and `GetNPCShout()` pass NPC name as `{0}` to all `Loc.Get()` calls
+- `Localization/en.json` — `home.upgrades` shortened; Main Street menu labels shortened for column fit; 59 NPC activity/shout keys converted to active-voice sentences with `{0}`; 172 new keys (88 dialogue + 79 prison + 5 street)
+- `Localization/es.json` — `home.upgrades` shortened; 59 NPC activity/shout keys updated with `{0}` and Spanish active voice; 172 new keys with full Spanish translations
+- `Localization/it.json` — `home.upgrades` shortened; 59 NPC activity/shout keys updated with `{0}` and Italian active voice; 172 new keys (English placeholders)
+- `Localization/hu.json` — 59 NPC activity/shout keys updated with `{0}` and Hungarian active voice; 172 new keys (English placeholders)
+- `Localization/fr.json` — 59 NPC activity/shout keys updated with `{0}` and French active voice; 172 new dialogue/prison keys
+- `Scripts/Locations/PrisonWalkLocation.cs` — All UI strings converted to `Loc.Get()` (79 keys: menus, status, prisoner list, prison break, guard combat, outcomes, help)
+- `Scripts/Systems/StreetEncounterSystem.cs` — 5 combat result messages converted to `Loc.Get()` (honor duel, brawl, defeat, loss, bounty)
+- `Scripts/Systems/VisualNovelDialogueSystem.cs` — 80 UI narration strings converted to `Loc.Get()` (charisma, options, warnings, flirt/compliment/confession/kiss/proposition/provocation narration, affair menu/outcomes, wedding ceremony)
+- `tools/add_dialogue_keys.py` — Batch script adding 88 dialogue localization keys (en + es translations)
+- `tools/add_prison_keys.py` — Batch script adding 79 prison walk localization keys (en + es translations)

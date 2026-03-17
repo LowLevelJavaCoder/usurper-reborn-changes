@@ -17,6 +17,7 @@ public partial class Quest
     public QuestTarget QuestTarget { get; set; }
     public byte Difficulty { get; set; }
     public bool Deleted { get; set; } = false;
+    public bool IsAbandoned { get; set; } = false;
     public string Comment { get; set; } = "";
     
     // Quest Occupancy

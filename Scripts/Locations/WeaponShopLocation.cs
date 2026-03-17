@@ -547,7 +547,7 @@ public class WeaponShopLocation : BaseLocation
         if (item.LifeSteal != 0) bonuses.Add($"{Loc.Get("ui.stat_leech")}{item.LifeSteal}%");
         if (item.PoisonDamage != 0) bonuses.Add($"{Loc.Get("ui.stat_psn")}+{item.PoisonDamage}");
 
-        return string.Join(" ", bonuses.Take(3));
+        return string.Join(" ", bonuses);
     }
 
     private static string GetClassTag(Equipment item)
@@ -881,11 +881,6 @@ public class WeaponShopLocation : BaseLocation
             terminal.WriteLine(Loc.Get("shop.purchased_inventory", item.Name));
         }
 
-        // Track purchase (all paths — equip, inventory, or can't-equip)
-        TelemetrySystem.Instance.TrackShopTransaction(
-            "weapon", "buy", item.Name, totalWithTax,
-            currentPlayer.Level, currentPlayer.Gold
-        );
         QuestSystem.OnEquipmentPurchased(currentPlayer, item);
 
         // Auto-save after purchase
@@ -1064,12 +1059,6 @@ public class WeaponShopLocation : BaseLocation
             currentPlayer.Statistics.RecordSale(price);
             DebugLogger.Instance.LogInfo("GOLD", $"SHOP SELL: {currentPlayer.DisplayName} sold weapon for {price:N0}g (gold now {currentPlayer.Gold:N0})");
             currentPlayer.RecalculateStats();
-
-            // Track shop sale telemetry
-            TelemetrySystem.Instance.TrackShopTransaction(
-                "weapon", "sell", selected.name, price,
-                currentPlayer.Level, currentPlayer.Gold
-            );
 
             terminal.SetColor("bright_green");
             terminal.WriteLine("");
