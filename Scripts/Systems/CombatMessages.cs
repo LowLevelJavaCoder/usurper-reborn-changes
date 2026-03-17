@@ -192,16 +192,16 @@ public static class CombatMessages
     {
         if (monstersDefeated == 1)
         {
-            return "[bright_green]Victory![/]";
+            return "Victory!";
         }
 
         return monstersDefeated switch
         {
-            2 => "[bright_green]Double kill![/]",
-            3 => "[bright_green]Triple kill![/]",
-            4 => "[bright_green]Quadra kill![/]",
-            5 => "[bright_yellow]PENTA KILL![/]",
-            _ => $"[bright_yellow]{monstersDefeated} MONSTERS SLAIN![/]"
+            2 => "Double kill!",
+            3 => "Triple kill!",
+            4 => "Quadra kill!",
+            5 => "PENTA KILL!",
+            _ => $"{monstersDefeated} MONSTERS SLAIN!"
         };
     }
 }

@@ -3927,8 +3927,9 @@ public class DungeonLocation : BaseLocation
             foreach (var companion in active)
             {
                 int hp = companions.GetCompanionHP(companion.Id);
+                int maxHP = companions.GetCompanionMaxHP(companion);
                 terminal.SetColor("green");
-                terminal.WriteLine(Loc.Get("dungeon.companion_hp", companion.Name, hp, companion.BaseStats.HP));
+                terminal.WriteLine(Loc.Get("dungeon.companion_hp", companion.Name, hp, maxHP));
             }
         }
 

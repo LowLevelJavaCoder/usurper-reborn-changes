@@ -340,10 +340,6 @@ public class TeamCornerLocation : BaseLocation
                     await TeamHeadquartersMenu();
                 return false;
 
-            case "!":
-                await ResurrectTeammate();
-                return false;
-
             case "R":
                 await NavigateToLocation(GameLocation.MainStreet);
                 return true;
@@ -1283,6 +1279,16 @@ public class TeamCornerLocation : BaseLocation
             terminal.SetColor("bright_green");
             terminal.WriteLine(Loc.Get("team.password_changed"));
             terminal.WriteLine("");
+
+            // Persist NPC password changes immediately so world-sim reload doesn't revert them
+            if (DoorMode.IsOnlineMode && OnlineStateManager.Instance != null)
+            {
+                _ = Task.Run(async () =>
+                {
+                    try { await OnlineStateManager.Instance.SaveAllSharedState(); }
+                    catch { /* best-effort */ }
+                });
+            }
         }
         else
         {
@@ -1392,6 +1398,16 @@ public class TeamCornerLocation : BaseLocation
                 terminal.WriteLine("");
 
                 NewsSystem.Instance.Newsy(true, $"{member.DisplayName} was kicked out of team '{currentPlayer.Team}'!");
+
+                // Persist NPC team removal immediately so world-sim reload doesn't restore it
+                if (DoorMode.IsOnlineMode && OnlineStateManager.Instance != null)
+                {
+                    _ = Task.Run(async () =>
+                    {
+                        try { await OnlineStateManager.Instance.SaveAllSharedState(); }
+                        catch { /* best-effort */ }
+                    });
+                }
 
                 terminal.SetColor("darkgray");
                 terminal.WriteLine(Loc.Get("ui.press_enter"));
@@ -2258,9 +2274,8 @@ public class TeamCornerLocation : BaseLocation
             long myPower = myFighter.Level * 10 + myFighter.Strength + myFighter.WeapPow + myFighter.Dexterity;
             long enemyPower = enemyFighter.Level * 10 + enemyFighter.Strength + enemyFighter.WeapPow + enemyFighter.Dexterity;
             // Add randomness (±20%)
-            var rng = new Random();
-            myPower = (long)(myPower * (0.8 + rng.NextDouble() * 0.4));
-            enemyPower = (long)(enemyPower * (0.8 + rng.NextDouble() * 0.4));
+            myPower = (long)(myPower * (0.8 + Random.Shared.NextDouble() * 0.4));
+            enemyPower = (long)(enemyPower * (0.8 + Random.Shared.NextDouble() * 0.4));
 
             bool myWin = myPower >= enemyPower;
             if (myWin) myWins++; else enemyWins++;

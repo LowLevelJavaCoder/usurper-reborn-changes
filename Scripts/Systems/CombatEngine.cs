@@ -7084,7 +7084,7 @@ public partial class CombatEngine
             }
             else
             {
-                // Follower passed — cascade to other players (excluding this follower), then companions
+                // Follower passed — try NPC auto-pickup first, then cascade to other players
                 followerTerm.SetColor("gray");
                 followerTerm.WriteLine(Loc.Get("combat.loot_you_pass"));
                 terminal.SetColor("gray");
@@ -7092,17 +7092,8 @@ public partial class CombatEngine
 
                 bool itemTaken = false;
 
-                // Offer to other grouped players (excluding the one who passed)
-                if (lootItem.IsIdentified && currentTeammates != null)
-                {
-                    var otherPlayers = currentTeammates.Where(t => t.IsGroupedPlayer && t.IsAlive
-                        && t.RemoteTerminal != null && t != player).ToList();
-                    if (otherPlayers.Count > 0)
-                        itemTaken = await OfferLootToOtherPlayers(lootItem, player, otherPlayers, monster);
-                }
-
-                // Try companion auto-pickup
-                if (!itemTaken && lootItem.IsIdentified && currentTeammates != null && currentTeammates.Count > 0)
+                // Try companion/NPC auto-pickup first (instant, no waiting)
+                if (lootItem.IsIdentified && currentTeammates != null && currentTeammates.Count > 0)
                 {
                     var pickup = TryTeammatePickupItem(lootItem);
                     if (pickup.HasValue)
@@ -7123,6 +7114,15 @@ public partial class CombatEngine
                             }
                         }
                     }
+                }
+
+                // If no NPC wanted it, offer to other grouped players (excluding this follower)
+                if (!itemTaken && lootItem.IsIdentified && currentTeammates != null)
+                {
+                    var otherPlayers = currentTeammates.Where(t => t.IsGroupedPlayer && t.IsAlive
+                        && t.RemoteTerminal != null && t != player).ToList();
+                    if (otherPlayers.Count > 0)
+                        itemTaken = await OfferLootToOtherPlayers(lootItem, player, otherPlayers, monster);
                 }
 
                 if (!itemTaken)
@@ -7436,27 +7436,16 @@ public partial class CombatEngine
                 break;
 
             default:
-                // Player passed — offer to other group members first, then companions
+                // Player passed — try NPC/companion auto-pickup first (instant), then offer to other players
                 bool itemTaken = false;
 
-                // Pass-down to other grouped players (if any)
-                if (lootItem.IsIdentified && currentTeammates != null)
-                {
-                    var otherPlayers = currentTeammates.Where(t => t.IsGroupedPlayer && t.IsAlive && t.RemoteTerminal != null).ToList();
-                    if (otherPlayers.Count > 0)
-                    {
-                        itemTaken = await OfferLootToOtherPlayers(lootItem, player, otherPlayers, monster);
-                    }
-                }
-
-                // If no player took it, try companion/NPC auto-pickup
-                if (!itemTaken && lootItem.IsIdentified && currentTeammates != null && currentTeammates.Count > 0)
+                // Try companion/NPC auto-pickup first (no waiting)
+                if (lootItem.IsIdentified && currentTeammates != null && currentTeammates.Count > 0)
                 {
                     var pickup = TryTeammatePickupItem(lootItem);
                     if (pickup.HasValue)
                     {
                         var (teammate, upgradePercent) = pickup.Value;
-                        // Convert Item to Equipment for the teammate
                         var teammateEquip = ConvertLootItemToEquipment(lootItem);
                         if (teammateEquip != null)
                         {
@@ -7464,7 +7453,6 @@ public partial class CombatEngine
                             if (teammate.EquipItem(teammateEquip, out _))
                             {
                                 teammate.RecalculateStats();
-                                // Sync equipment back to Companion object so it persists
                                 CompanionSystem.Instance?.SyncCompanionEquipment(teammate);
                                 string teammateName = teammate.Name2 ?? teammate.Name1 ?? "Your ally";
                                 terminal.SetColor("bright_green");
@@ -7472,6 +7460,16 @@ public partial class CombatEngine
                                 itemTaken = true;
                             }
                         }
+                    }
+                }
+
+                // If no NPC wanted it, offer to other grouped players
+                if (!itemTaken && lootItem.IsIdentified && currentTeammates != null)
+                {
+                    var otherPlayers = currentTeammates.Where(t => t.IsGroupedPlayer && t.IsAlive && t.RemoteTerminal != null).ToList();
+                    if (otherPlayers.Count > 0)
+                    {
+                        itemTaken = await OfferLootToOtherPlayers(lootItem, player, otherPlayers, monster);
                     }
                 }
 
@@ -7893,13 +7891,13 @@ public partial class CombatEngine
             terminal.SetColor("bright_yellow");
             terminal.WriteLine($"  Offering loot to {otherName}...");
 
-            // Read with 30-second timeout
+            // Read with 10-second timeout (shorter than primary — cascaded offers shouldn't block long)
             string otherChoice = "P";
             try
             {
                 otherTerm.Write(Loc.Get("ui.your_choice"));
                 var inputTask = otherTerm.GetKeyInput();
-                var completed = await Task.WhenAny(inputTask, Task.Delay(30000));
+                var completed = await Task.WhenAny(inputTask, Task.Delay(10000));
                 if (completed == inputTask)
                 {
                     otherChoice = inputTask.Result.ToUpper();
@@ -14660,7 +14658,7 @@ public partial class CombatEngine
                         if (monster.IsBoss)
                             actualDmg = Math.Max(actualDmg, (long)(monster.Level * 1.5));
                         companion.HP = Math.Max(0, companion.HP - actualDmg);
-                        terminal.WriteLine($"{companion.DisplayName} takes {actualDmg} damage from {abilityName}!", "red");
+                        terminal.WriteLine($"{companion.DisplayName} takes {actualDmg} damage!", "red");
                         result.CombatLog.Add($"{monster.Name} uses {abilityName} on {companion.DisplayName} for {actualDmg}");
                     }
                     // DamageMultiplier abilities (CrushingBlow, LifeDrain, CriticalStrike, etc.)
@@ -14693,7 +14691,7 @@ public partial class CombatEngine
                         }
                         else
                         {
-                            terminal.WriteLine($"{companion.DisplayName} takes {dmg} damage from {abilityName}!", "red");
+                            terminal.WriteLine($"{companion.DisplayName} takes {dmg} damage!", "red");
                             result.CombatLog.Add($"{monster.Name} uses {abilityName} on {companion.DisplayName} for {dmg}");
                         }
                     }
@@ -15361,7 +15359,8 @@ public partial class CombatEngine
         CompanionSystem.Instance?.SyncCompanionLevelToWrappers(result.Teammates);
 
         // Distribute rewards to grouped players (independent XP calculation per player)
-        await DistributeGroupRewards(result, totalExp, totalGold);
+        // Pass adjustedGold (post-multiplier) so leader gold reduction matches what they actually received
+        await DistributeGroupRewards(result, totalExp, adjustedGold);
 
         // Track gold collection for quests
         QuestSystem.OnGoldCollected(result.Player, adjustedGold);
@@ -21050,7 +21049,8 @@ public partial class CombatEngine
             if (spellInfo.SpellType == "Buff" || spellInfo.SpellType == "Heal")
             {
                 int? allyTarget = null;
-                if (currentTeammates?.Any(t => t.IsAlive) == true)
+                // Multi-target buff/heal (e.g. Restorative Tide, Tidecall Barrier) — skip target prompt
+                if (!spellInfo.IsMultiTarget && currentTeammates?.Any(t => t.IsAlive) == true)
                 {
                     if (spellInfo.SpellType == "Heal" && currentTeammates.Any(t => t.IsAlive && t.HP < t.MaxHP))
                     {
@@ -22561,8 +22561,21 @@ public partial class CombatEngine
             float xpMult = DifficultySystem.GetExperienceMultiplier(DifficultySystem.CurrentDifficulty) * GameConfig.XPMultiplier;
             playerExp = (long)(playerExp * xpMult);
 
+            // Blood Moon XP multiplier
+            if (groupedPlayer.IsBloodMoon)
+                playerExp = (long)(playerExp * GameConfig.BloodMoonXPMultiplier);
+
             // Team bonus (+15%)
             playerExp = (long)(playerExp * 1.15);
+
+            // Child XP bonus
+            float gpChildXPMult = FamilySystem.Instance?.GetChildXPMultiplier(groupedPlayer) ?? 1.0f;
+            if (gpChildXPMult > 1.0f)
+                playerExp = (long)(playerExp * gpChildXPMult);
+
+            // Study/Library XP bonus (Home upgrade)
+            if (groupedPlayer.HasStudy)
+                playerExp += (long)(playerExp * GameConfig.StudyXPBonus);
 
             // Divine boon XP/gold bonus (group path)
             if (groupedPlayer.CachedBoonEffects?.XPPercent > 0)
@@ -22570,6 +22583,12 @@ public partial class CombatEngine
             long playerGold = goldPerPlayer;
             if (groupedPlayer.CachedBoonEffects?.GoldPercent > 0)
                 playerGold += (long)(playerGold * groupedPlayer.CachedBoonEffects.GoldPercent);
+
+            // Settlement Tavern/Library XP bonus
+            if (groupedPlayer.HasSettlementBuff && groupedPlayer.SettlementBuffType == (int)UsurperRemake.Systems.SettlementBuffType.XPBonus)
+                playerExp += (long)(playerExp * groupedPlayer.SettlementBuffValue);
+            if (groupedPlayer.HasSettlementBuff && groupedPlayer.SettlementBuffType == (int)UsurperRemake.Systems.SettlementBuffType.LibraryXP)
+                playerExp += (long)(playerExp * groupedPlayer.SettlementBuffValue);
 
             // NG+ cycle multiplier
             if (groupedPlayer.CycleExpMultiplier > 1.0f)
@@ -22583,6 +22602,18 @@ public partial class CombatEngine
                 if (gpCycleBonus > 0)
                     playerExp += (long)(playerExp * gpCycleBonus);
             }
+
+            // Guild XP bonus
+            if (UsurperRemake.BBS.DoorMode.IsOnlineMode && GuildSystem.Instance != null)
+            {
+                double gpGuildMult = GuildSystem.Instance.GetGuildXPMultiplier(groupedPlayer.Name1 ?? "");
+                if (gpGuildMult > 1.0)
+                    playerExp = (long)(playerExp * gpGuildMult);
+            }
+
+            // Team HQ Training bonus: +5% XP per level
+            if (groupedPlayer.HQTrainingLevel > 0)
+                playerExp += (long)(playerExp * (groupedPlayer.HQTrainingLevel * 0.05));
 
             // Group level gap penalty
             float groupXPMult = GroupSystem.GetGroupXPMultiplier(groupedPlayer.Level, highestLevel);

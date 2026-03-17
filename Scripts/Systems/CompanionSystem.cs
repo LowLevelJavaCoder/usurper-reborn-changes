@@ -602,12 +602,6 @@ namespace UsurperRemake.Systems
             {
                 if (companion == null || companion.IsDead) continue;
 
-                // Initialize HP if needed
-                if (!companionCurrentHP.ContainsKey(companion.Id))
-                {
-                    companionCurrentHP[companion.Id] = companion.BaseStats.HP;
-                }
-
                 var charWrapper = new Character
                 {
                     Name2 = companion.Name,
@@ -647,6 +641,12 @@ namespace UsurperRemake.Systems
                 // RecalculateStats applies equipment bonuses on top of Base* values
                 charWrapper.RecalculateStats();
 
+                // Initialize HP if needed — AFTER RecalculateStats so MaxHP includes equipment bonuses
+                if (!companionCurrentHP.ContainsKey(companion.Id))
+                {
+                    companionCurrentHP[companion.Id] = (int)charWrapper.MaxHP;
+                }
+
                 // Restore tracked combat HP (don't heal to full mid-combat)
                 charWrapper.HP = companionCurrentHP[companion.Id];
                 charWrapper.Mana = companion.BaseStats.MagicPower * 5;
@@ -685,7 +685,7 @@ namespace UsurperRemake.Systems
                 return false;
 
             if (!companionCurrentHP.ContainsKey(id))
-                companionCurrentHP[id] = companion.BaseStats.HP;
+                companionCurrentHP[id] = GetCompanionMaxHP(companion);
 
             companionCurrentHP[id] = Math.Max(0, companionCurrentHP[id] - damage);
 
@@ -707,9 +707,10 @@ namespace UsurperRemake.Systems
                 return;
 
             if (!companionCurrentHP.ContainsKey(id))
-                companionCurrentHP[id] = companion.BaseStats.HP;
+                companionCurrentHP[id] = GetCompanionMaxHP(companion);
 
-            companionCurrentHP[id] = Math.Min(companion.BaseStats.HP, companionCurrentHP[id] + amount);
+            int maxHP = GetCompanionMaxHP(companion);
+            companionCurrentHP[id] = Math.Min(maxHP, companionCurrentHP[id] + amount);
         }
 
         /// <summary>
@@ -720,11 +721,47 @@ namespace UsurperRemake.Systems
             if (!companionCurrentHP.ContainsKey(id))
             {
                 if (companions.TryGetValue(id, out var c))
-                    companionCurrentHP[id] = c.BaseStats.HP;
+                    companionCurrentHP[id] = GetCompanionMaxHP(c);
                 else
                     return 0;
             }
             return companionCurrentHP[id];
+        }
+
+        /// <summary>
+        /// Get the actual MaxHP for a companion including equipment bonuses.
+        /// BaseStats.HP is the unequipped base — this builds a temporary Character wrapper
+        /// with equipment and RecalculateStats() to get the true MaxHP.
+        /// </summary>
+        public int GetCompanionMaxHP(Companion companion)
+        {
+            if (companion == null) return 0;
+
+            // If companion has no equipment, base HP is accurate
+            if (companion.EquippedItems.Count == 0)
+                return companion.BaseStats.HP;
+
+            // Build a temporary wrapper to calculate equipment bonuses
+            var temp = new Character
+            {
+                BaseMaxHP = companion.BaseStats.HP,
+                BaseConstitution = Math.Max(10 + companion.Level, companion.Constitution),
+                Level = companion.Level
+            };
+            foreach (var kvp in companion.EquippedItems)
+                temp.EquippedItems[kvp.Key] = kvp.Value;
+            temp.RecalculateStats();
+            return (int)temp.MaxHP;
+        }
+
+        /// <summary>
+        /// Overload that looks up companion by ID
+        /// </summary>
+        public int GetCompanionMaxHP(CompanionId id)
+        {
+            if (companions.TryGetValue(id, out var companion))
+                return GetCompanionMaxHP(companion);
+            return 0;
         }
 
         /// <summary>
@@ -736,7 +773,7 @@ namespace UsurperRemake.Systems
             {
                 if (companion != null && !companion.IsDead)
                 {
-                    companionCurrentHP[companion.Id] = companion.BaseStats.HP;
+                    companionCurrentHP[companion.Id] = GetCompanionMaxHP(companion);
                 }
             }
         }
@@ -1918,11 +1955,11 @@ namespace UsurperRemake.Systems
                     break;
             }
 
-            // Update current HP tracking to new max
+            // Update current HP tracking to new max (with equipment bonuses)
             if (companionCurrentHP.ContainsKey(companion.Id))
             {
                 // Heal to full on level up
-                companionCurrentHP[companion.Id] = companion.BaseStats.HP;
+                companionCurrentHP[companion.Id] = GetCompanionMaxHP(companion);
             }
 
             // GD.Print($"[Companion] {companion.Name} leveled up to {companion.Level}! HP: {companion.BaseStats.HP}, ATK: {companion.BaseStats.Attack}, DEF: {companion.BaseStats.Defense}");

@@ -177,29 +177,42 @@ public class DailySystemManager
         // Log the daily reset
         DebugLogger.Instance.LogDailyReset(currentDay);
 
-        // Display reset message: if forced (manual from settings menu), show immediately.
-        // Otherwise, defer display to next location boundary to avoid mid-interaction interruption.
-        if (forced)
+        // Online mode: silent daily reset (counters only, no banner, no mode-specific processing)
+        // The MUD server's world sim handles world-level resets; players just need counter refreshes.
+        if (DoorMode.IsOnlineMode)
         {
-            await DisplayDailyResetMessage();
+            await RunBasicDailyReset();
+            if (maintenanceSystem != null)
+            {
+                await maintenanceSystem.CheckAndRunMaintenance(forced);
+            }
         }
         else
         {
-            PendingDailyResetDisplay = true;
-        }
-        
-        // Always run basic daily reset (counters, turns, daily flags)
-        await RunBasicDailyReset();
+            // Display reset message: if forced (manual from settings menu), show immediately.
+            // Otherwise, defer display to next location boundary to avoid mid-interaction interruption.
+            if (forced)
+            {
+                await DisplayDailyResetMessage();
+            }
+            else
+            {
+                PendingDailyResetDisplay = true;
+            }
 
-        // Run MaintenanceSystem for additional Pascal-compatible processing
-        // (alive bonus, team wages, class maintenance, healing spoilage, etc.)
-        if (maintenanceSystem != null)
-        {
-            await maintenanceSystem.CheckAndRunMaintenance(forced);
+            // Always run basic daily reset (counters, turns, daily flags)
+            await RunBasicDailyReset();
+
+            // Run MaintenanceSystem for additional Pascal-compatible processing
+            // (alive bonus, team wages, class maintenance, healing spoilage, etc.)
+            if (maintenanceSystem != null)
+            {
+                await maintenanceSystem.CheckAndRunMaintenance(forced);
+            }
+
+            // Process mode-specific resets (single-player only)
+            await ProcessModeSpecificReset();
         }
-        
-        // Process mode-specific resets
-        await ProcessModeSpecificReset();
         
         // Clean up old mail
         MailSystem.CleanupOldMail();

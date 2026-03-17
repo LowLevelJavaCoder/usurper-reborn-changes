@@ -2487,7 +2487,7 @@ public class InnLocation : BaseLocation
     {
         var companionSystem = CompanionSystem.Instance;
         int currentHP = companionSystem.GetCompanionHP(companion.Id);
-        int maxHP = companion.BaseStats.HP;
+        int maxHP = companionSystem.GetCompanionMaxHP(companion);
 
         // Name and title
         terminal.SetColor(isActive ? "bright_white" : "white");

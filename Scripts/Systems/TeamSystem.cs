@@ -279,7 +279,7 @@ public partial class TeamSystem
         var defenderTeam = PrepareTeamForBattle(opponentMembers, opponentTeam);
         
         // Battle announcement
-        string header = GangWarHeaders[new Random().Next(GangWarHeaders.Length)];
+        string header = GangWarHeaders[Random.Shared.Next(GangWarHeaders.Length)];
         newsSystem.WriteTeamNews(header,
             $"{GameConfig.NewsColorHighlight}{attacker.Team}{GameConfig.NewsColorDefault} challenged {GameConfig.NewsColorHighlight}{opponentTeam}{GameConfig.NewsColorDefault}!");
         
@@ -385,7 +385,7 @@ public partial class TeamSystem
         bool turfWar = team1Members.Any(m => m.CTurf) || team2Members.Any(m => m.CTurf);
         
         // Battle announcement
-        string header = GangWarHeaders[new Random().Next(GangWarHeaders.Length)];
+        string header = GangWarHeaders[Random.Shared.Next(GangWarHeaders.Length)];
         string announcement = $"{GameConfig.NewsColorHighlight}{gang1}{GameConfig.NewsColorDefault} challenged {GameConfig.NewsColorHighlight}{gang2}{GameConfig.NewsColorDefault}";
         string turfMessage = turfWar ? "A challenge for Town Control!" : "";
         
@@ -630,11 +630,10 @@ public partial class TeamSystem
     /// </summary>
     private void ShuffleTeam(List<Character> team)
     {
-        var random = new Random();
         for (int i = 0; i < team.Count * 2; i++)
         {
-            int x = random.Next(team.Count);
-            int y = random.Next(team.Count);
+            int x = Random.Shared.Next(team.Count);
+            int y = Random.Shared.Next(team.Count);
             if (x != y && x < team.Count && y < team.Count)
             {
                 (team[x], team[y]) = (team[y], team[x]);
@@ -727,22 +726,20 @@ public partial class TeamSystem
     private async Task<TeamBattleResult> ConductAutomatedTeamBattle(List<Character> team1, List<Character> team2, bool turfWar)
     {
         // Simplified automated battle for NPCs
-        var random = new Random();
-        
         var result = new TeamBattleResult
         {
             Team1 = team1[0].Team,
             Team2 = team2[0].Team,
             TurfWar = turfWar
         };
-        
+
         // Determine winner based on team power
         long team1Power = team1.Sum(m => m.Level + m.Strength + m.Defence);
         long team2Power = team2.Sum(m => m.Level + m.Strength + m.Defence);
-        
+
         // Add some randomness
-        team1Power += random.Next(-50, 51);
-        team2Power += random.Next(-50, 51);
+        team1Power += Random.Shared.Next(-50, 51);
+        team2Power += Random.Shared.Next(-50, 51);
         
         if (team1Power > team2Power)
         {
