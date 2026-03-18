@@ -814,45 +814,10 @@ jobs:
             chmod +x steam-build/depot-macos/UsurperReborn-x64
             chmod +x steam-build/depot-macos/UsurperReborn-arm64
 
-            # Create universal launcher that detects architecture
-            cat > steam-build/depot-macos/play.sh << 'LAUNCHER'
-#!/bin/bash
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-ARCH=$(uname -m)
-
-if [ "$ARCH" = "arm64" ]; then
-    BINARY="$SCRIPT_DIR/UsurperReborn-arm64"
-else
-    BINARY="$SCRIPT_DIR/UsurperReborn-x64"
-fi
-
-# Try WezTerm first, fall back to system terminal, fall back to direct
-if [ -d "$SCRIPT_DIR/wezterm/WezTerm.app" ]; then
-    export WEZTERM_CONFIG_FILE="$SCRIPT_DIR/wezterm.lua"
-    "$SCRIPT_DIR/wezterm/WezTerm.app/Contents/MacOS/wezterm" start --cwd "$SCRIPT_DIR" -- "$BINARY" --local "$@"
-elif command -v open &> /dev/null; then
-    osascript -e "tell application \"Terminal\" to do script \"cd '$SCRIPT_DIR' && '$BINARY' --local $*; exit\""
-else
-    "$BINARY" --local "$@"
-fi
-LAUNCHER
+            # Copy universal macOS launchers (detect Intel vs Apple Silicon at runtime)
+            cp launchers/play-mac.sh steam-build/depot-macos/play.sh
+            cp launchers/play-mac-accessible.sh steam-build/depot-macos/play-accessible.sh
             chmod +x steam-build/depot-macos/play.sh
-
-            # Create accessible launcher
-            cat > steam-build/depot-macos/play-accessible.sh << 'LAUNCHER'
-#!/bin/bash
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-ARCH=$(uname -m)
-
-if [ "$ARCH" = "arm64" ]; then
-    BINARY="$SCRIPT_DIR/UsurperReborn-arm64"
-else
-    BINARY="$SCRIPT_DIR/UsurperReborn-x64"
-fi
-
-# Accessible mode: run directly in current terminal with screen reader flag
-"$BINARY" --local --screen-reader "$@"
-LAUNCHER
             chmod +x steam-build/depot-macos/play-accessible.sh
 
             echo "✅ Steam macOS universal build successful (x64 + arm64)"
