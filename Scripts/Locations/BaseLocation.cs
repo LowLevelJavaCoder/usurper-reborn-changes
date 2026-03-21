@@ -8410,4 +8410,183 @@ public abstract class BaseLocation
         EquipmentDatabase.RegisterDynamic(equipment);
         return equipment;
     }
+
+    /// <summary>
+    /// Filtered sell flow - lets players sell backpack items matching filters:
+    /// by level gap, by Common rarity only, or by max gold value.
+    /// Skips cursed and unidentified items automatically.
+    /// </summary>
+    protected async Task<bool> FilteredSellFromBackpack(ObjType[] validTypes, float fenceModifier)
+    {
+        if (currentPlayer.Inventory == null || currentPlayer.Inventory.Count == 0)
+        {
+            terminal.SetColor("gray");
+            terminal.WriteLine(Loc.Get("shop.filter_none_found"));
+            await terminal.WaitForKey();
+            return false;
+        }
+
+        terminal.ClearScreen();
+        WriteSectionHeader(Loc.Get("shop.filtered_sell_header"), "bright_yellow");
+        terminal.WriteLine("");
+
+        terminal.SetColor("white");
+        terminal.WriteLine(Loc.Get("shop.filter_menu_prompt"));
+        terminal.WriteLine("");
+
+        int defaultLevelGap = 5;
+        terminal.SetColor("bright_yellow");
+        terminal.WriteLine($"  {Loc.Get("shop.filter_level_option", defaultLevelGap)}");
+        terminal.WriteLine($"  {Loc.Get("shop.filter_value_option")}");
+        terminal.WriteLine($"  {Loc.Get("shop.filter_rarity_option")}");
+        terminal.SetColor("gray");
+        terminal.WriteLine($"  {Loc.Get("shop.filter_cancel")}");
+        terminal.WriteLine("");
+
+        terminal.SetColor("cyan");
+        terminal.Write(Loc.Get("ui.choice"));
+        terminal.SetColor("white");
+        var filterChoice = (await terminal.GetInput("")).Trim().ToUpper();
+
+        List<Item> filtered;
+
+        switch (filterChoice)
+        {
+            case "L":
+            {
+                // Level-based filter
+                terminal.WriteLine("");
+                terminal.SetColor("white");
+                terminal.Write(Loc.Get("shop.filter_enter_level_gap", defaultLevelGap));
+                var gapInput = (await terminal.GetInput("")).Trim();
+                int levelGap = int.TryParse(gapInput, out int g) && g > 0 ? g : defaultLevelGap;
+                int maxItemLevel = Math.Max(1, currentPlayer.Level - levelGap);
+
+                filtered = currentPlayer.Inventory
+                    .Where(i => i.IsIdentified && !i.IsCursed &&
+                           validTypes.Contains(i.Type) &&
+                           i.MinLevel <= maxItemLevel && i.MinLevel > 0)
+                    .ToList();
+
+                if (filtered.Count == 0)
+                {
+                    terminal.SetColor("gray");
+                    terminal.WriteLine("");
+                    terminal.WriteLine(Loc.Get("shop.filter_none_found"));
+                    terminal.WriteLine(Loc.Get("shop.filter_level_label", maxItemLevel));
+                    await terminal.WaitForKey();
+                    return false;
+                }
+
+                terminal.SetColor("gray");
+                terminal.WriteLine(Loc.Get("shop.filter_level_label", maxItemLevel));
+                break;
+            }
+
+            case "V":
+            {
+                // Value-based filter
+                terminal.WriteLine("");
+                terminal.SetColor("white");
+                terminal.Write(Loc.Get("shop.filter_enter_max_value"));
+                var valInput = (await terminal.GetInput("")).Trim();
+                if (!long.TryParse(valInput, out long maxValue) || maxValue <= 0)
+                {
+                    terminal.SetColor("gray");
+                    terminal.WriteLine(Loc.Get("ui.cancelled"));
+                    await terminal.WaitForKey();
+                    return false;
+                }
+
+                filtered = currentPlayer.Inventory
+                    .Where(i => i.IsIdentified && !i.IsCursed &&
+                           validTypes.Contains(i.Type) &&
+                           i.Value < maxValue)
+                    .ToList();
+
+                if (filtered.Count == 0)
+                {
+                    terminal.SetColor("gray");
+                    terminal.WriteLine("");
+                    terminal.WriteLine(Loc.Get("shop.filter_none_found"));
+                    await terminal.WaitForKey();
+                    return false;
+                }
+                break;
+            }
+
+            case "C":
+            {
+                // Common rarity only - items with no special enchantments or loot effects
+                filtered = currentPlayer.Inventory
+                    .Where(i => i.IsIdentified && !i.IsCursed &&
+                           validTypes.Contains(i.Type) &&
+                           (i.LootEffects == null || i.LootEffects.Count == 0) &&
+                           !i.IsArtifact)
+                    .ToList();
+
+                if (filtered.Count == 0)
+                {
+                    terminal.SetColor("gray");
+                    terminal.WriteLine("");
+                    terminal.WriteLine(Loc.Get("shop.filter_none_found"));
+                    await terminal.WaitForKey();
+                    return false;
+                }
+                break;
+            }
+
+            default:
+                return false;
+        }
+
+        // Show preview
+        long totalGold = filtered.Sum(i => (long)((i.Value / 2) * fenceModifier));
+        terminal.WriteLine("");
+        terminal.SetColor("white");
+        terminal.WriteLine(Loc.Get("shop.filter_preview", filtered.Count, totalGold.ToString("N0")));
+        terminal.WriteLine("");
+
+        // List items being sold
+        for (int i = 0; i < Math.Min(filtered.Count, 20); i++)
+        {
+            terminal.SetColor("gray");
+            terminal.Write("  ");
+            terminal.SetColor("white");
+            terminal.Write(filtered[i].Name);
+            terminal.SetColor("darkgray");
+            long itemPrice = (long)((filtered[i].Value / 2) * fenceModifier);
+            terminal.WriteLine($" - {itemPrice:N0}g");
+        }
+        if (filtered.Count > 20)
+        {
+            terminal.SetColor("darkgray");
+            terminal.WriteLine($"  ... and {filtered.Count - 20} more");
+        }
+
+        terminal.WriteLine("");
+        terminal.SetColor("yellow");
+        terminal.Write(Loc.Get("shop.filter_confirm", filtered.Count, totalGold.ToString("N0")));
+        var confirm = (await terminal.GetInput("")).Trim().ToUpper();
+
+        if (confirm == "Y")
+        {
+            foreach (var item in filtered)
+                currentPlayer.Inventory.Remove(item);
+            currentPlayer.Gold += totalGold;
+            currentPlayer.Statistics.RecordSale(totalGold);
+            DebugLogger.Instance.LogInfo("GOLD", $"FILTERED SELL: {currentPlayer.DisplayName} sold {filtered.Count} items for {totalGold:N0}g (gold now {currentPlayer.Gold:N0})");
+            currentPlayer.RecalculateStats();
+
+            terminal.SetColor("bright_green");
+            terminal.WriteLine("");
+            terminal.WriteLine(Loc.Get("shop.filter_sold", filtered.Count, totalGold.ToString("N0")));
+
+            await SaveSystem.Instance.AutoSave(currentPlayer);
+            await terminal.WaitForKey();
+            return true;
+        }
+
+        return false;
+    }
 }

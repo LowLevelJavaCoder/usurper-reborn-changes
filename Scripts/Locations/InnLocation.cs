@@ -3274,6 +3274,14 @@ public class InnLocation : BaseLocation
             terminal.SetColor("darkgray");
             terminal.Write("  [");
             terminal.SetColor("bright_yellow");
+            terminal.Write("B");
+            terminal.SetColor("darkgray");
+            terminal.Write("] ");
+            terminal.SetColor("white");
+            terminal.WriteLine(Loc.Get("inn.equip_best"));
+            terminal.SetColor("darkgray");
+            terminal.Write("  [");
+            terminal.SetColor("bright_yellow");
             terminal.Write("Q");
             terminal.SetColor("darkgray");
             terminal.Write("] ");
@@ -3297,6 +3305,9 @@ public class InnLocation : BaseLocation
                     break;
                 case "T":
                     await CompanionTakeAllEquipment(target);
+                    break;
+                case "B":
+                    await CompanionEquipBestGear(target);
                     break;
                 case "Q":
                 case "":
@@ -3700,6 +3711,169 @@ public class InnLocation : BaseLocation
         }
 
         await Task.Delay(2000);
+    }
+
+    /// <summary>
+    /// Auto-equip the best available items from player inventory across all slots for a companion.
+    /// Scores items by primary stat (weapon power for weapons, armor class for armor, stat total for accessories).
+    /// </summary>
+    private async Task CompanionEquipBestGear(Character target)
+    {
+        terminal.ClearScreen();
+        WriteBoxHeader($"BEST GEAR: {target.DisplayName.ToUpper()}", "bright_cyan");
+        terminal.WriteLine("");
+
+        terminal.SetColor("white");
+        terminal.Write(Loc.Get("inn.equip_best_confirm", target.DisplayName));
+        var confirm = (await terminal.ReadLineAsync()).ToUpper().Trim();
+        if (confirm != "Y")
+        {
+            terminal.SetColor("gray");
+            terminal.WriteLine(Loc.Get("ui.cancelled"));
+            await Task.Delay(1000);
+            return;
+        }
+
+        terminal.WriteLine("");
+        terminal.SetColor("cyan");
+        terminal.WriteLine(Loc.Get("inn.equip_best_scanning", target.DisplayName));
+        terminal.WriteLine("");
+
+        int equippedCount = 0;
+
+        // Process each equipment slot
+        var slotsToCheck = new[] {
+            EquipmentSlot.MainHand, EquipmentSlot.OffHand,
+            EquipmentSlot.Head, EquipmentSlot.Body, EquipmentSlot.Arms,
+            EquipmentSlot.Hands, EquipmentSlot.Legs, EquipmentSlot.Feet,
+            EquipmentSlot.Waist, EquipmentSlot.Face, EquipmentSlot.Cloak,
+            EquipmentSlot.Neck, EquipmentSlot.LFinger, EquipmentSlot.RFinger
+        };
+
+        foreach (var slot in slotsToCheck)
+        {
+            // Get all matching items from player inventory for this slot
+            var candidates = GetItemsForSlot(slot)
+                .Where(x => !x.isEquipped && x.item.IsIdentified && !x.item.IsCursed)
+                .Where(x => x.item.CanEquip(target, out _))
+                .ToList();
+
+            if (candidates.Count == 0)
+            {
+                terminal.SetColor("darkgray");
+                terminal.WriteLine(Loc.Get("inn.equip_best_no_upgrade", slot.GetDisplayName()));
+                continue;
+            }
+
+            // Score each candidate by primary stat value
+            var bestCandidate = candidates
+                .OrderByDescending(x => ScoreEquipment(x.item, slot))
+                .First();
+
+            var currentItem = target.GetEquipment(slot);
+            int currentScore = currentItem != null ? ScoreEquipment(currentItem, slot) : 0;
+            int newScore = ScoreEquipment(bestCandidate.item, slot);
+
+            // Only equip if it's an upgrade (or slot is empty)
+            if (newScore <= currentScore && currentItem != null)
+            {
+                terminal.SetColor("darkgray");
+                terminal.WriteLine(Loc.Get("inn.equip_best_no_upgrade", slot.GetDisplayName()));
+                continue;
+            }
+
+            // Remove from player inventory (find by name match)
+            var invItem = currentPlayer.Inventory.FirstOrDefault(i => i.Name == bestCandidate.item.Name);
+            if (invItem == null) continue;
+            currentPlayer.Inventory.Remove(invItem);
+
+            // Track items before equipping so displaced items go to player
+            var targetInventoryBefore = target.Inventory.Count;
+
+            // Equip to target
+            if (target.EquipItem(bestCandidate.item, slot, out string message))
+            {
+                // Move displaced items back to player inventory
+                if (target.Inventory.Count > targetInventoryBefore)
+                {
+                    var displacedItems = target.Inventory.Skip(targetInventoryBefore).ToList();
+                    foreach (var displaced in displacedItems)
+                    {
+                        target.Inventory.Remove(displaced);
+                        currentPlayer.Inventory.Add(displaced);
+                    }
+                }
+
+                equippedCount++;
+                terminal.SetColor("bright_green");
+                if (currentItem != null)
+                    terminal.WriteLine(Loc.Get("inn.equip_best_upgraded", slot.GetDisplayName(), currentItem.Name, bestCandidate.item.Name));
+                else
+                    terminal.WriteLine(Loc.Get("inn.equip_best_equipped", slot.GetDisplayName(), bestCandidate.item.Name));
+            }
+            else
+            {
+                // Failed - return item to player
+                currentPlayer.Inventory.Add(invItem);
+            }
+        }
+
+        target.RecalculateStats();
+        terminal.WriteLine("");
+
+        if (equippedCount > 0)
+        {
+            terminal.SetColor("bright_green");
+            terminal.WriteLine(Loc.Get("inn.equip_best_done", equippedCount, target.DisplayName));
+            await SaveSystem.Instance.AutoSave(currentPlayer);
+        }
+        else
+        {
+            terminal.SetColor("yellow");
+            terminal.WriteLine(Loc.Get("inn.equip_best_none", target.DisplayName));
+        }
+
+        await Task.Delay(2000);
+    }
+
+    /// <summary>
+    /// Score an equipment item for auto-equip comparison.
+    /// Weapons scored by weapon power, armor by AC, accessories by total stat bonuses.
+    /// </summary>
+    private static int ScoreEquipment(Equipment item, EquipmentSlot slot)
+    {
+        // Base score from primary stat
+        int score = 0;
+
+        if (slot == EquipmentSlot.MainHand || slot == EquipmentSlot.OffHand)
+        {
+            score = item.WeaponPower * 10 + item.ShieldBonus * 8;
+        }
+        else if (slot == EquipmentSlot.LFinger || slot == EquipmentSlot.RFinger ||
+                 slot == EquipmentSlot.Neck)
+        {
+            // Accessories: score by total stat bonuses
+            score = 0;
+        }
+        else
+        {
+            // Armor slots
+            score = item.ArmorClass * 10;
+        }
+
+        // Add stat bonuses (weighted equally)
+        score += (item.StrengthBonus + item.DexterityBonus + item.AgilityBonus +
+                  item.ConstitutionBonus + item.IntelligenceBonus + item.WisdomBonus +
+                  item.CharismaBonus) * 3;
+        score += item.MaxHPBonus * 2;
+        score += item.MaxManaBonus * 2;
+        score += item.DefenceBonus * 3;
+        score += item.MagicResistance * 2;
+        score += item.CriticalChanceBonus * 2;
+        score += item.LifeSteal * 2;
+        score += item.StaminaBonus * 2;
+
+        return score;
     }
 
     private Item CompanionConvertEquipmentToItem(Equipment equipment)

@@ -2411,6 +2411,10 @@ public partial class MagicShopLocation : BaseLocation
         terminal.SetColor("gray");
         terminal.Write("ll, ");
         terminal.SetColor("bright_yellow");
+        terminal.Write("[F]");
+        terminal.SetColor("gray");
+        terminal.Write("iltered, ");
+        terminal.SetColor("bright_yellow");
         terminal.Write("0");
         terminal.SetColor("gray");
         terminal.WriteLine(" to cancel): ");
@@ -2419,6 +2423,14 @@ public partial class MagicShopLocation : BaseLocation
         var upper = input.Trim().ToUpper();
 
         if (upper == "0" || upper == "Q" || upper == "B") return;
+
+        if (upper == "F")
+        {
+            // Filtered sell - sell accessories matching player-chosen criteria
+            var accessoryTypes = new[] { ObjType.Magic, ObjType.Fingers, ObjType.Neck };
+            await FilteredSellFromBackpack(accessoryTypes, fenceModifier);
+            return;
+        }
 
         if (upper == "A")
         {

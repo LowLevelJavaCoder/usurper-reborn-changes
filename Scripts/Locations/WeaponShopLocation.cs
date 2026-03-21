@@ -1023,6 +1023,14 @@ public class WeaponShopLocation : BaseLocation
             return;
         }
 
+        if (input == "F")
+        {
+            // Filtered sell - sell weapons/shields matching player-chosen criteria
+            var weaponTypes = new[] { ObjType.Weapon, ObjType.Shield };
+            await FilteredSellFromBackpack(weaponTypes, fenceModifier);
+            return;
+        }
+
         if (!int.TryParse(input, out int sellChoice) || sellChoice < 1 || sellChoice > sellableItems.Count)
         {
             return;

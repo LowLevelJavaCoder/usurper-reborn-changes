@@ -924,6 +924,15 @@ public class ArmorShopLocation : BaseLocation
             return;
         }
 
+        if (input == "F")
+        {
+            // Filtered sell - sell armor matching player-chosen criteria
+            var armorFilterTypes = new[] { ObjType.Body, ObjType.Head, ObjType.Arms, ObjType.Hands,
+                ObjType.Legs, ObjType.Feet, ObjType.Waist, ObjType.Face, ObjType.Abody };
+            await FilteredSellFromBackpack(armorFilterTypes, fenceModifier);
+            return;
+        }
+
         if (!int.TryParse(input, out int sellChoice) || sellChoice < 1 || sellChoice > sellableItems.Count)
         {
             return;
