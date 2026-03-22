@@ -18,6 +18,12 @@ namespace UsurperRemake.Systems
         private int _backpackPage = 0;
         private const int BackpackPageSize = 15;
 
+        // Filtered inventory for specific slots
+        private Dictionary<int, int>? filteredInventoryMap = null;
+        private int _filteredBackpackPage = 0;
+        private List<Item>? filteredInventory = null;
+        private EquipmentSlot? currFilteredSlot = null;
+
         public InventorySystem(TerminalEmulator term, Character character)
         {
             terminal = term;
@@ -108,7 +114,88 @@ namespace UsurperRemake.Systems
             DisplayBackpack();
         }
 
-        private void DisplayBackpack()
+        private List<Item> FilterInventoryBySlot(EquipmentSlot slot)
+        {
+            if (this.currFilteredSlot == slot && this.filteredInventory != null)
+            {
+                return this.filteredInventory;
+            }
+
+            if (this.currFilteredSlot != slot)
+            {
+                _filteredBackpackPage = 0;
+            }
+
+            this.filteredInventory = [];
+            this.filteredInventoryMap = new Dictionary<int, int>();
+            this.currFilteredSlot = slot;
+
+            List<ObjType> types = slot switch
+            {
+                EquipmentSlot.Head => [ObjType.Head],
+                EquipmentSlot.Body => [ObjType.Body],
+                EquipmentSlot.Arms => [ObjType.Arms],
+                EquipmentSlot.Hands => [ObjType.Hands],
+                EquipmentSlot.LFinger => [ObjType.Fingers, ObjType.Magic],
+                EquipmentSlot.RFinger => [ObjType.Fingers, ObjType.Magic],
+                EquipmentSlot.Legs => [ObjType.Legs],
+                EquipmentSlot.Waist => [ObjType.Waist, ObjType.Magic],
+                EquipmentSlot.Neck => [ObjType.Neck, ObjType.Magic],
+                EquipmentSlot.Face => [ObjType.Face],
+                EquipmentSlot.MainHand => [ObjType.Weapon, ObjType.Shield],
+                EquipmentSlot.OffHand => [ObjType.Weapon, ObjType.Shield],
+                EquipmentSlot.Cloak => [ObjType.Abody],
+                _ => [ObjType.Weapon] // Default
+            };
+
+            for (int i = 0; i < player.Inventory.Count; i++)
+            {
+                Item item = player.Inventory[i];
+                ObjType actualType = item.Type;
+                bool isItemOfType = false;
+
+                if (item.Type != ObjType.Magic)
+                {
+                    isItemOfType = types.Exists((ObjType type) => item.Type == type);
+
+                    if (isItemOfType && (item.Type == ObjType.Weapon || item.Type == ObjType.Shield))
+                    {
+                        WeaponHandedness handedness;
+                        WeaponType weaponType;
+                        GetHandedness(item, out handedness, out weaponType);
+                        bool showTwoHanded = handedness == WeaponHandedness.TwoHanded && slot == EquipmentSlot.MainHand;
+                        bool showOneHanded = handedness == WeaponHandedness.OneHanded || (handedness == WeaponHandedness.OffHandOnly && slot == EquipmentSlot.OffHand);
+                        isItemOfType = slot == EquipmentSlot.MainHand ? (showTwoHanded || showOneHanded) : showOneHanded;
+                    }
+                }
+                else
+                {
+                    // Check if this magic item is equippable based on MagicType
+                    // Cast to int to avoid namespace conflicts between UsurperRemake.MagicItemType and global::MagicItemType
+                    MagicItemType neededMagicType = slot switch
+                    {
+                        EquipmentSlot.LFinger => MagicItemType.Fingers,
+                        EquipmentSlot.RFinger => MagicItemType.Fingers,
+                        EquipmentSlot.Waist => MagicItemType.Waist,
+                        EquipmentSlot.Neck => MagicItemType.Neck
+                    };
+
+                    // Only equippable if it has a valid MagicType
+                    isItemOfType = item.MagicType == neededMagicType;
+                }
+
+                if (isItemOfType)
+                {
+                    filteredInventory.Add(item);
+                    int currInventoryIndex = this.filteredInventoryMap.Count;
+                    this.filteredInventoryMap.Add(currInventoryIndex + 1, i + 1);
+                }
+            }
+
+            return filteredInventory;
+        }
+
+        private void DisplayBackpack(EquipmentSlot? slot = null)
         {
             if (player.Inventory == null || player.Inventory.Count == 0)
             {
@@ -123,14 +210,27 @@ namespace UsurperRemake.Systems
                 return;
             }
 
-            int totalItems = player.Inventory.Count;
+            List<Item> inventory = slot != null ? FilterInventoryBySlot((EquipmentSlot)slot) : player.Inventory;
+
+            int totalItems = inventory.Count;
             int totalPages = (totalItems + BackpackPageSize - 1) / BackpackPageSize;
-            _backpackPage = Math.Clamp(_backpackPage, 0, totalPages - 1);
-            int startIndex = _backpackPage * BackpackPageSize;
+            int backpackPage = 0;
+
+            if (slot == null)
+            {
+                backpackPage = _backpackPage;
+                _backpackPage = Math.Clamp(_backpackPage, 0, totalPages - 1);
+            } else
+            {
+                backpackPage = _filteredBackpackPage;
+                _filteredBackpackPage = Math.Clamp(_filteredBackpackPage, 0, totalPages - 1);
+            }
+
+            int startIndex = backpackPage * BackpackPageSize;
             int endIndex = Math.Min(startIndex + BackpackPageSize, totalItems);
 
             terminal.SetColor("yellow");
-            string pageInfo = totalPages > 1 ? $" ({_backpackPage + 1}/{totalPages})" : "";
+            string pageInfo = totalPages > 1 ? $" ({backpackPage + 1}/{totalPages})" : "";
             if (!GameConfig.ScreenReaderMode)
                 terminal.WriteLine($"═══ {Loc.Get("inventory.backpack")}{pageInfo} ═══");
             else
@@ -139,7 +239,7 @@ namespace UsurperRemake.Systems
             terminal.WriteLine("");
             for (int i = startIndex; i < endIndex; i++)
             {
-                var item = player.Inventory[i];
+                var item = inventory[i];
                 int displayNum = i + 1;
                 terminal.SetColor("gray");
                 terminal.Write($"  [B{displayNum}] ");
@@ -196,9 +296,9 @@ namespace UsurperRemake.Systems
                 terminal.SetColor("darkgray");
                 terminal.WriteLine("");
                 terminal.Write("  ");
-                if (_backpackPage > 0)
+                if (backpackPage > 0)
                     terminal.Write($"[<] {Loc.Get("inventory.prev_page")}  ");
-                if (_backpackPage < totalPages - 1)
+                if (backpackPage < totalPages - 1)
                     terminal.Write($"[>] {Loc.Get("inventory.next_page")}");
                 terminal.WriteLine("");
             }
@@ -468,7 +568,7 @@ namespace UsurperRemake.Systems
             return false;
         }
 
-        private async Task ManageBackpackItem(int index)
+        private async Task ManageBackpackItem(int index, EquipmentSlot? slot = null)
         {
             if (player.Inventory == null || index < 1 || index > player.Inventory.Count)
             {
@@ -558,7 +658,7 @@ namespace UsurperRemake.Systems
                         await Task.Delay(2000);
                         break;
                     }
-                    await EquipFromBackpack(index - 1);
+                    await EquipFromBackpack(index - 1, slot);
                     break;
                 case "D":
                     if (item.IsCursed)
@@ -581,7 +681,7 @@ namespace UsurperRemake.Systems
             }
         }
 
-        private async Task EquipFromBackpack(int itemIndex)
+        private async Task EquipFromBackpack(int itemIndex, EquipmentSlot? slot = null)
         {
             if (player.Inventory == null || itemIndex < 0 || itemIndex >= player.Inventory.Count)
             {
@@ -643,46 +743,12 @@ namespace UsurperRemake.Systems
                 return;
             }
 
-            // Determine handedness for weapons (default to None for non-weapons like armor)
-            WeaponHandedness handedness = WeaponHandedness.None;
-            WeaponType weaponType = WeaponType.None;
-            if (item.Type == ObjType.Weapon)
-            {
-                // First, look up in the equipment database by name to get correct handedness
-                var knownEquip = EquipmentDatabase.GetByName(item.Name);
-                if (knownEquip != null && (knownEquip.Handedness == WeaponHandedness.OneHanded || knownEquip.Handedness == WeaponHandedness.TwoHanded))
-                {
-                    handedness = knownEquip.Handedness;
-                    weaponType = knownEquip.WeaponType;
-                }
-                else
-                {
-                    // Fallback: guess from name
-                    string nameLower = item.Name.ToLower();
-                    if (nameLower.Contains("two-hand") || nameLower.Contains("2h") ||
-                        nameLower.Contains("greatsword") || nameLower.Contains("greataxe") ||
-                        nameLower.Contains("halberd") || nameLower.Contains("pike") ||
-                        nameLower.Contains("longbow") || nameLower.Contains("crossbow") ||
-                        nameLower.Contains("staff") || nameLower.Contains("quarterstaff") ||
-                        nameLower.Contains("maul") || nameLower.Contains("spear") ||
-                        nameLower.Contains("glaive") || nameLower.Contains("bardiche") ||
-                        nameLower.Contains("lance") || nameLower.Contains("voulge"))
-                    {
-                        handedness = WeaponHandedness.TwoHanded;
-                    }
-                    else
-                    {
-                        handedness = WeaponHandedness.OneHanded;
-                    }
-                }
-            }
-            else if (item.Type == ObjType.Shield)
-            {
-                handedness = WeaponHandedness.OffHandOnly;
-            }
+            WeaponHandedness handedness;
+            WeaponType weaponType;
+            GetHandedness(item, out handedness, out weaponType);
 
             // For rings, ask which finger
-            if (item.Type == ObjType.Fingers || (int)item.MagicType == 5)
+            if (slot == null && (item.Type == ObjType.Fingers || (int)item.MagicType == 5))
             {
                 terminal.WriteLine("");
                 terminal.SetColor("cyan");
@@ -753,7 +819,7 @@ namespace UsurperRemake.Systems
 
             // For one-handed weapons, ask which slot to use
             EquipmentSlot? finalSlot = null;
-            if (Character.RequiresSlotSelection(equipment))
+            if (slot != null && Character.RequiresSlotSelection(equipment))
             {
                 finalSlot = await PromptForWeaponSlot();
                 if (finalSlot == null)
@@ -903,6 +969,47 @@ namespace UsurperRemake.Systems
             await Task.Delay(1500);
         }
 
+        private static void GetHandedness(Item item, out WeaponHandedness handedness, out WeaponType weaponType)
+        {
+            // Determine handedness for weapons (default to None for non-weapons like armor)
+            handedness = WeaponHandedness.None;
+            weaponType = WeaponType.None;
+            if (item.Type == ObjType.Weapon)
+            {
+                // First, look up in the equipment database by name to get correct handedness
+                var knownEquip = EquipmentDatabase.GetByName(item.Name);
+                if (knownEquip != null && (knownEquip.Handedness == WeaponHandedness.OneHanded || knownEquip.Handedness == WeaponHandedness.TwoHanded))
+                {
+                    handedness = knownEquip.Handedness;
+                    weaponType = knownEquip.WeaponType;
+                }
+                else
+                {
+                    // Fallback: guess from name
+                    string nameLower = item.Name.ToLower();
+                    if (nameLower.Contains("two-hand") || nameLower.Contains("2h") ||
+                        nameLower.Contains("greatsword") || nameLower.Contains("greataxe") ||
+                        nameLower.Contains("halberd") || nameLower.Contains("pike") ||
+                        nameLower.Contains("longbow") || nameLower.Contains("crossbow") ||
+                        nameLower.Contains("staff") || nameLower.Contains("quarterstaff") ||
+                        nameLower.Contains("maul") || nameLower.Contains("spear") ||
+                        nameLower.Contains("glaive") || nameLower.Contains("bardiche") ||
+                        nameLower.Contains("lance") || nameLower.Contains("voulge"))
+                    {
+                        handedness = WeaponHandedness.TwoHanded;
+                    }
+                    else
+                    {
+                        handedness = WeaponHandedness.OneHanded;
+                    }
+                }
+            }
+            else if (item.Type == ObjType.Shield)
+            {
+                handedness = WeaponHandedness.OffHandOnly;
+            }
+        }
+
         /// <summary>
         /// Prompt player to choose which hand to equip a one-handed weapon in
         /// </summary>
@@ -994,6 +1101,111 @@ namespace UsurperRemake.Systems
             }
         }
 
+        private async Task HandleUnequipItem(EquipmentSlot slot)
+        {
+            var currentItem = player.GetEquipment(slot);
+
+            if (currentItem == null)
+            {
+                return;
+            }
+
+            if (currentItem.IsCursed)
+            {
+                terminal.SetColor("red");
+                terminal.WriteLine(Loc.Get("inventory.cursed_cant_unequip", currentItem.Name));
+                terminal.SetColor("gray");
+                terminal.WriteLine(Loc.Get("inventory.visit_healer_curse"));
+                await Task.Delay(2000);
+                return;
+            }
+            var unequipped = player.UnequipSlot(slot);
+            if (unequipped != null)
+            {
+                // Convert equipment to legacy Item and add to backpack
+                var legacyItem = new global::Item
+                {
+                    Name = unequipped.Name,
+                    Type = unequipped.Slot switch
+                    {
+                        EquipmentSlot.MainHand or EquipmentSlot.OffHand => ObjType.Weapon,
+                        EquipmentSlot.Body => ObjType.Body,
+                        EquipmentSlot.Head => ObjType.Head,
+                        EquipmentSlot.Arms => ObjType.Arms,
+                        EquipmentSlot.Legs => ObjType.Legs,
+                        EquipmentSlot.Hands => ObjType.Hands,
+                        EquipmentSlot.Feet => ObjType.Feet,
+                        EquipmentSlot.LFinger or EquipmentSlot.RFinger => ObjType.Fingers,
+                        EquipmentSlot.Neck or EquipmentSlot.Neck2 => ObjType.Neck,
+                        EquipmentSlot.Cloak => ObjType.Abody,
+                        EquipmentSlot.Waist => ObjType.Waist,
+                        EquipmentSlot.Face => ObjType.Face,
+                        _ => ObjType.Body
+                    },
+                    Attack = unequipped.WeaponPower,
+                    Armor = unequipped.ArmorClass + unequipped.ShieldBonus,
+                    Defence = unequipped.DefenceBonus,
+                    Strength = unequipped.StrengthBonus,
+                    Dexterity = unequipped.DexterityBonus,
+                    Wisdom = unequipped.WisdomBonus,
+                    HP = unequipped.MaxHPBonus,
+                    Mana = unequipped.MaxManaBonus,
+                    Value = unequipped.Value,
+                    IsCursed = unequipped.IsCursed
+                };
+                player.Inventory.Add(legacyItem);
+                player.RecalculateStats();
+
+                terminal.SetColor("yellow");
+                terminal.WriteLine(Loc.Get("inventory.unequipped", unequipped.Name));
+                terminal.SetColor("gray");
+                terminal.WriteLine(Loc.Get("inventory.returned_backpack"));
+                await Task.Delay(1500);
+            }
+        }
+
+        private async Task ProcessSlotInventoryChoice(EquipmentSlot slot, string choice)
+        {
+            switch (choice)
+            {
+                case "U":
+                    HandleUnequipItem(slot);
+                    break;
+                case "<":
+                case ",":
+                    {
+                        if (_filteredBackpackPage > 0) _filteredBackpackPage--;
+                        ManageSlot(slot);
+                    }
+                    break;
+                case ">":
+                case ".":
+                    {
+                        int totalPages = filteredInventory != null
+                            ? (filteredInventory.Count + BackpackPageSize - 1) / BackpackPageSize
+                            : 1;
+                        if (_filteredBackpackPage < totalPages - 1) _filteredBackpackPage++;
+                        ManageSlot(slot);
+                    }
+                    break;
+                case "Q":
+                    return;
+                default:
+                    // Check for B# format (backpack item)
+                    if (choice.StartsWith("B") && int.TryParse(choice.Substring(1), out int backpackIndex))
+                    {
+                        int index = filteredInventoryMap[backpackIndex];
+                        await ManageBackpackItem(index, slot);
+                    }
+                    else
+                    {
+                        terminal.WriteLine(Loc.Get("inventory.invalid_choice"), "red");
+                        await Task.Delay(500);
+                    }
+                    break;
+            }
+        }
+
         private async Task ManageSlot(EquipmentSlot slot)
         {
             terminal.ClearScreen();
@@ -1024,74 +1236,24 @@ namespace UsurperRemake.Systems
             }
             terminal.WriteLine("");
 
+            DisplayBackpack(slot);
+
             // Show options
             terminal.SetColor("cyan");
             terminal.WriteLine($"{Loc.Get("inventory.options")}:");
             terminal.SetColor("white");
             if (currentItem != null)
             {
-                terminal.WriteLine($"  [U] {Loc.Get("inventory.unequip_item")}");
+                terminal.WriteLine($"  {Loc.Get("inventory.slot.equip")} {Loc.Get("inventory.unequip_item")}");
+            } else
+            {
+                terminal.WriteLine($"  {Loc.Get("inventory.slot.equip")}");
             }
-            terminal.WriteLine($"  [Q] {Loc.Get("inventory.return_inventory")}");
+            terminal.WriteLine($"  {Loc.Get("inventory.slot.options_line2")}");
             terminal.WriteLine("");
 
             var choice = await terminal.GetInput(Loc.Get("ui.choice"));
-
-            if (choice.ToUpper().Trim() == "U" && currentItem != null)
-            {
-                if (currentItem.IsCursed)
-                {
-                    terminal.SetColor("red");
-                    terminal.WriteLine(Loc.Get("inventory.cursed_cant_unequip", currentItem.Name));
-                    terminal.SetColor("gray");
-                    terminal.WriteLine(Loc.Get("inventory.visit_healer_curse"));
-                    await Task.Delay(2000);
-                    return;
-                }
-                var unequipped = player.UnequipSlot(slot);
-                if (unequipped != null)
-                {
-                    // Convert equipment to legacy Item and add to backpack
-                    var legacyItem = new global::Item
-                    {
-                        Name = unequipped.Name,
-                        Type = unequipped.Slot switch
-                        {
-                            EquipmentSlot.MainHand or EquipmentSlot.OffHand => ObjType.Weapon,
-                            EquipmentSlot.Body => ObjType.Body,
-                            EquipmentSlot.Head => ObjType.Head,
-                            EquipmentSlot.Arms => ObjType.Arms,
-                            EquipmentSlot.Legs => ObjType.Legs,
-                            EquipmentSlot.Hands => ObjType.Hands,
-                            EquipmentSlot.Feet => ObjType.Feet,
-                            EquipmentSlot.LFinger or EquipmentSlot.RFinger => ObjType.Fingers,
-                            EquipmentSlot.Neck or EquipmentSlot.Neck2 => ObjType.Neck,
-                            EquipmentSlot.Cloak => ObjType.Abody,
-                            EquipmentSlot.Waist => ObjType.Waist,
-                            EquipmentSlot.Face => ObjType.Face,
-                            _ => ObjType.Body
-                        },
-                        Attack = unequipped.WeaponPower,
-                        Armor = unequipped.ArmorClass + unequipped.ShieldBonus,
-                        Defence = unequipped.DefenceBonus,
-                        Strength = unequipped.StrengthBonus,
-                        Dexterity = unequipped.DexterityBonus,
-                        Wisdom = unequipped.WisdomBonus,
-                        HP = unequipped.MaxHPBonus,
-                        Mana = unequipped.MaxManaBonus,
-                        Value = unequipped.Value,
-                        IsCursed = unequipped.IsCursed
-                    };
-                    player.Inventory.Add(legacyItem);
-                    player.RecalculateStats();
-
-                    terminal.SetColor("yellow");
-                    terminal.WriteLine(Loc.Get("inventory.unequipped", unequipped.Name));
-                    terminal.SetColor("gray");
-                    terminal.WriteLine(Loc.Get("inventory.returned_backpack"));
-                    await Task.Delay(1500);
-                }
-            }
+            await ProcessSlotInventoryChoice(slot, choice.ToUpper().Trim());
         }
 
         private void DisplayItemDetails(Equipment item)

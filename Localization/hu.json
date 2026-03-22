@@ -10225,6 +10225,8 @@
   "inventory.other_label": "Egyéb: ",
   "inventory.options_line1": "[E] Felszerel  [D] Eldob  [M] Kezel  [U] Mindet eltesz",
   "inventory.options_line2": "[Q] Kilépés a leltárból",
+  "inventory.slot.equip": "[B#] Felszerel",
+  "inventory.slot.options_line2": "[Q] Vissza az hátizsákhoz",
   "inventory.invalid_choice": "Érvénytelen választás. Próbáld: E, D, M, U vagy Q.",
   "inventory.invalid_item": "Érvénytelen tárgyszám.",
   "inventory.manage_header": "TÁRGY KEZELÉSE",

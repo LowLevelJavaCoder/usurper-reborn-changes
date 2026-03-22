@@ -10225,6 +10225,8 @@
   "inventory.other_label": "Autres : ",
   "inventory.options_line1": "[E]quiper  [D]époser  [M]anipuler l’emplacement  [U]Tout retirer",
   "inventory.options_line2": "[Q]uitter",
+  "inventory.slot.equip": "[B#] Equiper",
+  "inventory.slot.options_line2": "[Q] Retour à l’inventaire",
   "inventory.invalid_choice": "Choix invalide. Essayez E, D, M, U ou Q.",
   "inventory.invalid_item": "Numéro d’objet invalide.",
   "inventory.manage_header": "GESTION DE L’OBJET",

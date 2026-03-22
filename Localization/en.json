@@ -10245,6 +10245,8 @@
   "inventory.other_label": "Other: ",
   "inventory.options_line1": "[1-9/F/C/N/L/R] Manage slot  [B#] Equip backpack item  [D]rop  [U]nequip all",
   "inventory.options_line2": "[<]/[>] Page backpack  [Q]uit inventory",
+  "inventory.slot.equip": "[B#] Equip backpack item",
+  "inventory.slot.options_line2": "[<]/[>] Page backpack  [Q] Return to inventory",
   "inventory.invalid_choice": "Invalid choice. Try E, D, M, U, or Q.",
   "inventory.invalid_item": "Invalid item number.",
   "inventory.manage_header": "MANAGE ITEM",
