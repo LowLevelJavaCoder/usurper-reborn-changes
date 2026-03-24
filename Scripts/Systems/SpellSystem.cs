@@ -72,37 +72,37 @@ public static class SpellSystem
         [CharacterClass.Cleric] = new Dictionary<int, SpellInfo>
         {
             // --- EARLY TIER (Levels 1-25) - Basic Divine Magic ---
-            [1] = new SpellInfo(1, "Cure Light", "A gentle prayer heals minor wounds. Effect: 4-7 hp. Duration: 1 turn.", 5, 1, "Sularahamasturie", false, "Heal"),
-            [2] = new SpellInfo(2, "Divine Shield", "Call upon the gods for protection. Protection: +5. Duration: whole fight.", 8, 2, "Exmaddurie", false, "Buff"),
+            [1] = new SpellInfo(1, "Cure Light", "A gentle prayer heals minor wounds. Effect: 12-22 hp, scales with WIS. Duration: 1 turn.", 5, 1, "Sularahamasturie", false, "Heal"),
+            [2] = new SpellInfo(2, "Divine Shield", "Call upon the gods for protection. Protection: +8, scales with level and WIS. Duration: whole fight.", 8, 2, "Exmaddurie", false, "Buff"),
             [3] = new SpellInfo(3, "Purify", "Cleanse disease and minor poisons from the body. Cures minor afflictions.", 12, 3, "Purimasarie", false, "Heal"),
-            [4] = new SpellInfo(4, "Bless Weapon", "Imbue your weapon with holy power. Attack: +10. Duration: whole fight.", 15, 4, "Sanctiweaparie", false, "Buff"),
-            [5] = new SpellInfo(5, "Cure Wounds", "A stronger healing prayer. Effect: 15-25 hp. Duration: 1 turn.", 18, 5, "Aduexusmarie", false, "Heal"),
-            [6] = new SpellInfo(6, "Turn Undead", "Holy light sears the walking dead. Damage: 30-40 vs undead. Duration: 1 turn.", 22, 6, "Exorcismarie", false, "Attack"),
-            [7] = new SpellInfo(7, "Sanctuary", "Create a holy ward that makes enemies hesitate. Protection: +15. Duration: 3 rounds.", 25, 7, "Sanctuarie", false, "Buff"),
+            [4] = new SpellInfo(4, "Bless Weapon", "Imbue your weapon with holy power. Attack: +12, scales with level. Duration: whole fight.", 15, 4, "Sanctiweaparie", false, "Buff"),
+            [5] = new SpellInfo(5, "Cure Wounds", "A stronger healing prayer. Effect: 25-40 hp, scales with WIS. Duration: 1 turn.", 18, 5, "Aduexusmarie", false, "Heal"),
+            [6] = new SpellInfo(6, "Turn Undead", "Holy light sears the walking dead. Damage: 35-50, scales with WIS. Double damage vs undead and demons.", 22, 6, "Exorcismarie", false, "Attack"),
+            [7] = new SpellInfo(7, "Sanctuary", "Create a holy ward that makes enemies hesitate. Protection: +18, scales with level and WIS. Duration: 3 rounds.", 25, 7, "Sanctuarie", false, "Buff"),
 
             // --- MID TIER (Levels 26-50) - Advanced Divine Arts ---
-            [8] = new SpellInfo(8, "Cure Critical", "Powerful divine healing with chivalry blessing. Effect: 40-55 hp. Duration: 1 turn.", 30, 8, "Majorhealarie", false, "Heal"),
-            [9] = new SpellInfo(9, "Holy Smite", "Call down righteous fury. Damage: 35-50. Extra vs evil. Duration: 1 turn.", 35, 9, "Adrealitarieum", false, "Attack"),
-            [10] = new SpellInfo(10, "Armor of Faith", "Divine armor surrounds the faithful. Protection: +25. Duration: whole fight.", 40, 10, "Faitharmarie", false, "Buff"),
+            [8] = new SpellInfo(8, "Cure Critical", "Powerful divine healing with chivalry blessing. Effect: 50-75 hp, scales with WIS. +10 Chivalry.", 30, 8, "Majorhealarie", false, "Heal"),
+            [9] = new SpellInfo(9, "Holy Smite", "Call down righteous fury. Damage: 45-65, scales with WIS. Double damage vs undead and demons.", 35, 9, "Adrealitarieum", false, "Attack"),
+            [10] = new SpellInfo(10, "Armor of Faith", "Divine armor surrounds the faithful. Protection: +28, scales with level and WIS. Duration: whole fight.", 40, 10, "Faitharmarie", false, "Buff"),
             [11] = new SpellInfo(11, "Dispel Evil", "Banish dark enchantments and weaken evil creatures. Removes enemy buffs.", 45, 11, "Dispeldarkie", false, "Debuff"),
-            [12] = new SpellInfo(12, "Mass Cure", "Heal yourself and allies. Effect: 30-45 hp to all. Duration: 1 turn.", 50, 12, "Masshealarie", true, "Heal"),
-            [13] = new SpellInfo(13, "Holy Explosion", "A burst of holy energy strikes all foes. Damage: 50-70. Duration: 1 turn.", 55, 13, "Holyburstarie", true, "Attack"),
-            [14] = new SpellInfo(14, "Prayer of Fortitude", "Strengthen body and spirit. +20 to all defenses. Duration: whole fight.", 60, 14, "Fortitudarie", false, "Buff"),
+            [12] = new SpellInfo(12, "Mass Cure", "Heal yourself and allies. Effect: 35-55 hp to all, scales with WIS. Duration: 1 turn.", 50, 12, "Masshealarie", true, "Heal"),
+            [13] = new SpellInfo(13, "Holy Explosion", "A burst of holy energy strikes all foes. Damage: 55-80 to all, scales with WIS. Duration: 1 turn.", 55, 13, "Holyburstarie", true, "Attack"),
+            [14] = new SpellInfo(14, "Prayer of Fortitude", "Strengthen body and spirit. Protection: +25, scales with level and WIS. Duration: whole fight.", 60, 14, "Fortitudarie", false, "Buff"),
 
             // --- HIGH TIER (Levels 51-75) - Greater Divine Powers ---
-            [15] = new SpellInfo(15, "Invisibility", "Cloak yourself in divine light, unseen by mortal eyes. Protection: +40. Duration: whole fight.", 70, 15, "Exsuamarie", false, "Buff"),
-            [16] = new SpellInfo(16, "Summon Angel", "Call a celestial warrior to your aid. Attack: +50. Duration: whole fight.", 80, 16, "Admoriasumumarie", false, "Summon"),
-            [17] = new SpellInfo(17, "Divine Lightning", "Channel Aurelion's wrath as lightning. Damage: 80-100. Duration: 1 turn.", 90, 17, "Exdahabarie", false, "Attack"),
-            [18] = new SpellInfo(18, "Restoration", "Full divine healing restores body and soul. Effect: 150-200 hp. Duration: 1 turn.", 100, 18, "Exmasumarie", false, "Heal"),
-            [19] = new SpellInfo(19, "Holy Word", "Speak a word of power that wounds the unholy. Damage: 100-130. Duration: 1 turn.", 110, 19, "Sanctuverbum", false, "Attack"),
-            [20] = new SpellInfo(20, "Divine Intervention", "The gods themselves protect you. Protection: +80. Duration: 5 rounds.", 120, 20, "Divineprotarie", false, "Buff"),
+            [15] = new SpellInfo(15, "Invisibility", "Cloak yourself in divine light, unseen by mortal eyes. Protection: +45, scales with level and WIS. Duration: whole fight.", 70, 15, "Exsuamarie", false, "Buff"),
+            [16] = new SpellInfo(16, "Summon Angel", "Call a celestial warrior to your aid. Attack: +55, scales with level. Dodge next attack. Duration: whole fight.", 80, 16, "Admoriasumumarie", false, "Summon"),
+            [17] = new SpellInfo(17, "Divine Lightning", "Channel Aurelion's wrath as lightning. Damage: 90-120, scales with WIS. Duration: 1 turn.", 90, 17, "Exdahabarie", false, "Attack"),
+            [18] = new SpellInfo(18, "Restoration", "Full divine healing restores body and soul. Effect: 160-220 hp, scales with WIS. Duration: 1 turn.", 100, 18, "Exmasumarie", false, "Heal"),
+            [19] = new SpellInfo(19, "Holy Word", "Speak a word of power that wounds the unholy. Damage: 110-145, scales with WIS. Double damage vs undead and demons.", 110, 19, "Sanctuverbum", false, "Attack"),
+            [20] = new SpellInfo(20, "Divine Intervention", "The gods themselves protect you. Protection: +85, scales with level and WIS. Duration: 5 rounds.", 120, 20, "Divineprotarie", false, "Buff"),
 
             // --- LEGENDARY TIER (Levels 76-100) - Godlike Powers ---
-            [21] = new SpellInfo(21, "Aurelion's Radiance", "Channel the Sun God's blinding light. Damage: 150-180 to all. Duration: 1 turn.", 140, 21, "Aurelionluxarie", true, "Attack"),
-            [22] = new SpellInfo(22, "Resurrection Prayer", "Call back the nearly dead. Effect: 300-400 hp. Duration: 1 turn.", 160, 22, "Resurrectarie", false, "Heal"),
-            [23] = new SpellInfo(23, "Divine Avatar", "Become a vessel of divine power. All stats +50%. Duration: whole fight.", 180, 23, "Avatardivinarie", false, "Buff"),
-            [24] = new SpellInfo(24, "Judgment", "Pass divine judgment on the wicked. Damage: 200-280. Extra vs evil. Duration: 1 turn.", 200, 24, "Judiciumarie", false, "Attack"),
-            [25] = new SpellInfo(25, "God's Finger", "The ultimate divine strike from the heavens themselves. Damage: 300-400. Duration: 1 turn.", 250, 25, "Umbarakahstahx", true, "Attack")
+            [21] = new SpellInfo(21, "Aurelion's Radiance", "Channel the Sun God's blinding light. Damage: 160-220 to all, scales with WIS. Double damage vs undead and demons.", 140, 21, "Aurelionluxarie", true, "Attack"),
+            [22] = new SpellInfo(22, "Resurrection Prayer", "Call back the nearly dead. Effect: 320-450 hp, scales with WIS. Duration: 1 turn.", 160, 22, "Resurrectarie", false, "Heal"),
+            [23] = new SpellInfo(23, "Divine Avatar", "Become a vessel of divine power. ATK and DEF +55, scales with level. Duration: whole fight.", 180, 23, "Avatardivinarie", false, "Buff"),
+            [24] = new SpellInfo(24, "Judgment", "Pass divine judgment on the wicked. Damage: 220-320, scales with WIS. Double vs undead/demons. +30 Chivalry.", 200, 24, "Judiciumarie", false, "Attack"),
+            [25] = new SpellInfo(25, "God's Finger", "The ultimate divine strike from the heavens. Damage: 320-450 to all, scales with WIS. Double vs undead and demons.", 250, 25, "Umbarakahstahx", true, "Attack")
         },
 
         // ═══════════════════════════════════════════════════════════════════════════════
@@ -114,7 +114,7 @@ public static class SpellSystem
             // --- EARLY TIER (Levels 1-25) - Apprentice Magic ---
             [1] = new SpellInfo(1, "Magic Missile", "Steel arrows of force strike the target. Damage: 18-28. Duration: 1 turn.", 4, 1, "Exmamarie", false, "Attack"),
             [2] = new SpellInfo(2, "Arcane Shield", "A shimmering barrier deflects attacks. Protection: +8. Duration: whole fight.", 7, 2, "Exmasumarie", false, "Buff"),
-            [3] = new SpellInfo(3, "Spark", "A jolt of electricity stuns and damages. Damage: 28-40. Duration: 1 turn.", 8, 3, "Sparkarie", false, "Attack"),
+            [3] = new SpellInfo(3, "Spark", "A jolt of electricity damages the target. Damage: 28-40. Duration: 1 turn.", 8, 3, "Sparkarie", false, "Attack"),
             [4] = new SpellInfo(4, "Sleep", "Lull the target into magical slumber. Effect: target cannot act. Duration: varies.", 12, 4, "Exdamarie", false, "Debuff"),
             [5] = new SpellInfo(5, "Frost Touch", "Chill your enemy to the bone. Damage: 40-58. Duration: 1 turn.", 14, 5, "Frostarie", false, "Attack"),
             [6] = new SpellInfo(6, "Web", "Conjure sticky strands to trap your foe. Effect: cannot move. Duration: varies.", 22, 6, "Exmasesamamarie", false, "Debuff"),
@@ -157,7 +157,7 @@ public static class SpellSystem
             [3] = new SpellInfo(3, "Mind Spike", "A psychic attack that damages and disorients. Damage: 8-14. Duration: 1 turn.", 10, 3, "Mindspikearie", false, "Attack"),
             [4] = new SpellInfo(4, "Freeze", "Encase the target in ice. Effect: cannot move. Duration: varies.", 15, 4, "Excadaliemarie", false, "Debuff"),
             [5] = new SpellInfo(5, "Duplicate", "Create an illusory copy to confuse enemies. Protection: +12. Duration: whole fight.", 18, 5, "Exmassesumarie", false, "Buff"),
-            [6] = new SpellInfo(6, "Roast", "Hellfire pierces all armor. Damage: 20-30. Duration: 1 turn.", 22, 6, "Exdamseaxmarie", false, "Attack"),
+            [6] = new SpellInfo(6, "Roast", "Hellfire scorches the target. Damage: 20-30 + burn. Duration: 1 turn.", 22, 6, "Exdamseaxmarie", false, "Attack"),
             [7] = new SpellInfo(7, "Confusion", "Muddle your enemy's thoughts. Effect: may attack self. Duration: varies.", 25, 7, "Confusarie", false, "Debuff"),
 
             // --- MID TIER (Levels 26-50) - Second Awakening (Tide Reader) ---
@@ -771,44 +771,44 @@ public static class SpellSystem
             case 1: // Cure Light - Base: 12-22 hp
                 int baseHeal1 = 12 + random.Next(11);
                 result.Healing = ScaleHealingEffect(baseHeal1, caster, random, profMult);
-                result.Message += $" {caster.Name2} regains {result.Healing} hitpoints!";
+                result.Message += $" {Loc.Get("combat.spell_healed", caster.Name2, result.Healing)}";
                 break;
 
             case 2: // Divine Shield - Protection +8
                 result.ProtectionBonus = ScaleProtectionEffect(8 + (caster.Level / 12), caster, profMult);
                 result.Duration = 999;
-                result.Message += $" {caster.Name2} feels protected! (+{result.ProtectionBonus} defense)";
+                result.Message += $" {Loc.Get("combat.spell_protected", caster.Name2, result.ProtectionBonus)}";
                 break;
 
             case 3: // Purify - Cure disease
                 result.SpecialEffect = "cure_disease";
-                result.Message += $" {caster.Name2} is cleansed of afflictions!";
+                result.Message += $" {Loc.Get("combat.spell_cleansed", caster.Name2)}";
                 break;
 
             case 4: // Bless Weapon - Attack +12
                 int baseAttack4 = (int)((12 + (caster.Level / 10)) * profMult);
                 result.AttackBonus = baseAttack4;
                 result.Duration = 999;
-                result.Message += $" {caster.Name2}'s weapon glows with holy light! (+{result.AttackBonus} attack)";
+                result.Message += $" {Loc.Get("combat.spell_bless_weapon", caster.Name2, result.AttackBonus)}";
                 break;
 
             case 5: // Cure Wounds - Base: 25-40 hp
                 int baseHeal5 = 25 + random.Next(16);
                 result.Healing = ScaleHealingEffect(baseHeal5, caster, random, profMult);
-                result.Message += $" {caster.Name2} regains {result.Healing} hitpoints!";
+                result.Message += $" {Loc.Get("combat.spell_healed", caster.Name2, result.Healing)}";
                 break;
 
             case 6: // Turn Undead - Damage vs undead
                 int baseDamage6 = 35 + random.Next(16);
                 result.Damage = ScaleSpellEffect(baseDamage6, caster, random, profMult);
                 result.SpecialEffect = "holy";
-                result.Message += $" Holy light sears undead foes for {result.Damage} damage!";
+                result.Message += $" {Loc.Get("combat.spell_holy_damage", result.Damage)}";
                 break;
 
             case 7: // Sanctuary - Protection +18
                 result.ProtectionBonus = ScaleProtectionEffect(18 + (caster.Level / 7), caster, profMult);
                 result.Duration = 3;
-                result.Message += $" A holy sanctuary protects {caster.Name2}! (+{result.ProtectionBonus} defense)";
+                result.Message += $" {Loc.Get("combat.spell_protected", caster.Name2, result.ProtectionBonus)}";
                 break;
 
             // --- MID TIER (Levels 26-50) ---
@@ -817,45 +817,45 @@ public static class SpellSystem
                 result.Healing = ScaleHealingEffect(baseHeal8, caster, random, profMult);
                 if (caster.Darkness > 0) caster.Darkness = Math.Max(0, caster.Darkness - 10);
                 else caster.Chivalry += 10;
-                result.Message += $" {caster.Name2} feels blessed and regains {result.Healing} hitpoints!";
+                result.Message += $" {Loc.Get("combat.spell_blessed_heal", caster.Name2, result.Healing)}";
                 break;
 
             case 9: // Holy Smite - Base: 45-65 damage
                 int baseDamage9 = 45 + random.Next(21);
                 result.Damage = ScaleSpellEffect(baseDamage9, caster, random, profMult);
                 result.SpecialEffect = "holy";
-                result.Message += $" Righteous fury strikes {target?.Name2 ?? "the enemy"} for {result.Damage} damage!";
+                result.Message += $" {Loc.Get("combat.spell_holy_smite", target?.Name2 ?? "the enemy", result.Damage)}";
                 break;
 
             case 10: // Armor of Faith - Protection +28
                 result.ProtectionBonus = ScaleProtectionEffect(28 + (caster.Level / 5), caster, profMult);
                 result.Duration = 999;
-                result.Message += $" Divine armor surrounds {caster.Name2}! (+{result.ProtectionBonus} defense)";
+                result.Message += $" {Loc.Get("combat.spell_protected", caster.Name2, result.ProtectionBonus)}";
                 break;
 
             case 11: // Dispel Evil - Remove enemy buffs
                 result.SpecialEffect = "dispel";
-                result.Message += $" Dark enchantments are banished!";
+                result.Message += $" {Loc.Get("combat.spell_dispel")}";
                 break;
 
             case 12: // Mass Cure - Base: 35-55 hp to all
                 int baseHeal12 = 35 + random.Next(21);
                 result.Healing = ScaleHealingEffect(baseHeal12, caster, random, profMult);
                 result.IsMultiTarget = true;
-                result.Message += $" Healing light restores {result.Healing} hitpoints to all allies!";
+                result.Message += $" {Loc.Get("combat.spell_mass_heal", result.Healing)}";
                 break;
 
             case 13: // Holy Explosion - Base: 55-80 damage to all
                 int baseDamage13 = 55 + random.Next(26);
                 result.Damage = ScaleSpellEffect(baseDamage13, caster, random, profMult);
                 result.IsMultiTarget = true;
-                result.Message += $" A holy explosion deals {result.Damage} damage to all enemies!";
+                result.Message += $" {Loc.Get("combat.spell_holy_explosion", result.Damage)}";
                 break;
 
             case 14: // Prayer of Fortitude - +25 all defenses
                 result.ProtectionBonus = ScaleProtectionEffect(25 + (caster.Level / 5), caster, profMult);
                 result.Duration = 999;
-                result.Message += $" Body and spirit are strengthened! (+{result.ProtectionBonus} defense)";
+                result.Message += $" {Loc.Get("combat.spell_fortitude", result.ProtectionBonus)}";
                 break;
 
             // --- HIGH TIER (Levels 51-75) ---
@@ -863,7 +863,7 @@ public static class SpellSystem
                 result.ProtectionBonus = ScaleProtectionEffect(45 + (caster.Level / 4), caster, profMult);
                 result.Duration = 999;
                 result.SpecialEffect = "invisible";
-                result.Message += $" {caster.Name2} becomes invisible! (+{result.ProtectionBonus} defense)";
+                result.Message += $" {Loc.Get("combat.spell_invisible", caster.Name2, result.ProtectionBonus)}";
                 break;
 
             case 16: // Summon Angel - Attack +55
@@ -871,33 +871,33 @@ public static class SpellSystem
                 result.AttackBonus = baseAttack16;
                 result.Duration = 999;
                 result.SpecialEffect = "angel";
-                result.Message += $" An Angel descends with golden wings! (+{result.AttackBonus} attack)";
+                result.Message += $" {Loc.Get("combat.spell_summon_angel", result.AttackBonus)}";
                 break;
 
             case 17: // Divine Lightning - Base: 90-120 damage
                 int baseDamage17 = 90 + random.Next(31);
                 result.Damage = ScaleSpellEffect(baseDamage17, caster, random, profMult);
-                result.Message += $" Divine lightning strikes {target?.Name2 ?? "the enemy"} for {result.Damage} damage!";
+                result.Message += $" {Loc.Get("combat.spell_divine_lightning", target?.Name2 ?? "the enemy", result.Damage)}";
                 break;
 
             case 18: // Restoration - Base: 160-220 hp
                 int baseHeal18 = 160 + random.Next(61);
                 result.Healing = ScaleHealingEffect(baseHeal18, caster, random, profMult);
-                result.Message += $" {caster.Name2} is fully restored with {result.Healing} hitpoints!";
+                result.Message += $" {Loc.Get("combat.spell_restoration", caster.Name2, result.Healing)}";
                 break;
 
             case 19: // Holy Word - Base: 110-145 damage
                 int baseDamage19 = 110 + random.Next(36);
                 result.Damage = ScaleSpellEffect(baseDamage19, caster, random, profMult);
                 result.SpecialEffect = "holy";
-                result.Message += $" The Holy Word wounds the unholy for {result.Damage} damage!";
+                result.Message += $" {Loc.Get("combat.spell_holy_word", result.Damage)}";
                 break;
 
             case 20: // Divine Intervention - Protection +85
                 result.ProtectionBonus = ScaleProtectionEffect(85 + (caster.Level / 2), caster, profMult);
                 result.Duration = 5;
                 result.SpecialEffect = "divination";
-                result.Message += $" The gods themselves protect {caster.Name2}! (+{result.ProtectionBonus} defense)";
+                result.Message += $" {Loc.Get("combat.spell_divine_intervention", caster.Name2, result.ProtectionBonus)}";
                 break;
 
             // --- LEGENDARY TIER (Levels 76-100) ---
@@ -906,13 +906,13 @@ public static class SpellSystem
                 result.Damage = ScaleSpellEffect(baseDamage21, caster, random, profMult);
                 result.IsMultiTarget = true;
                 result.SpecialEffect = "holy";
-                result.Message += $" Aurelion's blinding radiance deals {result.Damage} damage to all!";
+                result.Message += $" {Loc.Get("combat.spell_aurelion_radiance", result.Damage)}";
                 break;
 
             case 22: // Resurrection Prayer - Base: 320-450 hp
                 int baseHeal22 = 320 + random.Next(131);
                 result.Healing = ScaleHealingEffect(baseHeal22, caster, random, profMult);
-                result.Message += $" Life itself is restored! {caster.Name2} regains {result.Healing} hitpoints!";
+                result.Message += $" {Loc.Get("combat.spell_resurrection_prayer", caster.Name2, result.Healing)}";
                 break;
 
             case 23: // Divine Avatar - All stats +55
@@ -921,7 +921,7 @@ public static class SpellSystem
                 result.ProtectionBonus = ScaleProtectionEffect(55 + caster.Level, caster, profMult);
                 result.Duration = 999;
                 result.SpecialEffect = "avatar";
-                result.Message += $" {caster.Name2} becomes a divine avatar! (+{result.AttackBonus} atk, +{result.ProtectionBonus} def)";
+                result.Message += $" {Loc.Get("combat.spell_divine_avatar", caster.Name2, result.AttackBonus, result.ProtectionBonus)}";
                 break;
 
             case 24: // Judgment - Base: 220-320 damage
@@ -930,7 +930,7 @@ public static class SpellSystem
                 result.SpecialEffect = "holy";
                 if (caster.Darkness > 0) caster.Darkness = Math.Max(0, caster.Darkness - 30);
                 else caster.Chivalry += 30;
-                result.Message += $" Divine judgment strikes for {result.Damage} damage!";
+                result.Message += $" {Loc.Get("combat.spell_judgment", result.Damage)}";
                 break;
 
             case 25: // God's Finger - Base: 320-450 damage to all
@@ -938,7 +938,7 @@ public static class SpellSystem
                 result.Damage = ScaleSpellEffect(baseDamage25, caster, random, profMult);
                 result.IsMultiTarget = true;
                 result.SpecialEffect = "holy";
-                result.Message += $" The finger of God strikes down for {result.Damage} damage!";
+                result.Message += $" {Loc.Get("combat.spell_gods_finger", result.Damage)}";
                 break;
         }
     }
@@ -967,7 +967,6 @@ public static class SpellSystem
             case 3: // Spark - Base: 28-40 damage
                 int baseDamage3 = 28 + random.Next(13);
                 result.Damage = ScaleSpellEffect(baseDamage3, caster, random, profMult);
-                result.SpecialEffect = "lightning";
                 result.Message += $" Sparks jolt {target?.Name2 ?? "the target"} for {result.Damage} damage!";
                 break;
 
@@ -1023,7 +1022,6 @@ public static class SpellSystem
             case 11: // Lightning Bolt - Base: 60-80 damage
                 int baseDamage11 = 60 + random.Next(21);
                 result.Damage = ScaleSpellEffect(baseDamage11, caster, random, profMult);
-                result.SpecialEffect = "lightning";
                 result.Message += $" Lightning strikes {target?.Name2 ?? "the target"} for {result.Damage} damage!";
                 break;
 
@@ -1053,7 +1051,6 @@ public static class SpellSystem
                 int baseDamage15 = 80 + random.Next(26);
                 result.Damage = ScaleSpellEffect(baseDamage15, caster, random, profMult);
                 result.IsMultiTarget = true;
-                result.SpecialEffect = "lightning";
                 result.Message += $" Chain lightning arcs through all enemies for {result.Damage} damage!";
                 break;
 
@@ -1064,10 +1061,10 @@ public static class SpellSystem
                 result.Message += $" {target?.Name2 ?? "The target"} is disintegrated for {result.Damage} damage!";
                 break;
 
-            case 17: // Pillar of Fire - Base: 120-160 damage
+            case 17: // Pillar of Fire - Base: 120-160 damage, penetrates armor
                 int baseDamage17 = 120 + random.Next(41);
                 result.Damage = ScaleSpellEffect(baseDamage17, caster, random, profMult);
-                result.SpecialEffect = "fire";
+                result.SpecialEffect = "piercing_fire";
                 result.Message += $" A Pillar of Fire consumes {target?.Name2 ?? "the target"} for {result.Damage} damage!";
                 break;
 
@@ -1124,13 +1121,10 @@ public static class SpellSystem
                 result.Message += $" The POWER WORD KILL strikes for {result.Damage} damage!";
                 break;
 
-            case 25: // Wish - All stats doubled
-                int baseBonus25 = (int)((100 + (caster.Level)) * profMult);
-                result.AttackBonus = baseBonus25;
-                result.ProtectionBonus = ScaleProtectionEffect(100 + caster.Level, caster, profMult);
+            case 25: // Wish - All stats doubled (stat doubling applied by handler)
                 result.Duration = 999;
                 result.SpecialEffect = "wish";
-                result.Message += $" Reality bends to {caster.Name2}'s will! (+{result.AttackBonus} atk, +{result.ProtectionBonus} def)";
+                result.Message += $" Reality bends to {caster.Name2}'s will! All stats doubled!";
                 break;
         }
     }
@@ -1211,12 +1205,11 @@ public static class SpellSystem
                 result.Message += $" {caster.Name2} transforms into a GIANT! (+{result.AttackBonus} attack)";
                 break;
 
-            case 11: // Steal Life - Base: 40-60 damage, heals half
+            case 11: // Steal Life - Base: 40-60 damage, heals half (via drain handler)
                 int baseDamage11 = 40 + random.Next(21);
                 result.Damage = ScaleSpellEffect(baseDamage11, caster, random, profMult);
-                result.Healing = result.Damage / 2;
                 result.SpecialEffect = "drain";
-                result.Message += $" Life is stolen for {result.Damage} damage! {caster.Name2} heals {result.Healing}!";
+                result.Message += $" Life is stolen for {result.Damage} damage!";
                 break;
 
             case 12: // Psychic Scream - Base: 45-65 damage to all
@@ -1451,12 +1444,12 @@ public static class SpellSystem
                 result.ProtectionBonus = ScaleProtectionEffect(40 + (caster.Level / 4), caster, profMult);
                 result.Duration = 999;
                 result.IsMultiTarget = true;
-                // Guaranteed crit via TempAttackBonus pattern
-                caster.TempAttackBonus += 999;
-                caster.TempAttackBonusDuration = 2;
+                // Guaranteed crit on next attack via Hidden status (auto-crit mechanic from v0.53.8)
+                if (!caster.ActiveStatuses.ContainsKey(StatusEffect.Hidden))
+                    caster.ActiveStatuses[StatusEffect.Hidden] = 1;
                 int hpCost = (int)(caster.MaxHP * 0.50);
                 caster.HP = Math.Max(1, caster.HP - hpCost);
-                result.Message += $" The Ocean's full harmonic spectrum unleashed! (+{result.AttackBonus} attack, +{result.ProtectionBonus} defense, guaranteed crit to all) {caster.Name2} sacrifices {hpCost} HP!";
+                result.Message += $" The Ocean's full harmonic spectrum unleashed! (+{result.AttackBonus} attack, +{result.ProtectionBonus} defense, guaranteed crit on next hit) {caster.Name2} sacrifices {hpCost} HP!";
                 break;
         }
     }
@@ -1490,6 +1483,7 @@ public static class SpellSystem
             case 5: // Paradox Collapse - 250-350 damage + 10% of all damage dealt this fight
                 int cbDmg5 = 250 + random.Next(101);
                 result.Damage = ScaleSpellEffect(cbDmg5, caster, random, profMult);
+                result.SpecialEffect = "paradox_collapse";
                 result.Message += $" Multiple timelines collapse onto {target?.Name2 ?? "the enemy"} for {result.Damage} damage!";
                 break;
         }
@@ -1548,10 +1542,10 @@ public static class SpellSystem
                 caster.HP = Math.Max(1, caster.HP - sacrifice);
                 result.AttackBonus = (int)((50 + (caster.Level / 3)) * profMult);
                 result.Duration = 999;
-                // Grant guaranteed critical strike on next hit
-                caster.TempAttackBonus += 999;
-                caster.TempAttackBonusDuration = 2; // Lasts for next attack
-                result.Message += $" {caster.Name2} sacrifices {sacrifice} HP! (+{result.AttackBonus} attack, guaranteed crit!)";
+                // Grant guaranteed critical strike on next hit via Hidden status (auto-crit mechanic)
+                if (!caster.ActiveStatuses.ContainsKey(StatusEffect.Hidden))
+                    caster.ActiveStatuses[StatusEffect.Hidden] = 1;
+                result.Message += $" {caster.Name2} sacrifices {sacrifice} HP! (+{result.AttackBonus} attack, guaranteed crit on next hit!)";
                 break;
             case 3: // Void Bolt - 90-120 damage, ignores all defense
                 int vrDmg3 = 90 + random.Next(31);

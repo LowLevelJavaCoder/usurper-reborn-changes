@@ -340,6 +340,21 @@ public partial class CombatEngine
             if (defender.ActiveTotemRounds > 0)
                 ProcessShamanTotemEffects(defender, null, result);
 
+            // Decrement Shaman weapon enchant rounds for both combatants
+            foreach (var combatant in new[] { attacker, defender })
+            {
+                if (combatant.ShamanEnchantRounds > 0)
+                {
+                    combatant.ShamanEnchantRounds--;
+                    if (combatant.ShamanEnchantRounds <= 0)
+                    {
+                        terminal.WriteLine(Loc.Get("combat.shaman_enchant_expires"), "gray");
+                        combatant.ShamanEnchantType = 0;
+                        combatant.ShamanEnchantPower = 0;
+                    }
+                }
+            }
+
             // Tick down cooldowns for both sides
             foreach (var key in abilityCooldowns.Keys.ToList())
                 if (abilityCooldowns[key] > 0) abilityCooldowns[key]--;
@@ -2735,8 +2750,18 @@ public partial class CombatEngine
         // Apply roll quality multiplier (critical hits, great hits, etc.)
         float rollMultiplier = attackRoll.GetDamageMultiplier();
 
+        // Stealth crit: Hidden status guarantees critical hit and consumes Hidden
+        bool stealthCrit = attacker.HasStatus(StatusEffect.Hidden);
+        if (stealthCrit)
+        {
+            attacker.RemoveStatus(StatusEffect.Hidden);
+            rollMultiplier = StatEffectsSystem.GetCriticalDamageMultiplier(attacker.Dexterity, attacker.GetEquipmentCritDamageBonus());
+            terminal.SetColor("bright_yellow");
+            terminal.WriteLine(Loc.Get("combat.stealth_crit"));
+        }
+
         // Additional Dexterity-based critical hit chance (on top of natural 20)
-        bool dexCrit = !attackRoll.IsCriticalSuccess && StatEffectsSystem.RollCriticalHit(attacker);
+        bool dexCrit = !attackRoll.IsCriticalSuccess && !stealthCrit && StatEffectsSystem.RollCriticalHit(attacker);
         if (dexCrit)
         {
             // Apply Dexterity-based crit multiplier
@@ -3135,12 +3160,7 @@ public partial class CombatEngine
             if (attacker.ActiveTotemType == 6 && attacker.ActiveTotemRounds > 0)
             {
                 long ancestralHeal = (long)(enchantDamage * attacker.ActiveTotemPower / 100.0);
-                long actualHealAG = Math.Min(ancestralHeal, attacker.MaxHP - attacker.HP);
-                if (actualHealAG > 0)
-                {
-                    attacker.HP += actualHealAG;
-                    terminal.WriteLine(Loc.Get("combat.shaman_ancestral_heal", actualHealAG), "bright_magenta");
-                }
+                ApplyAncestralGuidanceHealing(attacker, ancestralHeal, result);
             }
         }
 
@@ -3148,12 +3168,7 @@ public partial class CombatEngine
         if (attacker.ActiveTotemType == 6 && attacker.ActiveTotemRounds > 0 && attacker.ShamanEnchantType == 0 && actualDamage > 0)
         {
             long ancestralHeal = (long)(actualDamage * attacker.ActiveTotemPower / 100.0);
-            long actualHealAG = Math.Min(ancestralHeal, attacker.MaxHP - attacker.HP);
-            if (actualHealAG > 0)
-            {
-                attacker.HP += actualHealAG;
-                terminal.WriteLine(Loc.Get("combat.shaman_ancestral_heal", actualHealAG), "bright_magenta");
-            }
+            ApplyAncestralGuidanceHealing(attacker, ancestralHeal, result);
         }
 
         // Chance to improve basic attack skill from successful use
@@ -3954,15 +3969,17 @@ public partial class CombatEngine
         // Roll monster attack against player AC
         var monsterRoll = TrainingSystem.RollMonsterAttack(monster, player, random);
 
-        // Distraction penalty: -5 to hit roll (Vicious Mockery, etc.)
+        // Distraction penalty: scaled to hit roll (Vicious Mockery, etc.)
         if (monster.Distracted)
         {
-            monsterRoll.Total -= 5;
-            monsterRoll.Modifier -= 5;
+            int penalty = monster.DistractedPenalty > 0 ? monster.DistractedPenalty : 5;
+            monsterRoll.Total -= penalty;
+            monsterRoll.Modifier -= penalty;
             monsterRoll.Success = monsterRoll.Total >= monsterRoll.TargetDC;
             terminal.SetColor("dark_gray");
-            terminal.WriteLine($"[{monster.Name} rolls: {monsterRoll.NaturalRoll} + {monsterRoll.Modifier} = {monsterRoll.Total} vs AC {monsterRoll.TargetDC}] (distracted: -5)");
+            terminal.WriteLine($"[{monster.Name} rolls: {monsterRoll.NaturalRoll} + {monsterRoll.Modifier} = {monsterRoll.Total} vs AC {monsterRoll.TargetDC}] (distracted: -{penalty})");
             monster.Distracted = false;
+            monster.DistractedPenalty = 0;
         }
         else
         {
@@ -6031,8 +6048,8 @@ public partial class CombatEngine
             {
                 // Teammates get 60% of the Bard's attack buff
                 int teamAtkBonus = (int)(abilityResult.AttackBonus * 0.6);
-                teammate.TempAttackBonus = teamAtkBonus;
-                teammate.TempAttackBonusDuration = abilityResult.Duration;
+                teammate.TempAttackBonus += teamAtkBonus;
+                teammate.TempAttackBonusDuration = Math.Max(teammate.TempAttackBonusDuration, abilityResult.Duration);
             }
 
             // Apply defense buff to teammate
@@ -6040,8 +6057,8 @@ public partial class CombatEngine
             {
                 // Teammates get 60% of the Bard's defense buff
                 int teamDefBonus = (int)(abilityResult.DefenseBonus * 0.6);
-                teammate.TempDefenseBonus = teamDefBonus;
-                teammate.TempDefenseBonusDuration = abilityResult.Duration;
+                teammate.TempDefenseBonus += teamDefBonus;
+                teammate.TempDefenseBonusDuration = Math.Max(teammate.TempDefenseBonusDuration, abilityResult.Duration);
             }
         }
 
@@ -8035,6 +8052,9 @@ public partial class CombatEngine
 
             // Check level requirement
             if (lootItem.MinLevel > 0 && teammate.Level < lootItem.MinLevel) continue;
+
+            // Skip shields/off-hand items when teammate is using a two-handed weapon
+            if (targetSlot == EquipmentSlot.OffHand && teammate.IsTwoHanding) continue;
 
             // For weapons, also check off-hand if teammate is dual-wielding
             var actualSlot = targetSlot;
@@ -10326,12 +10346,7 @@ public partial class CombatEngine
                             if (player.ActiveTotemType == 6 && player.ActiveTotemRounds > 0)
                             {
                                 long ancestralHeal = (long)(enchantDamage * player.ActiveTotemPower / 100.0);
-                                long actualHeal = Math.Min(ancestralHeal, player.MaxHP - player.HP);
-                                if (actualHeal > 0)
-                                {
-                                    player.HP += actualHeal;
-                                    terminal.WriteLine(Loc.Get("combat.shaman_ancestral_heal", actualHeal), "bright_magenta");
-                                }
+                                ApplyAncestralGuidanceHealing(player, ancestralHeal, result);
                             }
 
                             if (target.HP <= 0)
@@ -10346,12 +10361,7 @@ public partial class CombatEngine
                         if (player.ActiveTotemType == 6 && player.ActiveTotemRounds > 0 && player.ShamanEnchantType == 0 && damage > 0)
                         {
                             long ancestralHeal = (long)(damage * player.ActiveTotemPower / 100.0);
-                            long actualHeal = Math.Min(ancestralHeal, player.MaxHP - player.HP);
-                            if (actualHeal > 0)
-                            {
-                                player.HP += actualHeal;
-                                terminal.WriteLine(Loc.Get("combat.shaman_ancestral_heal", actualHeal), "bright_magenta");
-                            }
+                            ApplyAncestralGuidanceHealing(player, ancestralHeal, result);
                         }
                     }
                 }
@@ -10940,9 +10950,18 @@ public partial class CombatEngine
         string actorName = isPlayer ? "You" : player.DisplayName;
 
         // Skip base single-target damage for AoE abilities — their special effect handlers do all the damage
-        bool isAoEAbility = abilityResult.SpecialEffect is "crescendo_aoe" or "aoe" or "whirlwind"
-            or "aoe_holy" or "fire" or "void_rupture" or "chain_lightning" or "corrosive_cloud_aoe"
-            or "dissonant_wave" or "aoe_taunt" or "harmonic_crescendo";
+        // AoE abilities that have their own damage loops in the special effect handler
+        // These skip the generic single-target base damage to avoid double-dipping
+        // Only include effects that have a dedicated case/handler doing their own damage loop
+        // Effects with NO handler (whirlwind, chain_lightning, corrosive_cloud_aoe, harmonic_crescendo)
+        // rely on the generic base damage and must NOT be listed here
+        // AoE abilities with EXTERNAL damage handlers (outside the base damage block)
+        // These skip the generic single-target base damage to avoid double-dipping
+        // NOTE: "aoe" handler is INSIDE the base damage block so must NOT be skipped
+        bool isAoEAbility = abilityResult.SpecialEffect is "crescendo_aoe"
+            or "aoe_holy" or "fire" or "void_rupture"
+            or "dissonant_wave" or "aoe_taunt" or "grand_finale_jester" or "execute_all"
+            or "shaman_chain_lightning";
 
         // Apply damage
         if (abilityResult.Damage > 0 && target != null && target.IsAlive && !isAoEAbility)
@@ -10950,13 +10969,8 @@ public partial class CombatEngine
             long actualDamage = abilityResult.Damage;
 
             // Handle special damage effects
-            if (abilityResult.SpecialEffect == "execute" && target.HP < target.MaxHP * 0.3)
-            {
-                actualDamage *= 2;
-                terminal.SetColor("bright_red");
-                terminal.WriteLine(Loc.Get("combat.ability_execute"));
-            }
-            else if (abilityResult.SpecialEffect == "last_stand" && player.HP < player.MaxHP * 0.25)
+            // NOTE: "execute" bonus damage is handled in the special effect switch below (tiered 30%/50%)
+            if (abilityResult.SpecialEffect == "last_stand" && player.HP < player.MaxHP * 0.25)
             {
                 actualDamage = (long)(actualDamage * 1.5);
                 terminal.SetColor("bright_red");
@@ -10969,9 +10983,9 @@ public partial class CombatEngine
             }
             else if (abilityResult.SpecialEffect == "backstab")
             {
-                actualDamage = (long)(actualDamage * 1.5);
+                actualDamage = (long)(actualDamage * 2.0); // Guaranteed critical hit
                 terminal.SetColor("bright_yellow");
-                terminal.WriteLine(Loc.Get("combat.ability_shadow_crit"));
+                terminal.WriteLine(Loc.Get("combat.ability_backstab_crit"));
             }
             else if (abilityResult.SpecialEffect == "aoe" || abilityResult.SpecialEffect == "aoe_confusion")
             {
@@ -11085,16 +11099,39 @@ public partial class CombatEngine
         // Apply buffs
         if (abilityResult.AttackBonus > 0)
         {
-            player.TempAttackBonus = abilityResult.AttackBonus;
-            player.TempAttackBonusDuration = abilityResult.Duration;
+            // Use the higher of current or new bonus (don't let weaker buff overwrite stronger)
+            if (abilityResult.AttackBonus > player.TempAttackBonus)
+            {
+                player.TempAttackBonus = abilityResult.AttackBonus;
+                player.TempAttackBonusDuration = abilityResult.Duration;
+            }
+            else if (player.TempAttackBonusDuration <= 0)
+            {
+                // No active buff — apply this one
+                player.TempAttackBonus = abilityResult.AttackBonus;
+                player.TempAttackBonusDuration = abilityResult.Duration;
+            }
+            else
+            {
+                // Existing buff is stronger — just refresh duration if this one is longer
+                player.TempAttackBonusDuration = Math.Max(player.TempAttackBonusDuration, abilityResult.Duration);
+            }
             terminal.SetColor("cyan");
             terminal.WriteLine(Loc.Get(isPlayer ? "combat.ability_attack_up" : "combat.ability_attack_up_npc", actorName, abilityResult.AttackBonus, abilityResult.Duration));
         }
 
         if (abilityResult.DefenseBonus > 0)
         {
-            player.TempDefenseBonus = abilityResult.DefenseBonus;
-            player.TempDefenseBonusDuration = abilityResult.Duration;
+            // Use the higher of current or new bonus
+            if (abilityResult.DefenseBonus > player.TempDefenseBonus || player.TempDefenseBonusDuration <= 0)
+            {
+                player.TempDefenseBonus = abilityResult.DefenseBonus;
+                player.TempDefenseBonusDuration = abilityResult.Duration;
+            }
+            else
+            {
+                player.TempDefenseBonusDuration = Math.Max(player.TempDefenseBonusDuration, abilityResult.Duration);
+            }
             terminal.SetColor("cyan");
             terminal.WriteLine(Loc.Get(isPlayer ? "combat.ability_defense_up" : "combat.ability_defense_up_npc", actorName, abilityResult.DefenseBonus, abilityResult.Duration));
         }
@@ -11170,7 +11207,7 @@ public partial class CombatEngine
                         result.TotalDamageDealt += executeBonusMM;
                         result.Player?.Statistics.RecordDamageDealt(executeBonusMM, false);
                         terminal.SetColor("bright_red");
-                        terminal.WriteLine($"  EXECUTE! {target.Name} is critically wounded — {executeBonusMM} bonus damage!");
+                        terminal.WriteLine(Loc.Get("combat.ability_execute_critical", target.Name, executeBonusMM));
                     }
                     else if (hpPercentMM < 0.50)
                     {
@@ -11179,12 +11216,12 @@ public partial class CombatEngine
                         result.TotalDamageDealt += executeBonusMM;
                         result.Player?.Statistics.RecordDamageDealt(executeBonusMM, false);
                         terminal.SetColor("red");
-                        terminal.WriteLine($"  Finishing blow! {target.Name} takes {executeBonusMM} bonus damage!");
+                        terminal.WriteLine(Loc.Get("combat.ability_execute_finishing", target.Name, executeBonusMM));
                     }
                     else
                     {
                         terminal.SetColor("gray");
-                        terminal.WriteLine($"  {target.Name} is too healthy for a finishing blow.");
+                        terminal.WriteLine(Loc.Get("combat.ability_execute_too_healthy", target.Name));
                     }
                 }
                 break;
@@ -11193,8 +11230,10 @@ public partial class CombatEngine
                 if (target != null && target.IsAlive)
                 {
                     target.Distracted = true;
+                    int distractPenalty = 5 + player.Level / 5 + (int)(player.Charisma / 10);
+                    target.DistractedPenalty = distractPenalty;
                     terminal.SetColor("yellow");
-                    terminal.WriteLine($"{target.Name} is distracted and will have reduced accuracy!");
+                    terminal.WriteLine(Loc.Get("combat.distracted", target.Name, distractPenalty));
                 }
                 break;
 
@@ -11237,6 +11276,13 @@ public partial class CombatEngine
                 player.DodgeNextAttack = true;
                 terminal.SetColor("cyan");
                 terminal.WriteLine(Loc.Get(isPlayer ? "combat.ability_dodge_next" : "combat.ability_dodge_next_npc", actorName));
+                break;
+
+            case "rally":
+                // Restore 50 stamina (net +10 after the 40 cost)
+                player.CurrentCombatStamina = Math.Min(player.MaxCombatStamina, player.CurrentCombatStamina + 50);
+                terminal.SetColor("bright_green");
+                terminal.WriteLine(Loc.Get(isPlayer ? "combat.ability_rally_stamina" : "combat.ability_rally_stamina_npc", actorName, 50));
                 break;
 
             case "inspire":
@@ -11562,31 +11608,21 @@ public partial class CombatEngine
                     terminal.SetColor("bright_red");
                     terminal.WriteLine(Loc.Get("combat.ability_death_blossom"));
                     var livingMonsDB = monsters.Where(m => m.IsAlive).ToList();
-                    foreach (var m in livingMonsDB)
+                    for (int dbi = 0; dbi < livingMonsDB.Count; dbi++)
                     {
-                        long blossomDmg = Math.Max(1, abilityResult.Damage / Math.Max(1, livingMonsDB.Count) - m.Defence / 3);
-                        if (m.HP < m.MaxHP * 0.3)
-                        {
-                            blossomDmg *= 2;
-                            terminal.SetColor("bright_red");
-                            terminal.Write($"  EXECUTE {m.Name}: ");
-                        }
-                        else
-                        {
-                            terminal.SetColor("red");
-                            terminal.Write($"  {m.Name}: ");
-                        }
-                        if (m.IsSleeping) { blossomDmg += blossomDmg / 2; }
+                        var m = livingMonsDB[dbi];
+                        long blossomDmg = (long)(abilityResult.Damage * GetAoEDiminishingMultiplier(dbi));
+                        bool isExecute = m.HP < m.MaxHP * 0.3;
+                        if (isExecute) blossomDmg *= 2;
+                        if (m.IsSleeping) blossomDmg += blossomDmg / 2;
                         m.HP -= blossomDmg;
                         result.TotalDamageDealt += blossomDmg;
                         result.Player?.Statistics.RecordDamageDealt(blossomDmg, false);
-                        terminal.SetColor("red");
-                        terminal.WriteLine($"-{blossomDmg} HP");
+                        terminal.SetColor(isExecute ? "bright_red" : "red");
+                        terminal.WriteLine(Loc.Get(isExecute ? "combat.death_blossom_execute" : "combat.death_blossom_hit", m.Name, blossomDmg));
                         if (m.HP <= 0)
                         {
                             m.HP = 0;
-                            terminal.SetColor("bright_green");
-                            terminal.WriteLine($"  {m.Name} is slain!");
                             if (!result.DefeatedMonsters.Contains(m))
                                 result.DefeatedMonsters.Add(m);
                         }
@@ -11598,13 +11634,14 @@ public partial class CombatEngine
 
             case "evasion":
                 player.DodgeNextAttack = true;
-                int evasionDef = abilityResult.DefenseBonus > 0 ? abilityResult.DefenseBonus : 50;
+                int evasionDefBase = abilityResult.DefenseBonus > 0 ? abilityResult.DefenseBonus : 50;
+                int evasionDef = evasionDefBase + (int)(player.Constitution / 5); // CON scaling
                 player.TempDefenseBonus += evasionDef;
                 player.TempDefenseBonusDuration = Math.Max(player.TempDefenseBonusDuration, abilityResult.Duration > 0 ? abilityResult.Duration : 2);
                 terminal.SetColor("magenta");
                 terminal.WriteLine(Loc.Get(isPlayer ? "combat.ability_evasion" : "combat.ability_evasion_npc", actorName));
                 terminal.SetColor("cyan");
-                terminal.WriteLine($"  (+{evasionDef} DEF for {(abilityResult.Duration > 0 ? abilityResult.Duration : 2)} rounds)");
+                terminal.WriteLine(Loc.Get("combat.ability_def_boost", evasionDef, abilityResult.Duration > 0 ? abilityResult.Duration : 2));
                 break;
 
             case "stealth":
@@ -11682,7 +11719,8 @@ public partial class CombatEngine
 
             case "vanish":
                 player.DodgeNextAttack = true;
-                int vanishDef = abilityResult.DefenseBonus > 0 ? abilityResult.DefenseBonus : 80;
+                int vanishDefBase = abilityResult.DefenseBonus > 0 ? abilityResult.DefenseBonus : 80;
+                int vanishDef = vanishDefBase + (int)(player.Constitution / 4); // CON scaling
                 player.TempDefenseBonus += vanishDef;
                 player.TempDefenseBonusDuration = Math.Max(player.TempDefenseBonusDuration, abilityResult.Duration > 0 ? abilityResult.Duration : 1);
                 if (!player.ActiveStatuses.ContainsKey(StatusEffect.Hidden))
@@ -11690,7 +11728,7 @@ public partial class CombatEngine
                 terminal.SetColor("magenta");
                 terminal.WriteLine(Loc.Get(isPlayer ? "combat.ability_vanish" : "combat.ability_vanish_npc", actorName));
                 terminal.SetColor("cyan");
-                terminal.WriteLine($"  (+{vanishDef} DEF, Hidden)");
+                terminal.WriteLine(Loc.Get("combat.ability_vanish_stats", vanishDef));
                 break;
 
             case "shadow":
@@ -12131,8 +12169,46 @@ public partial class CombatEngine
                 break;
             }
 
+            case "grand_finale_jester":
+            {
+                if (monsters != null)
+                {
+                    var gfLiving = monsters.Where(m => m.IsAlive).ToList();
+                    for (int gi = 0; gi < gfLiving.Count; gi++)
+                    {
+                        var m = gfLiving[gi];
+                        int dmg = (int)(abilityResult.Damage * GetAoEDiminishingMultiplier(gi));
+                        m.HP -= dmg;
+                        terminal.SetColor("bright_magenta");
+                        terminal.WriteLine(Loc.Get("combat.ability_grand_finale", m.Name, dmg));
+                        if (m.HP <= 0)
+                        {
+                            m.HP = 0;
+                            if (!result.DefeatedMonsters.Contains(m))
+                                result.DefeatedMonsters.Add(m);
+                        }
+                    }
+                }
+                if (result?.Teammates != null)
+                {
+                    foreach (var tm in result.Teammates.Where(t => t.IsAlive))
+                    {
+                        tm.TempAttackBonus = Math.Max(tm.TempAttackBonus, 15);
+                        tm.TempAttackBonusDuration = Math.Max(tm.TempAttackBonusDuration, 2);
+                    }
+                }
+                player.TempAttackBonus = Math.Max(player.TempAttackBonus, 15);
+                player.TempAttackBonusDuration = Math.Max(player.TempAttackBonusDuration, 2);
+                terminal.SetColor("bright_green");
+                terminal.WriteLine(Loc.Get("combat.ability_grand_finale_inspire"));
+                break;
+            }
+
+
             case "harmonic_shield":
-                // +40 DEF (handled) + 15% reflection to party
+                // +40 DEF + 15% reflection to entire party (including caster)
+                player.TempDefenseBonus += 40;
+                player.TempDefenseBonusDuration = Math.Max(player.TempDefenseBonusDuration, abilityResult.Duration);
                 if (!player.ActiveStatuses.ContainsKey(StatusEffect.Reflecting))
                     player.ActiveStatuses[StatusEffect.Reflecting] = abilityResult.Duration;
                 if (result?.Teammates != null)
@@ -12141,6 +12217,8 @@ public partial class CombatEngine
                     {
                         tm.TempDefenseBonus += 40;
                         tm.TempDefenseBonusDuration = Math.Max(tm.TempDefenseBonusDuration, abilityResult.Duration);
+                        if (!tm.ActiveStatuses.ContainsKey(StatusEffect.Reflecting))
+                            tm.ActiveStatuses[StatusEffect.Reflecting] = abilityResult.Duration;
                     }
                 }
                 terminal.SetColor("bright_cyan");
@@ -13041,7 +13119,7 @@ public partial class CombatEngine
                         long chainHit = (long)(chainReduced * GetAoEDiminishingMultiplier(chi));
                         m.HP -= (int)chainHit;
                         result.TotalDamageDealt += chainHit;
-                        terminal.WriteLine($"  Lightning chains to {m.Name} for {chainHit} damage!", "yellow");
+                        terminal.WriteLine(Loc.Get("combat.shaman_chain_lightning", m.Name, chainHit), "yellow");
                     }
                 }
                 break;
@@ -13448,6 +13526,19 @@ public partial class CombatEngine
                     await ApplySingleMonsterDamage(target, damage, result, spellInfo.Name, player);
                 }
 
+                // Apply self-healing from attack spells (e.g. Prison Siphon, Devour Essence)
+                if (spellResult.Healing > 0)
+                {
+                    long oldHP = player.HP;
+                    player.HP = Math.Min(player.MaxHP, player.HP + spellResult.Healing);
+                    long actualHeal = player.HP - oldHP;
+                    if (actualHeal > 0)
+                    {
+                        terminal.SetColor("bright_green");
+                        terminal.WriteLine($"{player.DisplayName} is restored for {actualHeal} HP!");
+                    }
+                }
+
                 // Handle debuff special effects
                 if (!string.IsNullOrEmpty(spellResult.SpecialEffect) && spellResult.SpecialEffect != "fizzle" && spellResult.SpecialEffect != "fail")
                 {
@@ -13693,6 +13784,45 @@ public partial class CombatEngine
                 terminal.WriteLine(Loc.Get("combat.demon_shield", player.DisplayName), "dark_red");
                 break;
 
+            case "creation":
+                // Manwe's Creation: reshape reality — reduce defense 30% and heal caster for 20% of damage
+                {
+                    int creationDefReduce = (int)(target.ArmPow * 0.30);
+                    target.ArmPow = Math.Max(0, target.ArmPow - creationDefReduce);
+                    if (creationDefReduce > 0)
+                        terminal.WriteLine($"{target.Name}'s form is reshaped by the Creator's power! (-{creationDefReduce} defense)", "bright_yellow");
+                    if (spellDamage > 0)
+                    {
+                        long creationHeal = spellDamage / 5;
+                        long oldHP = player.HP;
+                        player.HP = Math.Min(player.MaxHP, player.HP + creationHeal);
+                        long actualHeal = player.HP - oldHP;
+                        if (actualHeal > 0)
+                            terminal.WriteLine($"The Creator's energy restores {actualHeal} HP!", "bright_green");
+                    }
+                }
+                break;
+
+            case "piercing_fire":
+                // Pillar of Fire: penetrates all armor — deal bonus damage equal to target's defense, then apply burn
+                if (target.IsAlive && target.ArmPow > 0)
+                {
+                    long pierceDmg = Math.Max(1, target.ArmPow);
+                    target.HP -= pierceDmg;
+                    terminal.WriteLine($"The flames penetrate armor for {pierceDmg} bonus damage!", "bright_red");
+                    if (target.HP <= 0)
+                    {
+                        target.HP = 0;
+                        if (!result.DefeatedMonsters.Contains(target))
+                            result.DefeatedMonsters.Add(target);
+                    }
+                }
+                target.Poisoned = true;
+                target.IsBurning = true;
+                target.PoisonRounds = duration > 0 ? duration : 2;
+                terminal.WriteLine($"{target.Name} is engulfed in flames!", "red");
+                break;
+
             case "dodge_next":
                 // Deja Vu: dodge the next incoming attack
                 player.DodgeNextAttack = true;
@@ -13706,6 +13836,52 @@ public partial class CombatEngine
                     target.IsConfused = true;
                     target.ConfusedDuration = 1;
                     terminal.WriteLine(Loc.Get("combat.spell_psychic", target.Name), "magenta");
+                }
+                break;
+
+            case "soul":
+                // Soul Rend: fear + reduce defense by 25%
+                {
+                    int soulDefReduce = (int)(target.ArmPow * 0.25);
+                    target.ArmPow = Math.Max(0, target.ArmPow - soulDefReduce);
+                    target.IsFeared = true;
+                    target.FearDuration = duration > 0 ? duration : 2;
+                    if (soulDefReduce > 0)
+                        terminal.WriteLine($"{target.Name}'s soul is shattered! (-{soulDefReduce} defense)", "dark_red");
+                    terminal.WriteLine($"{target.Name} recoils in existential terror!", "yellow");
+                }
+                break;
+
+            case "temporal":
+                // Temporal Paradox: trap in time loop — stun for 2 rounds
+                if (target.StunImmunityRounds > 0)
+                {
+                    terminal.WriteLine($"{target.Name} resists the time loop!", "yellow");
+                }
+                else
+                {
+                    target.IsStunned = true;
+                    target.StunDuration = duration > 0 ? duration : 2;
+                    terminal.WriteLine($"{target.Name} is trapped in a time loop!", "bright_cyan");
+                }
+                break;
+
+            case "paradox_collapse":
+                // Paradox Collapse: bonus damage equal to 10% of all damage dealt this fight
+                if (target.IsAlive && result.TotalDamageDealt > 0)
+                {
+                    long paradoxBonus = (long)(result.TotalDamageDealt * 0.10);
+                    if (paradoxBonus > 0)
+                    {
+                        target.HP -= (int)paradoxBonus;
+                        terminal.WriteLine($"Accumulated timeline damage adds {paradoxBonus} bonus damage!", "bright_magenta");
+                        if (target.HP <= 0)
+                        {
+                            target.HP = 0;
+                            if (!result.DefeatedMonsters.Contains(target))
+                                result.DefeatedMonsters.Add(target);
+                        }
+                    }
                 }
                 break;
 
@@ -15513,15 +15689,17 @@ public partial class CombatEngine
             await Task.Delay(GetCombatDelay(500));
         }
 
-        // Distraction penalty: distracted monsters have a 25% chance to miss companions entirely
-        // (equivalent to the -5 to hit roll applied on the player attack path)
+        // Distraction penalty: distracted monsters have a scaled chance to miss companions
         if (monster.Distracted)
         {
+            int penalty = monster.DistractedPenalty > 0 ? monster.DistractedPenalty : 5;
+            int missChance = Math.Min(60, 15 + penalty * 2); // 15% base + 2% per penalty point, cap 60%
             monster.Distracted = false;
-            if (random.Next(100) < 25)
+            monster.DistractedPenalty = 0;
+            if (random.Next(100) < missChance)
             {
                 terminal.SetColor("yellow");
-                terminal.WriteLine($"{monster.TheNameOrName} is distracted and misses {companion.DisplayName}!");
+                terminal.WriteLine(Loc.Get("combat.distracted_miss", monster.TheNameOrName, companion.DisplayName));
                 await Task.Delay(GetCombatDelay(500));
                 return;
             }
@@ -15746,6 +15924,7 @@ public partial class CombatEngine
     {
         var npcId = npc.ID ?? "";
         var deathLocation = string.IsNullOrEmpty(result.Player?.CurrentLocation) ? "the dungeons" : result.Player.CurrentLocation;
+        bool wasPermadeath = false;
         var worldNpc = UsurperRemake.Systems.NPCSpawnSystem.Instance?.ActiveNPCs?.FirstOrDefault(n => n.ID == npcId);
         if (worldNpc != null)
         {
@@ -15754,7 +15933,7 @@ public partial class CombatEngine
             // not real combat deaths)
             var savedTeam = worldNpc.Team;
             worldNpc.Team = "";
-            bool wasPermadeath = WorldSimulator.Instance?.MarkNPCDead(worldNpc, GameConfig.PermadeathChancePlayerKill,
+            wasPermadeath = WorldSimulator.Instance?.MarkNPCDead(worldNpc, GameConfig.PermadeathChancePlayerKill,
                 killerName, deathLocation) ?? false;
             worldNpc.Team = savedTeam;
 
@@ -15783,18 +15962,30 @@ public partial class CombatEngine
         // Remove from player's dungeon party if applicable
         GameEngine.Instance?.DungeonPartyNPCIds?.Remove(npcId);
 
-        // Trigger grief system for NPC teammate death
-        UsurperRemake.Systems.GriefSystem.Instance.BeginNpcGrief(
-            npcId,
-            npc.DisplayName,
-            UsurperRemake.Systems.DeathType.Combat);
+        // Trigger grief system only for NPCs the player has a meaningful relationship with
+        // (spouse, lover, or close friend — not random team recruits or mercenaries)
+        var romanceType = UsurperRemake.Systems.RomanceTracker.Instance?.GetRelationType(npcId)
+            ?? UsurperRemake.Systems.RomanceRelationType.None;
+        int relationLevel = result.Player != null
+            ? RelationshipSystem.GetRelationshipStatus(result.Player, npc) : GameConfig.RelationNormal;
+        bool isMeaningful = romanceType == UsurperRemake.Systems.RomanceRelationType.Spouse
+            || romanceType == UsurperRemake.Systems.RomanceRelationType.Lover
+            || relationLevel <= GameConfig.RelationFriendship;
 
-        terminal.SetColor("dark_magenta");
-        terminal.WriteLine(Loc.Get("combat.grief_onset"));
-        terminal.SetColor("gray");
-        terminal.WriteLine(Loc.Get("combat.grief_combat_effect"));
-        terminal.WriteLine("");
-        await Task.Delay(1500);
+        if (isMeaningful && !npc.IsMercenary && wasPermadeath)
+        {
+            UsurperRemake.Systems.GriefSystem.Instance.BeginNpcGrief(
+                npcId,
+                npc.DisplayName,
+                UsurperRemake.Systems.DeathType.Combat);
+
+            terminal.SetColor("dark_magenta");
+            terminal.WriteLine(Loc.Get("combat.grief_onset"));
+            terminal.SetColor("gray");
+            terminal.WriteLine(Loc.Get("combat.grief_combat_effect"));
+            terminal.WriteLine("");
+            await Task.Delay(1500);
+        }
 
         // Check relationship type and handle accordingly
         var romanceTracker = UsurperRemake.Systems.RomanceTracker.Instance;
@@ -17722,9 +17913,9 @@ public partial class CombatEngine
             }
             else if (abilityResult.SpecialEffect == "backstab")
             {
-                // Backstab bonus if monster hasn't attacked yet
-                actualDamage = (long)(actualDamage * 1.5);
-                terminal.WriteLine(Loc.Get("combat.critical_from_shadows"), "bright_yellow");
+                // Guaranteed critical hit from stealth
+                actualDamage = (long)(actualDamage * 2.0);
+                terminal.WriteLine(Loc.Get("combat.ability_backstab_crit"), "bright_yellow");
             }
 
             // Critical hit roll for abilities (same as regular attacks)
@@ -17813,18 +18004,44 @@ public partial class CombatEngine
         if (abilityResult.AttackBonus > 0 || abilityResult.DefenseBonus != 0)
         {
             // Store buff info - these will be applied to next attacks/defense
-            // For simplicity, we'll add them directly to temp stats
+            // Use the higher of current or new bonus (don't let weaker buff overwrite stronger)
             if (abilityResult.AttackBonus > 0)
             {
-                player.TempAttackBonus = abilityResult.AttackBonus;
-                player.TempAttackBonusDuration = abilityResult.Duration;
+                if (abilityResult.AttackBonus > player.TempAttackBonus)
+                {
+                    player.TempAttackBonus = abilityResult.AttackBonus;
+                    player.TempAttackBonusDuration = abilityResult.Duration;
+                }
+                else if (player.TempAttackBonusDuration <= 0)
+                {
+                    player.TempAttackBonus = abilityResult.AttackBonus;
+                    player.TempAttackBonusDuration = abilityResult.Duration;
+                }
+                else
+                {
+                    player.TempAttackBonusDuration = Math.Max(player.TempAttackBonusDuration, abilityResult.Duration);
+                }
+                terminal.SetColor("cyan");
                 terminal.WriteLine($"Attack increased by {abilityResult.AttackBonus} for {abilityResult.Duration} rounds!", "cyan");
             }
 
             if (abilityResult.DefenseBonus > 0)
             {
-                player.TempDefenseBonus = abilityResult.DefenseBonus;
-                player.TempDefenseBonusDuration = abilityResult.Duration;
+                if (abilityResult.DefenseBonus > player.TempDefenseBonus)
+                {
+                    player.TempDefenseBonus = abilityResult.DefenseBonus;
+                    player.TempDefenseBonusDuration = abilityResult.Duration;
+                }
+                else if (player.TempDefenseBonusDuration <= 0)
+                {
+                    player.TempDefenseBonus = abilityResult.DefenseBonus;
+                    player.TempDefenseBonusDuration = abilityResult.Duration;
+                }
+                else
+                {
+                    player.TempDefenseBonusDuration = Math.Max(player.TempDefenseBonusDuration, abilityResult.Duration);
+                }
+                terminal.SetColor("cyan");
                 terminal.WriteLine($"Defense increased by {abilityResult.DefenseBonus} for {abilityResult.Duration} rounds!", "cyan");
             }
             else if (abilityResult.DefenseBonus < 0)
@@ -17864,7 +18081,8 @@ public partial class CombatEngine
                 {
                     monster.Poisoned = true;
                     monster.PoisonRounds = Math.Max(monster.PoisonRounds, abilityResult.Duration > 0 ? abilityResult.Duration : 3);
-                    terminal.WriteLine($"{monster.Name} is poisoned!", "green");
+                    terminal.SetColor("green");
+                    terminal.WriteLine(Loc.Get("combat.ability_poisoned", monster.Name));
                 }
                 break;
 
@@ -17896,7 +18114,7 @@ public partial class CombatEngine
                         result.TotalDamageDealt += executeBonusSM;
                         result.Player?.Statistics.RecordDamageDealt(executeBonusSM, false);
                         terminal.SetColor("bright_red");
-                        terminal.WriteLine($"  EXECUTE! {monster.Name} is critically wounded — {executeBonusSM} bonus damage!");
+                        terminal.WriteLine(Loc.Get("combat.ability_execute_critical", monster.Name, executeBonusSM));
                     }
                     else if (hpPercent < 0.50)
                     {
@@ -17906,12 +18124,12 @@ public partial class CombatEngine
                         result.TotalDamageDealt += executeBonusSM;
                         result.Player?.Statistics.RecordDamageDealt(executeBonusSM, false);
                         terminal.SetColor("red");
-                        terminal.WriteLine($"  Finishing blow! {monster.Name} takes {executeBonusSM} bonus damage!");
+                        terminal.WriteLine(Loc.Get("combat.ability_execute_finishing", monster.Name, executeBonusSM));
                     }
                     else
                     {
                         terminal.SetColor("gray");
-                        terminal.WriteLine($"  {monster.Name} is too healthy for a finishing blow.");
+                        terminal.WriteLine(Loc.Get("combat.ability_execute_too_healthy", monster.Name));
                     }
                 }
                 break;
@@ -17920,7 +18138,10 @@ public partial class CombatEngine
                 if (monster != null)
                 {
                     monster.Distracted = true;
-                    terminal.WriteLine($"{monster.Name} is distracted and will have reduced accuracy!", "yellow");
+                    int distractPen = 5 + player.Level / 5 + (int)(player.Charisma / 10);
+                    monster.DistractedPenalty = distractPen;
+                    terminal.SetColor("yellow");
+                    terminal.WriteLine(Loc.Get("combat.distracted", monster.Name, distractPen));
                 }
                 break;
 
@@ -17941,7 +18162,8 @@ public partial class CombatEngine
                 if (monster != null && random.Next(100) < 40)
                 {
                     monster.Charmed = true;
-                    terminal.WriteLine($"{monster.Name} is charmed and may hesitate to attack!", "magenta");
+                    terminal.SetColor("magenta");
+                    terminal.WriteLine(Loc.Get("combat.ability_charmed", monster.Name));
                 }
                 break;
 
@@ -17959,6 +18181,12 @@ public partial class CombatEngine
             case "dodge_next":
                 player.DodgeNextAttack = true;
                 terminal.WriteLine(Loc.Get("combat.prepare_dodge"), "cyan");
+                break;
+
+            case "rally":
+                player.CurrentCombatStamina = Math.Min(player.MaxCombatStamina, player.CurrentCombatStamina + 50);
+                terminal.SetColor("bright_green");
+                terminal.WriteLine(Loc.Get("combat.ability_rally_stamina", "You", 50));
                 break;
 
             case "inspire":
@@ -17994,8 +18222,11 @@ public partial class CombatEngine
                     terminal.WriteLine(Loc.Get("combat.ability_desperation", desperateDmg));
                     if (monster.HP <= 0)
                     {
+                        monster.HP = 0;
                         terminal.SetColor("bright_green");
-                        terminal.WriteLine($"{monster.Name} is slain!");
+                        terminal.WriteLine(Loc.Get("combat.ability_target_slain", monster.Name));
+                        if (!result.DefeatedMonsters.Contains(monster))
+                            result.DefeatedMonsters.Add(monster);
                     }
                 }
                 break;
@@ -18123,6 +18354,17 @@ public partial class CombatEngine
                 }
                 break;
 
+            case "aoe_confusion":
+                // Single-monster: damage already applied by base handler, add guaranteed confusion
+                if (monster != null && monster.IsAlive)
+                {
+                    monster.IsConfused = true;
+                    monster.ConfusedDuration = 2;
+                    terminal.SetColor("bright_magenta");
+                    terminal.WriteLine(Loc.Get("combat.ability_aoe_confusion"));
+                }
+                break;
+
             case "confusion":
                 if (monster != null && monster.IsAlive)
                 {
@@ -18132,12 +18374,12 @@ public partial class CombatEngine
                         monster.IsConfused = true;
                         monster.ConfusedDuration = 2;
                         terminal.SetColor("magenta");
-                        terminal.WriteLine($"{monster.Name} is bewildered by the joke!");
+                        terminal.WriteLine(Loc.Get("combat.ability_confusion_success", monster.Name));
                     }
                     else
                     {
                         terminal.SetColor("yellow");
-                        terminal.WriteLine($"{monster.Name} doesn't get the joke.");
+                        terminal.WriteLine(Loc.Get("combat.ability_confusion_resist", monster.Name));
                     }
                 }
                 break;
@@ -18171,7 +18413,7 @@ public partial class CombatEngine
                         result.TotalDamageDealt += killDmg;
                         player.Statistics.RecordDamageDealt(killDmg, false);
                         terminal.SetColor("bright_red");
-                        terminal.WriteLine($"ASSASSINATED! {monster.Name} falls instantly!");
+                        terminal.WriteLine(Loc.Get("combat.ability_assassinated", monster.Name));
                     }
                     else
                     {
@@ -18198,35 +18440,47 @@ public partial class CombatEngine
                         terminal.WriteLine(Loc.Get("combat.ability_frenzy_strike", i + 1, frenzyDmg));
                         if (monster.HP <= 0)
                         {
+                            monster.HP = 0;
                             terminal.SetColor("bright_green");
-                            terminal.WriteLine($"  {monster.Name} is torn apart!");
+                            terminal.WriteLine(Loc.Get("combat.ability_torn_apart", monster.Name));
+                            if (!result.DefeatedMonsters.Contains(monster))
+                                result.DefeatedMonsters.Add(monster);
                         }
                     }
                 }
                 break;
 
             case "execute_all":
-                // In single-monster, behaves like execute
-                if (monster != null && monster.IsAlive && monster.HP < monster.MaxHP * 0.3)
+                // In single-monster, full damage + execute bonus if below 30%
+                if (monster != null && monster.IsAlive)
                 {
-                    long executeDmg = abilityResult.Damage;
-                    monster.HP -= executeDmg;
-                    result.TotalDamageDealt += executeDmg;
-                    player.Statistics.RecordDamageDealt(executeDmg, false);
+                    long blossomDmgSM = abilityResult.Damage;
+                    bool isExecSM = monster.HP < monster.MaxHP * 0.3;
+                    if (isExecSM) blossomDmgSM *= 2;
+                    monster.HP -= blossomDmgSM;
+                    result.TotalDamageDealt += blossomDmgSM;
+                    player.Statistics.RecordDamageDealt(blossomDmgSM, false);
                     terminal.SetColor("bright_red");
-                    terminal.WriteLine($"DEATH BLOSSOM EXECUTE! +{executeDmg} damage!");
+                    terminal.WriteLine(Loc.Get(isExecSM ? "combat.death_blossom_execute" : "combat.death_blossom_hit", monster.Name, blossomDmgSM));
+                    if (monster.HP <= 0)
+                    {
+                        monster.HP = 0;
+                        if (!result.DefeatedMonsters.Contains(monster))
+                            result.DefeatedMonsters.Add(monster);
+                    }
                 }
                 break;
 
             case "evasion":
                 player.DodgeNextAttack = true;
-                int evasionDefSM = abilityResult.DefenseBonus > 0 ? abilityResult.DefenseBonus : 50;
+                int evasionDefBaseSM = abilityResult.DefenseBonus > 0 ? abilityResult.DefenseBonus : 50;
+                int evasionDefSM = evasionDefBaseSM + (int)(player.Constitution / 5); // CON scaling
                 player.TempDefenseBonus += evasionDefSM;
                 player.TempDefenseBonusDuration = Math.Max(player.TempDefenseBonusDuration, abilityResult.Duration > 0 ? abilityResult.Duration : 2);
                 terminal.SetColor("magenta");
                 terminal.WriteLine(Loc.Get("combat.melt_shadows"));
                 terminal.SetColor("cyan");
-                terminal.WriteLine($"  (+{evasionDefSM} DEF for {(abilityResult.Duration > 0 ? abilityResult.Duration : 2)} rounds)");
+                terminal.WriteLine(Loc.Get("combat.ability_def_boost", evasionDefSM, abilityResult.Duration > 0 ? abilityResult.Duration : 2));
                 break;
 
             case "stealth":
@@ -18241,7 +18495,7 @@ public partial class CombatEngine
                     monster.IsMarked = true;
                     monster.MarkedDuration = abilityResult.Duration > 0 ? abilityResult.Duration : 4;
                     terminal.SetColor("bright_red");
-                    terminal.WriteLine($"{monster.Name} is marked! All attacks deal 30% bonus damage!");
+                    terminal.WriteLine(Loc.Get("combat.ability_marked", monster.Name));
                 }
                 break;
 
@@ -18302,7 +18556,8 @@ public partial class CombatEngine
 
             case "vanish":
                 player.DodgeNextAttack = true;
-                int vanishDefSM = abilityResult.DefenseBonus > 0 ? abilityResult.DefenseBonus : 80;
+                int vanishDefBaseSM = abilityResult.DefenseBonus > 0 ? abilityResult.DefenseBonus : 80;
+                int vanishDefSM = vanishDefBaseSM + (int)(player.Constitution / 4); // CON scaling
                 player.TempDefenseBonus += vanishDefSM;
                 player.TempDefenseBonusDuration = Math.Max(player.TempDefenseBonusDuration, abilityResult.Duration > 0 ? abilityResult.Duration : 1);
                 if (!player.ActiveStatuses.ContainsKey(StatusEffect.Hidden))
@@ -18310,7 +18565,7 @@ public partial class CombatEngine
                 terminal.SetColor("magenta");
                 terminal.WriteLine(Loc.Get("combat.vanish_completely"));
                 terminal.SetColor("cyan");
-                terminal.WriteLine($"  (+{vanishDefSM} DEF, Hidden)");
+                terminal.WriteLine(Loc.Get("combat.ability_vanish_stats", vanishDefSM));
                 break;
 
             case "shadow":
@@ -18464,7 +18719,8 @@ public partial class CombatEngine
                     monster.TauntedBy = player.DisplayName;
                     monster.TauntRoundsLeft = tauntDur;
                     terminal.SetColor("bright_yellow");
-                    terminal.WriteLine($"Your thundering roar forces {monster.Name} to focus on you!");
+                    bool isTauntPlayer = (player == currentPlayer);
+                    terminal.WriteLine(Loc.Get(isTauntPlayer ? "combat.taunt_aoe" : "combat.taunt_aoe_npc", isTauntPlayer ? "You" : player.DisplayName));
                 }
                 break;
 
@@ -18726,7 +18982,9 @@ public partial class CombatEngine
             }
 
             case "harmonic_shield":
-                // +40 DEF (handled) + 15% reflection to party
+                // +40 DEF + 15% reflection to entire party (including caster)
+                player.TempDefenseBonus += 40;
+                player.TempDefenseBonusDuration = Math.Max(player.TempDefenseBonusDuration, abilityResult.Duration);
                 if (!player.ActiveStatuses.ContainsKey(StatusEffect.Reflecting))
                     player.ActiveStatuses[StatusEffect.Reflecting] = abilityResult.Duration;
                 if (result?.Teammates != null)
@@ -18735,6 +18993,8 @@ public partial class CombatEngine
                     {
                         tm.TempDefenseBonus += 40;
                         tm.TempDefenseBonusDuration = Math.Max(tm.TempDefenseBonusDuration, abilityResult.Duration);
+                        if (!tm.ActiveStatuses.ContainsKey(StatusEffect.Reflecting))
+                            tm.ActiveStatuses[StatusEffect.Reflecting] = abilityResult.Duration;
                     }
                 }
                 terminal.SetColor("bright_cyan");
@@ -18753,6 +19013,38 @@ public partial class CombatEngine
                     terminal.WriteLine(Loc.Get(monster.Stunned ? "combat.ability_dissonant_wave_stun" : "combat.ability_dissonant_wave", monster.Name));
                 }
                 break;
+
+            case "grand_finale_jester":
+            {
+                // Single-monster path: hit the one target
+                if (monster != null && monster.IsAlive)
+                {
+                    int dmg = (int)abilityResult.Damage;
+                    monster.HP -= dmg;
+                    terminal.SetColor("bright_magenta");
+                    terminal.WriteLine(Loc.Get("combat.ability_grand_finale", monster.Name, dmg));
+                    if (monster.HP <= 0)
+                    {
+                        monster.HP = 0;
+                        if (!result.DefeatedMonsters.Contains(monster))
+                            result.DefeatedMonsters.Add(monster);
+                    }
+                }
+                // Inspire buff: +15 ATK for 2 rounds to player and all teammates
+                player.TempAttackBonus = Math.Max(player.TempAttackBonus, 15);
+                player.TempAttackBonusDuration = Math.Max(player.TempAttackBonusDuration, 2);
+                if (result?.Teammates != null)
+                {
+                    foreach (var tm in result.Teammates.Where(t => t.IsAlive))
+                    {
+                        tm.TempAttackBonus = Math.Max(tm.TempAttackBonus, 15);
+                        tm.TempAttackBonusDuration = Math.Max(tm.TempAttackBonusDuration, 2);
+                    }
+                }
+                terminal.SetColor("bright_green");
+                terminal.WriteLine(Loc.Get("combat.ability_grand_finale_inspire"));
+                break;
+            }
 
             case "resonance_cascade":
             {
@@ -19722,6 +20014,36 @@ public partial class CombatEngine
                 terminal.WriteLine(Loc.Get("combat.shaman_enchant_expires"), "gray");
                 player.ShamanEnchantType = 0;
                 player.ShamanEnchantPower = 0;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Ancestral Guidance: distribute healing to player and all living teammates.
+    /// </summary>
+    private void ApplyAncestralGuidanceHealing(Character player, long totalHeal, CombatResult result)
+    {
+        if (totalHeal <= 0) return;
+
+        // Heal player
+        long playerHeal = Math.Min(totalHeal, player.MaxHP - player.HP);
+        if (playerHeal > 0)
+        {
+            player.HP += playerHeal;
+            terminal.WriteLine(Loc.Get("combat.shaman_ancestral_heal", playerHeal), "bright_magenta");
+        }
+
+        // Heal teammates
+        if (result?.Teammates != null)
+        {
+            foreach (var tm in result.Teammates.Where(t => t.IsAlive))
+            {
+                long tmHeal = Math.Min(totalHeal, tm.MaxHP - tm.HP);
+                if (tmHeal > 0)
+                {
+                    tm.HP += tmHeal;
+                    terminal.WriteLine($"  {tm.DisplayName} is healed for {tmHeal} HP!", "bright_magenta");
+                }
             }
         }
     }
@@ -21013,11 +21335,11 @@ public partial class CombatEngine
 
                 if (curedAnything)
                 {
-                    terminal.WriteLine($"{caster.DisplayName} is purified! Disease and afflictions are purged!", "bright_green");
+                    terminal.WriteLine(Loc.Get("combat.spell_purified", caster.DisplayName), "bright_green");
                 }
                 else
                 {
-                    terminal.WriteLine($"{caster.DisplayName} is already healthy - the purifying light finds nothing to cleanse.", "cyan");
+                    terminal.WriteLine(Loc.Get("combat.spell_already_healthy", caster.DisplayName), "cyan");
                 }
                 break;
 
@@ -21033,7 +21355,7 @@ public partial class CombatEngine
             case "invisible":
             case "shadow":
                 caster.ApplyStatus(StatusEffect.Blur, 999);
-                terminal.WriteLine($"{caster.DisplayName}'s form shimmers and becomes indistinct!", "cyan");
+                terminal.WriteLine(Loc.Get("combat.spell_shimmer", caster.DisplayName), "cyan");
                 break;
 
             case "avatar":
@@ -21051,11 +21373,9 @@ public partial class CombatEngine
                 break;
 
             case "timestop":
-                // Time Stop: dodge + attack/defense bonus for 1 round
+                // Time Stop: dodge next attack (ATK/DEF bonuses applied via spell result)
                 caster.DodgeNextAttack = true;
-                caster.TempAttackBonus += 35;
-                caster.TempDefenseBonus += 35;
-                terminal.WriteLine($"{caster.DisplayName} freezes time itself! (+35 ATK/DEF, dodge next attack)", "bright_cyan");
+                terminal.WriteLine($"{caster.DisplayName} freezes time itself! (dodge next attack)", "bright_cyan");
                 break;
 
             case "mindblank":
@@ -21063,6 +21383,25 @@ public partial class CombatEngine
                 caster.HasStatusImmunity = true;
                 caster.StatusImmunityDuration = 999;
                 terminal.WriteLine($"{caster.DisplayName}'s mind becomes an impenetrable fortress!", "bright_white");
+                break;
+
+            case "immunity":
+                // Arcane Immunity: grant status immunity for rest of combat
+                caster.HasStatusImmunity = true;
+                caster.StatusImmunityDuration = 999;
+                terminal.WriteLine($"{caster.DisplayName} becomes immune to all status effects!", "bright_white");
+                break;
+
+            case "giant":
+                // Giant Form: grow to massive size — bonus defense + temporary HP
+                {
+                    int giantDef = 20 + (int)(caster.Level / 3);
+                    caster.TempDefenseBonus += giantDef;
+                    caster.TempDefenseBonusDuration = Math.Max(caster.TempDefenseBonusDuration, 999);
+                    long giantHP = caster.Level * 3;
+                    caster.HP = Math.Min(caster.MaxHP + giantHP, caster.HP + giantHP);
+                    terminal.WriteLine($"{caster.DisplayName} grows to enormous size! (+{giantDef} DEF, +{giantHP} HP)", "bright_green");
+                }
                 break;
 
             case "angel":
@@ -21209,9 +21548,7 @@ public partial class CombatEngine
 
             case "timestop":
                 caster.DodgeNextAttack = true;
-                caster.TempAttackBonus += 35;
-                caster.TempDefenseBonus += 35;
-                terminal.WriteLine($"{caster.DisplayName} freezes time! (+35 ATK/DEF, dodge next)", "bright_cyan");
+                terminal.WriteLine($"{caster.DisplayName} freezes time! (dodge next attack)", "bright_cyan");
                 break;
 
             case "mindblank":
@@ -21220,11 +21557,17 @@ public partial class CombatEngine
                 terminal.WriteLine($"{caster.DisplayName}'s mind becomes impenetrable!", "bright_white");
                 break;
 
+            case "immunity":
+                caster.HasStatusImmunity = true;
+                caster.StatusImmunityDuration = 999;
+                terminal.WriteLine($"{caster.DisplayName} becomes immune to all status effects!", "bright_white");
+                break;
+
             case "cure_disease":
                 if (caster.HasStatus(StatusEffect.Poisoned)) caster.RemoveStatus(StatusEffect.Poisoned);
                 if (caster.HasStatus(StatusEffect.Diseased)) caster.RemoveStatus(StatusEffect.Diseased);
                 if (caster.Poison > 0) { caster.Poison = 0; caster.PoisonTurns = 0; }
-                terminal.WriteLine($"{caster.DisplayName} is purified!", "bright_green");
+                terminal.WriteLine(Loc.Get("combat.spell_purified", caster.DisplayName), "bright_green");
                 break;
 
             case "tidal_reflect":
@@ -21246,6 +21589,26 @@ public partial class CombatEngine
             case "dodge_next":
                 caster.DodgeNextAttack = true;
                 terminal.WriteLine($"{caster.DisplayName} will dodge the next attack!", "cyan");
+                break;
+
+            case "giant":
+                {
+                    int giantDef = 20 + (int)(caster.Level / 3);
+                    caster.TempDefenseBonus += giantDef;
+                    long giantHP = caster.Level * 3;
+                    caster.HP = Math.Min(caster.MaxHP + giantHP, caster.HP + giantHP);
+                    terminal.WriteLine($"{caster.DisplayName} grows to enormous size! (+{giantDef} DEF, +{giantHP} HP)", "bright_green");
+                }
+                break;
+
+            case "soul":
+                target.ApplyStatus(StatusEffect.Feared, 2);
+                terminal.WriteLine($"{target.DisplayName} recoils in existential terror!", "yellow");
+                break;
+
+            case "temporal":
+                target.ApplyStatus(StatusEffect.Stunned, 2);
+                terminal.WriteLine($"{target.DisplayName} is trapped in a time loop!", "bright_cyan");
                 break;
         }
     }
@@ -22547,7 +22910,7 @@ public partial class CombatEngine
                 terminal.SetColor("bright_red");
                 terminal.WriteLine(Loc.Get("combat.ability_execute"));
             }
-            else if (ability.SpecialEffect == "last_stand" && player.HP < player.MaxHP * 0.3)
+            else if (ability.SpecialEffect == "last_stand" && player.HP < player.MaxHP * 0.25)
             {
                 actualDamage = (int)(actualDamage * 1.5);
                 terminal.SetColor("bright_yellow");

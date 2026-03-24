@@ -806,6 +806,7 @@ public class LevelMasterLocation : BaseLocation
                 player.BaseConstitution += 2;
                 player.BaseStamina += 2;
                 player.BaseAgility += 1;
+                player.BaseMaxHP += 6;
                 player.BaseMaxMana += 8;
                 break;
 

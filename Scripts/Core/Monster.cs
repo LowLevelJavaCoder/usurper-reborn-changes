@@ -26,6 +26,7 @@ public class Monster
     public bool IsBurning { get; set; }                  // burning (fire DoT), temporary battle var
     public bool Stunned { get; set; }                   // stunned?, temporary battle var
     public bool Distracted { get; set; }                // distracted?, reduced accuracy
+    public int DistractedPenalty { get; set; }           // scaled penalty (5 + level/5 + CHA/10)
     public bool Charmed { get; set; }                   // charmed?, may skip attack
     public string Weapon { get; set; } = "";            // name of weapon
     public string Armor { get; set; } = "";             // name of armor

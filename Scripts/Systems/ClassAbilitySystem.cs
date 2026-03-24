@@ -135,7 +135,7 @@ public static class ClassAbilitySystem
         {
             Id = "last_stand",
             Name = "Last Stand",
-            Description = "When near death, channel your remaining strength into a counterattack.",
+            Description = "A desperate counterattack. 120 base damage, deals 1.5x damage when below 25% HP.",
             LevelRequired = 40,
             StaminaCost = 50,
             Cooldown = 5,
@@ -249,7 +249,7 @@ public static class ClassAbilitySystem
         {
             Id = "intimidate",
             Name = "Intimidating Roar",
-            Description = "A terrifying roar that weakens enemies.",
+            Description = "A terrifying roar that may freeze an enemy in fear for 3 rounds (70% chance, 35% vs bosses). Feared enemies skip their turns.",
             LevelRequired = 24,
             StaminaCost = 30,
             Cooldown = 4,
@@ -290,13 +290,13 @@ public static class ClassAbilitySystem
         {
             Id = "primal_scream",
             Name = "Primal Scream",
-            Description = "A scream from the depths of your soul that damages all enemies.",
+            Description = "A primal roar that damages all enemies and terrifies them. 90 AoE damage + confuses surviving enemies for 2 rounds.",
             LevelRequired = 60,
             StaminaCost = 65,
             Cooldown = 5,
             Type = AbilityType.Attack,
-            BaseDamage = 45,  // AoE — full damage to each target
-            SpecialEffect = "aoe",
+            BaseDamage = 90,  // AoE — higher than Whirlwind (40) to justify higher cooldown/level
+            SpecialEffect = "aoe_confusion",  // Reuse aoe_confusion for stun/fear effect
             AvailableToClasses = new[] { CharacterClass.Barbarian }
         },
         ["unstoppable"] = new ClassAbility
@@ -647,13 +647,13 @@ public static class ClassAbilitySystem
         {
             Id = "backstab",
             Name = "Backstab",
-            Description = "Guaranteed critical hit from stealth. Requires dagger. 40 base damage, scales with STR+DEX.",
+            Description = "Guaranteed critical hit from stealth. Requires dagger. 40 base damage x2 (crit), scales with STR+DEX.",
             LevelRequired = 1,
             StaminaCost = 20,
             Cooldown = 2,
             Type = AbilityType.Attack,
-            BaseDamage = 40,  // Usable every other round, scales with STR+DEX
-            SpecialEffect = "critical",
+            BaseDamage = 40,
+            SpecialEffect = "backstab",
             RequiredWeaponTypes = new[] { WeaponType.Dagger },
             AvailableToClasses = new[] { CharacterClass.Assassin }
         },
@@ -719,7 +719,7 @@ public static class ClassAbilitySystem
         {
             Id = "assassinate",
             Name = "Assassinate",
-            Description = "160 base damage. Instant kill on targets below 15% HP. Requires dagger. Scales with STR+DEX.",
+            Description = "160 base damage. 50% chance to instant kill targets below 25% HP (not bosses). Requires dagger. Scales with STR+DEX.",
             LevelRequired = 42,
             StaminaCost = 70,
             Cooldown = 6,
@@ -747,7 +747,7 @@ public static class ClassAbilitySystem
         {
             Id = "noctura_embrace",
             Name = "Noctura's Embrace",
-            Description = "+50 ATK and +60 DEF for 4 rounds. Scales with CHA. Shadow buff stacks with other bonuses.",
+            Description = "+50 ATK, +60 DEF for 4 rounds. Grants Hidden status (next 2 attacks crit from stealth).",
             LevelRequired = 65,
             StaminaCost = 60,
             Cooldown = 6,
@@ -762,12 +762,12 @@ public static class ClassAbilitySystem
         {
             Id = "blade_dance",
             Name = "Blade Dance",
-            Description = "AoE attack hitting all enemies (diminishing: 100%/75%/50%/25%). 38 base damage. Requires dagger.",
+            Description = "A whirlwind of blades striking all enemies. 110 AoE damage (diminishing). Requires dagger. Scales with STR+DEX.",
             LevelRequired = 78,
             StaminaCost = 75,
             Cooldown = 5,
             Type = AbilityType.Attack,
-            BaseDamage = 38,  // AoE — full damage to each target
+            BaseDamage = 110,
             SpecialEffect = "aoe",
             RequiredWeaponTypes = new[] { WeaponType.Dagger },
             AvailableToClasses = new[] { CharacterClass.Assassin }
@@ -776,7 +776,7 @@ public static class ClassAbilitySystem
         {
             Id = "death_blossom",
             Name = "Death Blossom",
-            Description = "250 base AoE damage + execute on targets below 15% HP. Capstone. Requires dagger. Scales with STR+DEX.",
+            Description = "250 AoE damage (diminishing) + 2x damage on targets below 30% HP. Capstone. Requires dagger. Scales with STR+DEX.",
             LevelRequired = 92,
             StaminaCost = 90,
             Cooldown = 7,
@@ -968,7 +968,7 @@ public static class ClassAbilitySystem
         {
             Id = "charm",
             Name = "Charming Performance",
-            Description = "Use charisma to confuse your enemy.",
+            Description = "A captivating performance that charms the enemy. 40% chance to charm, causing 50% chance to skip their next attack.",
             LevelRequired = 26,
             StaminaCost = 35,
             Cooldown = 4,
@@ -981,7 +981,7 @@ public static class ClassAbilitySystem
         {
             Id = "cutting_words",
             Name = "Cutting Words",
-            Description = "A barbed insult that deals CHA-scaled damage and strips 25% of the target's defense for the fight.",
+            Description = "A barbed insult that deals CHA-scaled damage and weakens the target (-30% ATK, -20% DEF).",
             LevelRequired = 14,
             StaminaCost = 15,
             Cooldown = 2,
@@ -1117,13 +1117,13 @@ public static class ClassAbilitySystem
         {
             Id = "grand_finale",
             Name = "Grand Finale",
-            Description = "The ultimate performance that devastates all foes.",
+            Description = "The ultimate performance that devastates all foes. 120 AoE damage + inspires allies with +15 ATK for 2 rounds.",
             LevelRequired = 72,
             StaminaCost = 60,
             Cooldown = 5,
             Type = AbilityType.Attack,
-            BaseDamage = 60,  // AoE — full damage to each target, scales with CHA+DEX
-            SpecialEffect = "aoe",
+            BaseDamage = 120,
+            SpecialEffect = "grand_finale_jester",
             AvailableToClasses = new[] { CharacterClass.Bard, CharacterClass.Jester }
         },
         ["carnival_of_chaos"] = new ClassAbility
@@ -1646,12 +1646,13 @@ public static class ClassAbilitySystem
         {
             Id = "rally",
             Name = "Rally",
-            Description = "Steel your resolve, recovering health and stamina.",
+            Description = "Steel your resolve, recovering health and stamina. Restores 55 HP + 50 stamina.",
             LevelRequired = 30,
             StaminaCost = 40,
             Cooldown = 6,
             Type = AbilityType.Heal,
             BaseHealing = 55,  // Stronger heal - scales with CON+WIS
+            SpecialEffect = "rally",
             AvailableToClasses = new[] {
                 CharacterClass.Warrior, CharacterClass.Barbarian, CharacterClass.Paladin,
                 CharacterClass.Assassin, CharacterClass.Ranger, CharacterClass.Jester,
@@ -1665,7 +1666,7 @@ public static class ClassAbilitySystem
         {
             Id = "desperate_strike",
             Name = "Desperate Strike",
-            Description = "A powerful attack when all seems lost.",
+            Description = "90 base damage. Deals 50% bonus damage when below 40% HP.",
             LevelRequired = 50,
             StaminaCost = 55,
             Cooldown = 4,
