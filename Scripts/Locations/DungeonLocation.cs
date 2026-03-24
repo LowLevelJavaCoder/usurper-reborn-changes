@@ -1750,6 +1750,11 @@ public class DungeonLocation : BaseLocation
             term.WriteLine(Loc.Get("dungeon.god_slayer_buff", (int)(GameConfig.GodSlayerDamageBonus * 100), (int)(GameConfig.GodSlayerDefenseBonus * 100), GameConfig.GodSlayerBuffDuration));
             await Task.Delay(2000);
 
+            // Force save after Old God encounter — bypass autosave throttle
+            // so buff, artifacts, and story state aren't lost on disconnect
+            SaveSystem.Instance.ResetAutoSaveThrottle();
+            await GameEngine.Instance.SaveCurrentGame();
+
             await ShowTownReactionScene(result, player, term);
             throw new LocationExitException(GameLocation.MainStreet);
         }

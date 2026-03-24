@@ -7507,6 +7507,14 @@ public partial class CombatEngine
             terminal.SetColor("yellow");
             terminal.WriteLine(Loc.Get("combat.loot_value", $"{lootItem.Value:N0}"));
 
+            // Show level requirement if the item has one
+            if (lootItem.MinLevel > 1)
+            {
+                bool tooHighLevel = character.Level < lootItem.MinLevel;
+                terminal.SetColor(tooHighLevel ? "red" : "gray");
+                terminal.WriteLine($"  Requires Level: {lootItem.MinLevel}{(tooHighLevel ? $" ({character.DisplayName} is level {character.Level})" : "")}");
+            }
+
             if (lootItem.IsCursed)
             {
                 terminal.SetColor("red");
@@ -8107,6 +8115,24 @@ public partial class CombatEngine
 
             // Check level requirement
             if (lootItem.MinLevel > 0 && teammate.Level < lootItem.MinLevel) continue;
+
+            // Don't auto-pickup weapons that break ability weapon requirements
+            // (e.g., Assassin needs Dagger, Ranger needs Bow — don't give them a Sword)
+            if (isWeapon)
+            {
+                var inferredType = ShopItemGenerator.InferWeaponType(lootItem.Name);
+                var abilities = ClassAbilitySystem.GetClassAbilities(teammate.Class);
+                if (abilities != null)
+                {
+                    bool breaksAbilities = abilities.Any(a =>
+                        a.RequiredWeaponTypes != null && a.RequiredWeaponTypes.Length > 0
+                        && !a.RequiredWeaponTypes.Contains(inferredType));
+                    if (breaksAbilities) continue;
+                }
+                // Also check spell weapon requirements (Magician/Sage need Staff)
+                var spellReq = SpellSystem.GetSpellWeaponRequirement(teammate.Class);
+                if (spellReq != null && inferredType != spellReq.Value) continue;
+            }
 
             // Skip shields/off-hand items when teammate is using a two-handed weapon
             if (targetSlot == EquipmentSlot.OffHand && teammate.IsTwoHanding) continue;

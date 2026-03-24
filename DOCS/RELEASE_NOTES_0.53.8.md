@@ -208,6 +208,26 @@ When using the `<`/`>` party switching on loot drops, several messages incorrect
 - **Ability weapon requirement** — "Some of your abilities require a Bow" → "Some of Lyris's abilities require a Bow"
 - **Spell weapon requirement** — "Your Magician spells require a Staff" → "Magician spells require a Staff"
 
+## Loot Level Requirement Display
+
+Items with level requirements now show the requirement in the loot drop display, before the player tries to equip. If the selected character is too low level, the line shows in red with their current level for comparison:
+
+```
+  War Paint Armor
+  Armor Power: +59
+  Bonuses: Str +11, Con +11
+  Value: 1,180 gold
+  Requires Level: 30 (Lyris is level 22)
+```
+
+## Teammate Auto-Pickup Weapon Restriction Fix
+
+When the player passed on weapon loot, teammates would auto-pickup weapons that broke their ability requirements — e.g., an Assassin grabbing a Broadsword even though all their abilities require a Dagger. The auto-pickup now checks both ability weapon requirements (Assassin→Dagger, Ranger→Bow) and spell weapon requirements (Magician/Sage→Staff) before allowing a teammate to claim the weapon.
+
+## God Slayer Buff Save Fix
+
+The God Slayer buff (+20% damage, +10% defense for 20 combats) granted after defeating an Old God could be lost in online mode. The autosave throttle (60-second cooldown) could skip the save after the buff was granted, so a disconnect or server restart before the next save would lose the buff, artifacts, and story state from the encounter. Now forces an immediate save after Old God encounters.
+
 ## Companion Ability Message Fix
 
 "Your aim is true!" (Precise Shot guaranteed hit) now shows the companion's name when used by a teammate (e.g., "Lyris's aim is true!"). The `combat.ranged_aim_true` key now takes a `{0}` name parameter.
