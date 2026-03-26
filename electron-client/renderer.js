@@ -1,7 +1,8 @@
 // Usurper Reborn — Electron Renderer
-// Phase 1: xterm.js terminal connecting to game server via WebSocket
+// Supports two modes:
+//   local  — spawns UsurperReborn.exe as child process, pipes stdio
+//   online — connects via WebSocket to game server
 
-// xterm.js loaded via script tags — UMD globals
 const Terminal = window.Terminal;
 const FitAddon = window.FitAddon?.FitAddon || window.FitAddon;
 const WebLinksAddon = window.WebLinksAddon?.WebLinksAddon || window.WebLinksAddon;
@@ -43,20 +44,17 @@ const fitAddon = new FitAddon();
 term.loadAddon(fitAddon);
 term.loadAddon(new WebLinksAddon());
 
-// Mount terminal
 const container = document.getElementById('terminal');
 term.open(container);
 fitAddon.fit();
 
-// Resize handling
-const resizeObserver = new ResizeObserver(() => {
-  fitAddon.fit();
-});
+const resizeObserver = new ResizeObserver(() => fitAddon.fit());
 resizeObserver.observe(container);
 
 // Connection state
 let ws = null;
 let reconnectTimer = null;
+let connectionMode = 'local';
 const statusEl = document.getElementById('connection-status');
 
 function setStatus(text, cls) {
@@ -64,26 +62,59 @@ function setStatus(text, cls) {
   statusEl.className = cls;
 }
 
-// WebSocket connection
-async function connect() {
-  const config = await window.usurper.getConfig();
+// ─── Send function (works for both modes) ──
 
-  if (ws) {
-    ws.close();
-    ws = null;
+function sendToServer(data) {
+  if (connectionMode === 'local') {
+    window.usurper.sendInput(data);
+  } else if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(data);
+  }
+}
+
+// ─── Local Mode — child process ────────────
+
+async function connectLocal() {
+  setStatus('Starting game...', 'connecting');
+
+  const result = await window.usurper.spawnGame();
+  if (!result.ok) {
+    setStatus('Failed: ' + result.message, 'disconnected');
+    return;
   }
 
+  setStatus('Playing (Local)', 'connected');
+  term.focus();
+
+  // Receive game output
+  window.usurper.onGameData((data) => {
+    term.write(data);
+    parser.feed(data);
+  });
+
+  window.usurper.onGameExit((code) => {
+    setStatus(`Game exited (${code})`, 'disconnected');
+    term.write(`\r\n\x1b[33m--- Game process exited (code ${code}) ---\x1b[0m\r\n`);
+  });
+
+  window.usurper.onGameError((msg) => {
+    setStatus('Error: ' + msg, 'disconnected');
+    term.write(`\r\n\x1b[31m--- Error: ${msg} ---\x1b[0m\r\n`);
+  });
+}
+
+// ─── Online Mode — WebSocket ───────────────
+
+async function connectOnline(wsUrl) {
+  if (ws) { ws.close(); ws = null; }
   setStatus('Connecting...', 'connecting');
 
-  ws = new WebSocket(config.wsUrl);
+  ws = new WebSocket(wsUrl);
   ws.binaryType = 'arraybuffer';
 
   ws.onopen = () => {
-    console.log('WebSocket connected to', config.wsUrl);
-    setStatus('Connected', 'connected');
+    setStatus('Connected (Online)', 'connected');
     term.focus();
-
-    // Send terminal size (server may need this)
     const dims = fitAddon.proposeDimensions();
     if (dims) {
       ws.send(JSON.stringify({ type: 'resize', cols: dims.cols, rows: dims.rows }));
@@ -91,7 +122,6 @@ async function connect() {
   };
 
   ws.onmessage = (event) => {
-    // Feed to xterm.js (raw terminal)
     if (event.data instanceof ArrayBuffer) {
       const bytes = new Uint8Array(event.data);
       term.write(bytes);
@@ -102,49 +132,35 @@ async function connect() {
     }
   };
 
-  ws.onclose = (event) => {
-    console.log('WebSocket closed:', event.code, event.reason);
+  ws.onclose = () => {
     setStatus('Disconnected', 'disconnected');
     if (!reconnectTimer) {
-      reconnectTimer = setTimeout(() => {
-        reconnectTimer = null;
-        connect();
-      }, 3000);
+      reconnectTimer = setTimeout(() => { reconnectTimer = null; connectOnline(wsUrl); }, 3000);
     }
   };
 
-  ws.onerror = (err) => {
-    setStatus('Connection error', 'disconnected');
-    console.error('WebSocket error:', err.message || err);
-  };
+  ws.onerror = () => setStatus('Connection error', 'disconnected');
 }
 
-// Send terminal input to server
-term.onData((data) => {
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(data);
-  }
-});
+// ─── Terminal input → game ─────────────────
 
-// ANSI Parser — Phase 2
+term.onData((data) => sendToServer(data));
+
+// ─── ANSI Parser ───────────────────────────
+
 const parser = new AnsiParser();
 const parsedOutput = document.getElementById('parsed-output');
 const parsedPanel = document.getElementById('parsed-panel');
 let showParsed = false;
 
-// Graphical Renderer — Phase 3
+// ─── Graphical UI ──────────────────────────
+
 const graphicalView = document.getElementById('graphical-view');
 const terminalContainer = document.getElementById('terminal-container');
 const viewToggle = document.getElementById('view-toggle');
-const htmlRenderer = new HtmlRenderer(graphicalView);
-let graphicalMode = false;
 
-// Send input from graphical view
-htmlRenderer.setupInput((data) => {
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(data);
-  }
-});
+const gameUI = new GameUI(graphicalView, sendToServer);
+let graphicalMode = false;
 
 function setViewMode(graphical) {
   graphicalMode = graphical;
@@ -155,11 +171,10 @@ function setViewMode(graphical) {
     fitAddon.fit();
     term.focus();
   } else {
-    htmlRenderer.inputEl.focus();
+    gameUI.inputEl.focus();
   }
 }
 
-// Toggle view with F10 or button click
 window.addEventListener('keydown', (e) => {
   if (e.key === 'F10') {
     setViewMode(!graphicalMode);
@@ -177,24 +192,19 @@ window.addEventListener('keydown', (e) => {
 
 viewToggle.addEventListener('click', () => setViewMode(!graphicalMode));
 
-// Feed parsed lines to both debug panel and graphical renderer
+// Feed parsed lines to graphical UI and debug panel
 parser.onLine = (spans) => {
-  // Graphical renderer — always render to keep output and state current
-  const classified = htmlRenderer.matcher.classify(spans);
-  htmlRenderer.renderLine(classified);
+  const classified = gameUI.matcher.classify(spans);
+  gameUI.processLine(classified);
 
-  // Debug panel
   if (!showParsed) return;
   const lineEl = document.createElement('div');
   lineEl.className = 'parsed-line';
-
-  // Show classification tag
   const tagEl = document.createElement('span');
   tagEl.style.color = '#555';
   tagEl.style.fontSize = '9px';
   tagEl.textContent = `[${classified.type}] `;
   lineEl.appendChild(tagEl);
-
   for (const span of spans) {
     const spanEl = document.createElement('span');
     spanEl.textContent = span.text;
@@ -204,21 +214,30 @@ parser.onLine = (spans) => {
     lineEl.appendChild(spanEl);
   }
   parsedOutput.appendChild(lineEl);
-  while (parsedOutput.children.length > 200) {
-    parsedOutput.removeChild(parsedOutput.firstChild);
-  }
+  while (parsedOutput.children.length > 200) parsedOutput.removeChild(parsedOutput.firstChild);
   parsedOutput.scrollTop = parsedOutput.scrollHeight;
 };
 
 parser.onClearScreen = () => {
-  htmlRenderer.clearScreen();
+  gameUI.clearScreen();
   if (showParsed) parsedOutput.innerHTML = '';
 };
 
-// Start connection
-connect();
+// ─── Startup ───────────────────────────────
 
-// Focus terminal on window focus
+async function start() {
+  const config = await window.usurper.getConfig();
+  connectionMode = config.mode;
+
+  if (connectionMode === 'local') {
+    connectLocal();
+  } else {
+    connectOnline(config.wsUrl);
+  }
+}
+
+start();
+
 window.addEventListener('focus', () => {
-  term.focus();
+  if (!graphicalMode) term.focus();
 });

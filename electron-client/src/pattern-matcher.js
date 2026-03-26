@@ -20,6 +20,9 @@ const LineType = {
   EMPTY: 'empty',
   HEADER: 'header',         // Centered title text (usually in a box)
   MUD_PROMPT: 'mud_prompt', // [3291hp 100st] Main Street | look
+  NPC_ACTIVITY: 'npc_activity', // "Kira Thornbury leans against a wall..."
+  LOCATION_DESC: 'location_desc', // "You are standing on the main street..."
+  SYSTEM_MSG: 'system_msg', // "[WizNet]", realm enter/leave, divine power
 };
 
 // Box-drawing characters used by UIHelper
@@ -169,6 +172,27 @@ class PatternMatcher {
 
     if (/Press any key/.test(trimmed)) {
       return { type: LineType.PROMPT, spans, raw: trimmed, pressAnyKey: true };
+    }
+
+    // NPC activity — names followed by verbs like "leans", "strolls", "watches", "goes about"
+    if (/\b(leans|strolls|watches|paces|goes about|spotted|carries|sports|bellows|haggling|arguing|flirting|singing|praying)\b/.test(trimmed)
+        && !trimmed.startsWith('You ')) {
+      return { type: LineType.NPC_ACTIVITY, spans, raw: trimmed };
+    }
+
+    // System messages — realm enter/leave, WizNet, divine power
+    if (/has entered the realm|has left the realm|\[WizNet\]|Divine power|entered the realm/.test(trimmed)) {
+      return { type: LineType.SYSTEM_MSG, spans, raw: trimmed };
+    }
+
+    // Location description — "You are standing", "The evening air", "The morning air"
+    if (/^You are standing|^The (evening|morning|afternoon|night|midday) air|^You notice:/.test(trimmed)) {
+      return { type: LineType.LOCATION_DESC, spans, raw: trimmed };
+    }
+
+    // "and X others going about" — NPC summary line
+    if (/and \d+ others? going about/.test(trimmed)) {
+      return { type: LineType.NPC_ACTIVITY, spans, raw: trimmed };
     }
 
     // Default: regular text

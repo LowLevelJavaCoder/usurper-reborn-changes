@@ -8,12 +8,12 @@
     "dev": "electron . --dev"
   },
   "dependencies": {
-    "@xterm/xterm": "^5.5.0",
     "@xterm/addon-fit": "^0.10.0",
-    "@xterm/addon-web-links": "^0.11.0"
+    "@xterm/addon-web-links": "^0.11.0",
+    "@xterm/xterm": "^5.5.0"
   },
   "devDependencies": {
-    "electron": "^33.0.0"
+    "electron": "^32.3.3"
   },
   "author": "Binary Knight",
   "license": "GPL-2.0"
