@@ -392,17 +392,15 @@ public class PersonalityProfile
                 break;
         }
 
-        // Randomly assign orientation — enough non-straight NPCs to ensure
-        // viable romance options for all player orientations
+        // Randomly assign orientation — ~95% straight, ~2% gay/lesbian, ~3% bisexual
+        // EnsureOrientationDiversity() guarantees minimums after spawning
         float orientationRoll = (float)Random.Shared.NextDouble();
-        if (orientationRoll < 0.85f)
+        if (orientationRoll < 0.95f)
             profile.Orientation = SexualOrientation.Straight;
-        else if (orientationRoll < 0.93f)
+        else if (orientationRoll < 0.97f)
             profile.Orientation = profile.Gender == GenderIdentity.Female ? SexualOrientation.Lesbian : SexualOrientation.Gay;
-        else if (orientationRoll < 0.98f)
-            profile.Orientation = SexualOrientation.Bisexual;
         else
-            profile.Orientation = SexualOrientation.Asexual;
+            profile.Orientation = SexualOrientation.Bisexual;
 
         // Randomly assign relationship preference if not already set by archetype
         if (profile.RelationshipPref == RelationshipPreference.Undecided)

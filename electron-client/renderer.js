@@ -144,7 +144,35 @@ async function connectOnline(wsUrl) {
 
 // ─── Terminal input → game ─────────────────
 
-term.onData((data) => sendToServer(data));
+let localInputBuffer = '';
+
+term.onData((data) => {
+  if (connectionMode === 'local') {
+    // Local mode: buffer input, echo locally, send full line on Enter.
+    // The game uses Console.ReadLine() which expects complete lines.
+    for (const ch of data) {
+      if (ch === '\r' || ch === '\n') {
+        // Send buffered line + newline to game
+        term.write('\r\n');
+        sendToServer(localInputBuffer + '\n');
+        localInputBuffer = '';
+      } else if (ch === '\x7f' || ch === '\b') {
+        // Backspace
+        if (localInputBuffer.length > 0) {
+          localInputBuffer = localInputBuffer.slice(0, -1);
+          term.write('\b \b');
+        }
+      } else if (ch.charCodeAt(0) >= 32) {
+        // Printable — echo and buffer
+        localInputBuffer += ch;
+        term.write(ch);
+      }
+    }
+  } else {
+    // Online mode: send raw (WebSocket handles its own echo)
+    sendToServer(data);
+  }
+});
 
 // ─── ANSI Parser ───────────────────────────
 
@@ -221,6 +249,11 @@ parser.onLine = (spans) => {
 parser.onClearScreen = () => {
   gameUI.clearScreen();
   if (showParsed) parsedOutput.innerHTML = '';
+};
+
+// Structured JSON game events from the server (via OSC 1337)
+parser.onGameEvent = (event) => {
+  gameUI.handleGameEvent(event);
 };
 
 // ─── Startup ───────────────────────────────

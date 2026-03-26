@@ -26,6 +26,7 @@ class AnsiParser {
     this.onLine = null;       // (spans[]) => void — complete line
     this.onClearScreen = null; // () => void
     this.onBell = null;       // () => void
+    this.onGameEvent = null;  // (event) => void — structured JSON game event
   }
 
   // Feed raw data from WebSocket into the parser
@@ -87,7 +88,9 @@ class AnsiParser {
             this._flushSpans(currentSpans);
             return;
           }
-          // Skip OSC sequences (future: extract usurper JSON events)
+          // Extract Usurper JSON events from OSC 1337
+          const oscContent = buf.substring(pos + 2, oscEnd);
+          this._handleOSC(oscContent);
           pos = oscEnd + 1;
           textStart = pos;
           continue;
@@ -160,6 +163,22 @@ class AnsiParser {
     }
 
     this.buffer = '';
+  }
+
+  _handleOSC(content) {
+    // Look for Usurper game events: "1337;usurper:{json}"
+    const prefix = '1337;usurper:';
+    if (content.startsWith(prefix)) {
+      try {
+        const json = content.substring(prefix.length);
+        const event = JSON.parse(json);
+        if (this.onGameEvent) {
+          this.onGameEvent(event);
+        }
+      } catch (e) {
+        console.warn('Failed to parse game event:', e.message);
+      }
+    }
   }
 
   _findCSIEnd(buf, start) {

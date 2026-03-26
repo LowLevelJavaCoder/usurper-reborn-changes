@@ -9,9 +9,12 @@ using System.Collections.Generic;
 public static partial class GameConfig
 {
     // Version information
-    public const string Version = "0.53.9";
+    public const string Version = "0.53.10";
     public const string VersionName = "Ancestral Spirits";
     public const string DiscordInvite = "discord.gg/EZhwgDT6Ta";
+
+    // Electron graphical client mode — emits JSON events via OSC sequences
+    public static bool ElectronMode { get; set; } = false;
 
     // From Pascal global_maxXX constants
     public const int MaxPlayers = 400;           // global_maxplayers

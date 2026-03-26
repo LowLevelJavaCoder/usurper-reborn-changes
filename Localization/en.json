@@ -846,6 +846,7 @@
   "combat.loot_drop_from": "  ── LOOT DROP from {0} ──",
   "combat.loot_drop_from_sr": "  LOOT DROP from {0}:",
   "combat.loot_epic_drop": "      ** EPIC DROP! **",
+  "combat.loot_displaced_to_player": "{0} from {1} moved to your inventory.",
   "combat.loot_equip_failed": "Could not equip: {0}",
   "combat.loot_equip_failed_inventory": "Could not equip: {0}. Added to inventory.",
   "combat.loot_change_character_option": "(</>) Change character",

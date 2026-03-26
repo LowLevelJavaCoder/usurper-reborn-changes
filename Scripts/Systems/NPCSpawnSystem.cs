@@ -761,12 +761,15 @@ namespace UsurperRemake.Systems
             const int minLesbianFemale = 2;
             const int minBisexual = 2;
 
-            int gayMaleCount = spawnedNPCs.Count(n => n.Brain?.Personality?.Orientation == SexualOrientation.Gay);
-            int lesbianCount = spawnedNPCs.Count(n => n.Brain?.Personality?.Orientation == SexualOrientation.Lesbian);
-            int bisexualCount = spawnedNPCs.Count(n => n.Brain?.Personality?.Orientation == SexualOrientation.Bisexual);
+            // Only count living NPCs — dead NPCs shouldn't satisfy diversity requirements
+            var livingNPCs = spawnedNPCs.Where(n => !n.IsDead).ToList();
 
-            // Convert some straight NPCs to fill minimums
-            var straightNPCs = spawnedNPCs
+            int gayMaleCount = livingNPCs.Count(n => n.Brain?.Personality?.Orientation == SexualOrientation.Gay);
+            int lesbianCount = livingNPCs.Count(n => n.Brain?.Personality?.Orientation == SexualOrientation.Lesbian);
+            int bisexualCount = livingNPCs.Count(n => n.Brain?.Personality?.Orientation == SexualOrientation.Bisexual);
+
+            // Convert some straight living NPCs to fill minimums
+            var straightNPCs = livingNPCs
                 .Where(n => n.Brain?.Personality?.Orientation == SexualOrientation.Straight)
                 .OrderBy(_ => Random.Shared.Next())
                 .ToList();

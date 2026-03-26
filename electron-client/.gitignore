@@ -2,3 +2,9 @@ node_modules/
 dist/
 out/
 *.log
+
+# PixelLab job tracking files (temp, regenerated as needed)
+assets/*_jobs.txt
+
+# API docs (downloaded on demand)
+pixellab-api-docs.txt

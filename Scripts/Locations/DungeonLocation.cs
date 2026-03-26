@@ -2218,6 +2218,9 @@ public class DungeonLocation : BaseLocation
 
         // Show level eligibility notification
         ShowLevelEligibilityMessage();
+
+        // Electron graphical client events
+        EmitDungeonEvents(room, player);
     }
 
     /// <summary>
@@ -2374,6 +2377,9 @@ public class DungeonLocation : BaseLocation
         terminal.WriteLine($"{player.Level}");
 
         // Training points reminder only shown on Main Street (where Level Master is accessible)
+
+        // Electron graphical client events
+        EmitDungeonEvents(room, player);
     }
 
     /// <summary>
@@ -2907,6 +2913,68 @@ public class DungeonLocation : BaseLocation
         terminal.WriteLine(Loc.Get("dungeon.leave_dungeon"));
 
         terminal.WriteLine("");
+    }
+
+    /// <summary>
+    /// Emit structured dungeon state for the Electron graphical client
+    /// </summary>
+    private void EmitDungeonEvents(DungeonRoom room, Character player)
+    {
+        if (!GameConfig.ElectronMode) return;
+
+        // Room state
+        var exits = room.Exits.Keys.Select(d => d.ToString().Substring(0, 1)).ToList();
+
+        ElectronBridge.Emit("dungeon_room", new
+        {
+            floor = currentDungeonLevel,
+            theme = currentFloor?.Theme.ToString() ?? "Unknown",
+            roomName = room.Name,
+            description = room.Description,
+            atmosphere = room.AtmosphereText,
+            hasMonsters = room.HasMonsters,
+            monsterCount = room.Monsters?.Count ?? 0,
+            isCleared = room.IsCleared,
+            hasEvent = room.HasEvent,
+            hasTreasure = room.HasTreasure,
+            hasFeatures = room.Features?.Count > 0,
+            dangerRating = room.DangerRating,
+            exits = exits,
+        });
+
+        // Actions available
+        var actions = new List<ElectronBridge.MenuItemData>();
+        if (room.HasMonsters && !room.IsCleared)
+            actions.Add(new() { Key = "F", Label = "Fight", Category = "combat", Icon = "fight" });
+        if (room.HasTreasure)
+            actions.Add(new() { Key = "T", Label = "Treasure", Category = "interact", Icon = "treasure" });
+        if (room.HasEvent)
+            actions.Add(new() { Key = "V", Label = "Event", Category = "interact", Icon = "event" });
+        if (room.Features?.Count > 0)
+            actions.Add(new() { Key = "X", Label = "Examine", Category = "interact", Icon = "examine" });
+
+        // Navigation from room exits
+        foreach (var dir in room.Exits.Keys)
+        {
+            string key = dir.ToString().Substring(0, 1);
+            actions.Add(new() { Key = key, Label = dir.ToString(), Category = "move", Icon = dir.ToString().ToLower() });
+        }
+
+        // Utility
+        actions.Add(new() { Key = "R", Label = "Rest", Category = "utility", Icon = "rest" });
+        actions.Add(new() { Key = "M", Label = "Map", Category = "utility", Icon = "map" });
+        actions.Add(new() { Key = "Q", Label = "Leave", Category = "utility", Icon = "leave" });
+
+        ElectronBridge.EmitMenu(actions);
+
+        // Player stats
+        bool isManaClass = player is Player p && p.IsManaClass;
+        ElectronBridge.EmitStats(
+            player.HP, player.MaxHP,
+            isManaClass ? player.Mana : 0, isManaClass ? player.MaxMana : 0,
+            isManaClass ? 0 : player.Stamina, isManaClass ? 0 : player.BaseStamina,
+            player.Gold, player.Level,
+            player.ClassName, player.Race.ToString());
     }
 
     private void ShowQuickStatus(Character player)

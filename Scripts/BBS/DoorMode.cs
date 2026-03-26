@@ -235,6 +235,12 @@ namespace UsurperRemake.BBS
                 {
                     _forceStdio = true;
                 }
+                // --electron enables structured JSON event output for Electron graphical client
+                else if (arg == "--electron")
+                {
+                    _forceStdio = true; // Electron uses stdio
+                    GameConfig.ElectronMode = true;
+                }
                 // --screen-reader enables screen reader mode at startup (used by Play-Accessible launcher)
                 else if (arg == "--screen-reader")
                 {

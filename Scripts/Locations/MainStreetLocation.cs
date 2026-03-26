@@ -135,6 +135,9 @@ public class MainStreetLocation : BaseLocation
         // Status line
         ShowStatusLine();
 
+        // Electron graphical client — emit structured game state
+        EmitElectronEvents();
+
         // Captain Aldric's Mission — quest completion when returning with all objectives done
         if (currentPlayer.HintsShown.Contains("aldric_quest_active")
             && currentPlayer.HintsShown.Contains("quest_scout_enter_dungeon")
@@ -550,6 +553,82 @@ public class MainStreetLocation : BaseLocation
             terminal.SetColor("bright_blue");
             terminal.WriteLine("╚══════════════════════════════════════════════════════════════════════════════╝");
         }
+
+        // Electron graphical client — emit structured game state
+        EmitElectronEvents();
+    }
+
+    /// <summary>
+    /// Emit structured JSON events for the Electron graphical client
+    /// </summary>
+    private void EmitElectronEvents()
+    {
+        if (!GameConfig.ElectronMode) return;
+
+        // Location
+        ElectronBridge.EmitLocation("Main Street",
+            Loc.Get("main_street.desc_standing", GetTownName()),
+            GetTimeOfDay());
+
+        // Player stats
+        bool isManaClass = currentPlayer.IsManaClass;
+        ElectronBridge.EmitStats(
+            currentPlayer.HP, currentPlayer.MaxHP,
+            isManaClass ? currentPlayer.Mana : 0,
+            isManaClass ? currentPlayer.MaxMana : 0,
+            isManaClass ? 0 : currentPlayer.Stamina,
+            isManaClass ? 0 : currentPlayer.BaseStamina,
+            currentPlayer.Gold, currentPlayer.Level,
+            currentPlayer.ClassName, currentPlayer.Race.ToString());
+
+        // Menu items
+        int tier = currentPlayer.Level <= 2 ? 1 : currentPlayer.Level <= 4 ? 2 : 3;
+        var menuItems = new List<ElectronBridge.MenuItemData>
+        {
+            new() { Key = "D", Label = "Dungeons", Category = "explore", Icon = "dungeon" },
+        };
+        if (tier >= 2)
+        {
+            menuItems.Add(new() { Key = "I", Label = "Inn", Category = "services", Icon = "inn" });
+            menuItems.Add(new() { Key = "W", Label = "Weapon Shop", Category = "services", Icon = "weapons" });
+            menuItems.Add(new() { Key = "A", Label = "Armor Shop", Category = "services", Icon = "armor" });
+            menuItems.Add(new() { Key = "M", Label = "Magic Shop", Category = "services", Icon = "magic" });
+            menuItems.Add(new() { Key = "B", Label = "Bank", Category = "services", Icon = "bank" });
+            menuItems.Add(new() { Key = "1", Label = "Healer", Category = "services", Icon = "healer" });
+            menuItems.Add(new() { Key = "T", Label = "Temple", Category = "services", Icon = "temple" });
+        }
+        if (tier >= 3)
+        {
+            menuItems.Add(new() { Key = "E", Label = "Wilderness", Category = "explore", Icon = "wilderness" });
+            menuItems.Add(new() { Key = ">", Label = "Outskirts", Category = "explore", Icon = "outskirts" });
+            menuItems.Add(new() { Key = "U", Label = "Music Shop", Category = "services", Icon = "music" });
+            menuItems.Add(new() { Key = "V", Label = "Level Master", Category = "progress", Icon = "training" });
+            menuItems.Add(new() { Key = "2", Label = "Quest Hall", Category = "progress", Icon = "quests" });
+            menuItems.Add(new() { Key = "H", Label = "Home", Category = "progress", Icon = "home" });
+        }
+        menuItems.Add(new() { Key = "S", Label = "Status", Category = "info", Icon = "status" });
+        menuItems.Add(new() { Key = "Q", Label = "Quit Game", Category = "info", Icon = "quit" });
+        ElectronBridge.EmitMenu(menuItems);
+
+        // NPCs present
+        var liveNPCs = GetLiveNPCsAtLocation();
+        var npcData = new List<ElectronBridge.NPCPresenceData>();
+        foreach (var npc in liveNPCs.Take(10))
+        {
+            npcData.Add(new ElectronBridge.NPCPresenceData
+            {
+                Name = npc.Name2 ?? npc.Name1,
+                Activity = GetNPCActivity(npc),
+                Class = npc.Class.ToString(),
+                Level = npc.Level
+            });
+        }
+        ElectronBridge.EmitNPCList(npcData);
+    }
+
+    private string GetNPCActivity(NPC npc)
+    {
+        return "going about their business";
     }
 
     /// <summary>

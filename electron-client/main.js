@@ -127,7 +127,7 @@ ipcMain.handle('spawn-game', () => {
   }
 
   try {
-    gameProcess = spawn(GAME_BINARY, ['--local', '--stdio'], {
+    gameProcess = spawn(GAME_BINARY, ['--local', '--electron'], {
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
     });

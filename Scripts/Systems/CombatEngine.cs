@@ -1474,6 +1474,17 @@ public partial class CombatEngine
                     terminal.WriteLine($"  (Grief penalty: {totalPenalty * 100:0}% combat effectiveness)");
             }
         }
+
+        // Electron graphical client — emit combat start
+        ElectronBridge.Emit("combat_start", new
+        {
+            monsterName = monster.Name,
+            monsterLevel = monster.Level,
+            monsterHp = monster.HP,
+            monsterMaxHp = monster.MaxHP,
+            isBoss = monster.IsBoss || monster.IsMiniBoss,
+            family = monster.FamilyName ?? ""
+        });
     }
 
     /// <summary>
@@ -7310,9 +7321,27 @@ public partial class CombatEngine
                     }
                 }
 
+                // Track companion inventory before equip so displaced items can be moved to the real player
+                var actualPlayer = currentPlayer ?? player;
+                bool isCompanionEquip = player != actualPlayer;
+                int inventoryBefore = isCompanionEquip ? player.Inventory.Count : 0;
+
                 // Try to equip the item
                 if (player.EquipItem(equipment, targetSlot, out string equipMsg))
                 {
+                    // Move any displaced items from companion's inventory to the actual player's inventory
+                    if (isCompanionEquip && player.Inventory.Count > inventoryBefore)
+                    {
+                        var displacedItems = player.Inventory.Skip(inventoryBefore).ToList();
+                        foreach (var displaced in displacedItems)
+                        {
+                            player.Inventory.Remove(displaced);
+                            actualPlayer.Inventory.Add(displaced);
+                            terminal.SetColor("cyan");
+                            terminal.WriteLine(Loc.Get("combat.loot_displaced_to_player", displaced.Name, player.DisplayName));
+                        }
+                    }
+
                     if (lootItem.IsCursed)
                     {
                         terminal.SetColor("red");
@@ -7329,7 +7358,7 @@ public partial class CombatEngine
                 else
                 {
                     // Equip failed - add to inventory instead
-                    player.Inventory.Add(lootItem);
+                    actualPlayer.Inventory.Add(lootItem);
                     terminal.SetColor("yellow");
                     terminal.WriteLine(Loc.Get("combat.loot_equip_failed", equipMsg));
                     terminal.WriteLine(Loc.Get("combat.loot_added_inventory", lootItem.Name));
@@ -8955,6 +8984,32 @@ public partial class CombatEngine
     /// </summary>
     private void DisplayCombatStatus(List<Monster> monsters, Character player)
     {
+        // Electron graphical client — emit combat state
+        if (GameConfig.ElectronMode)
+        {
+            var monsterData = monsters.Where(m => m.IsAlive).Select(m => new
+            {
+                name = m.Name,
+                hp = m.HP,
+                maxHp = m.MaxHP,
+                level = m.Level,
+                isBoss = m.IsBoss || m.IsMiniBoss,
+                status = m.Poisoned ? "poisoned" : m.StunRounds > 0 ? "stunned" : m.IsBurning ? "burning" : "",
+                family = m.FamilyName ?? ""
+            }).ToList();
+
+            ElectronBridge.Emit("combat_status", new
+            {
+                round = 0, // round tracked in caller scope
+                playerHp = player.HP,
+                playerMaxHp = player.MaxHP,
+                playerMana = player.Mana,
+                playerMaxMana = player.MaxMana,
+                potions = player.Healing,
+                monsters = monsterData
+            });
+        }
+
         // Check for screen reader mode
         if (player is Player p && p.ScreenReaderMode)
         {
@@ -10738,7 +10793,7 @@ public partial class CombatEngine
         powerDamage = DifficultySystem.ApplyPlayerDamageMultiplier(powerDamage);
 
         terminal.SetColor("bright_red");
-        terminal.WriteLine(Loc.Get("combat.power_attack_hit", powerDamage));
+        terminal.WriteLine(Loc.Get("combat.power_attack_hit", target.Name, powerDamage));
 
         await ApplySingleMonsterDamage(target, powerDamage, result, "power attack", player);
 
@@ -10773,27 +10828,31 @@ public partial class CombatEngine
         terminal.WriteLine(Loc.Get("combat.precise_strike_aim", target.Name));
         await Task.Delay(GetCombatDelay(500));
 
-        // Precise Strike: normal damage but ignores 50% armor (with weapon soft cap)
-        long damage = player.Strength + GetEffectiveWeapPow(player.WeapPow) + random.Next(1, 15);
+        // Precise Strike: normal damage, +25% accuracy via reducing defense by 25%
+        long attackPower = player.Strength + GetEffectiveWeapPow(player.WeapPow) + random.Next(1, 15);
+
+        // Apply weapon configuration damage modifier (2H bonus)
+        double damageModifier = GetWeaponConfigDamageModifier(player);
+        attackPower = (long)(attackPower * damageModifier);
+
+        // Full defense calculation with 25% reduction (accuracy boost)
+        long defense = target.Defence + random.Next(0, (int)Math.Max(1, target.Defence / 8));
+        defense = (long)(defense * 0.75);
+        if (target.ArmPow > 0)
+        {
+            long effectiveArm = GetEffectiveArmPow(target.ArmPow);
+            long armBase = effectiveArm * 3 / 4;
+            int armVariance = (int)Math.Max(1, effectiveArm / 4);
+            defense += armBase + random.Next(0, armVariance + 1);
+        }
+
+        long damage = Math.Max(1, attackPower - defense);
         damage = DifficultySystem.ApplyPlayerDamageMultiplier(damage);
 
         terminal.SetColor("bright_cyan");
         terminal.WriteLine(Loc.Get("combat.precise_strike_hit", target.Name, damage));
 
-        // Apply damage directly, bypassing some defense
-        long actualDamage = Math.Max(1, damage - (target.ArmPow / 2));
-        target.HP = Math.Max(0, target.HP - actualDamage);
-
-        terminal.SetColor("white");
-        terminal.WriteLine(Loc.Get("combat.target_damage", target.Name, actualDamage));
-
-        if (target.HP <= 0)
-        {
-            target.HP = 0;
-            var deathMessage = CombatMessages.GetDeathMessage(target.Name, target.MonsterColor);
-            terminal.WriteLine(deathMessage);
-            result.DefeatedMonsters.Add(target);
-        }
+        await ApplySingleMonsterDamage(target, damage, result, "precise strike", player);
         await Task.Delay(GetCombatDelay(800));
     }
 
@@ -16149,6 +16208,10 @@ public partial class CombatEngine
         // Remove from teammates
         result.Teammates?.Remove(companion);
 
+        // Sync equipment from combat charWrapper back to companion object
+        // so KillCompanion returns the correct (current) equipment to player
+        companionSystem.SyncCompanionEquipment(companion);
+
         // Kill the companion permanently
         await companionSystem.KillCompanion(
             companion.CompanionId.Value,
@@ -21165,6 +21228,9 @@ public partial class CombatEngine
 
             // Track peak gold
             result.Player.Statistics?.RecordGoldChange(result.Player.Gold);
+
+            // Electron graphical client — emit victory
+            ElectronBridge.EmitCombatEnd("Victory", xpReward, goldReward);
 
             // Display rewards
             terminal.WriteLine("");

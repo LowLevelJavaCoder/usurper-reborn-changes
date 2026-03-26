@@ -27,6 +27,37 @@ class GameUI {
       { keywords: ['dark alley'],                      image: 'main-street.png', filter: 'brightness(0.35) saturate(0.4)' },
     ];
 
+    // Dungeon theme → scene image
+    this.dungeonThemeMap = {
+      'Catacombs':    'catacombs.png',
+      'Sewers':       'sewers.png',
+      'Caverns':      'caverns.png',
+      'AncientRuins': 'ancient-ruins.png',
+      'DemonLair':    'demon-lair.png',
+      'FrozenDepths': 'frozen-depths.png',
+      'VolcanicPit':  'volcanic-pit.png',
+      'AbyssalVoid':  'abyssal-void.png',
+    };
+
+    // Monster family → sprite image
+    this.monsterSpriteMap = {
+      'Goblinoid': 'goblin.png',
+      'Undead':    'skeleton.png',
+      'Orcish':    'orc.png',
+      'Draconic':  'dragon.png',
+      'Demonic':   'demon.png',
+      'Giant':     'giant.png',
+      'Beast':     'wolf-beast.png',
+      'Elemental': 'elemental.png',
+      'Insectoid': 'spider-queen.png',
+      'Construct': 'golem.png',
+      'Fey':       'dark-fairy.png',
+      'Aquatic':   'sea-creature.png',
+      'Celestial': 'fallen-angel.png',
+      'Shadow':    'shadow.png',
+      'Aberration':'wraith.png',
+    };
+
     // Building definitions for the estate dock
     this.buildings = {
       explore: [
@@ -156,6 +187,129 @@ class GameUI {
 
     // Render default dock
     this._renderDock();
+  }
+
+  // ─── Structured Game Events (from OSC JSON) ──
+
+  handleGameEvent(event) {
+    const { e: type, d: data } = event;
+
+    switch (type) {
+      case 'location':
+        this._setLocation(data.name);
+        if (data.description) this.sceneTitle.textContent = data.description;
+        break;
+
+      case 'stats':
+        this._updateHUD(data);
+        break;
+
+      case 'menu':
+        if (data.items) this._renderDockFromServer(data.items);
+        break;
+
+      case 'npcs':
+        this.npcArea.innerHTML = '';
+        if (data.npcs) {
+          for (const npc of data.npcs) {
+            this._addNPCTagFromEvent(npc);
+          }
+        }
+        break;
+
+      case 'dungeon_room':
+        this._setLocation(`Floor ${data.floor} — ${data.roomName}`);
+        // Use theme-specific background
+        const themeImage = this.dungeonThemeMap[data.theme] || 'dungeon.png';
+        this._applySceneDirect(themeImage);
+        this._renderDungeonRoom(data);
+        break;
+
+      case 'combat_start':
+        this.state.inCombat = true;
+        this.state.combat = data;
+        this.state.combatFamily = data.family;
+        this._renderCombatStart(data);
+        this._renderCombatDock();
+        break;
+
+      case 'combat_status':
+        this._renderCombatStatus(data);
+        break;
+
+      case 'combat_end':
+        this.state.inCombat = false;
+        this._renderCombatEnd(data);
+        break;
+
+      case 'narration':
+        this._toast([{ text: data.text, fg: '#c0a050', bold: false }], 'system');
+        break;
+
+      default:
+        console.log('Unknown game event:', type, data);
+    }
+  }
+
+  _addNPCTagFromEvent(npc) {
+    const tag = document.createElement('div');
+    tag.className = 'gui-npc-tag';
+    tag.textContent = `${npc.name}`;
+    if (npc.class) tag.title = `Lv.${npc.level || '?'} ${npc.class}`;
+    this.npcArea.appendChild(tag);
+  }
+
+  _renderDockFromServer(items) {
+    this.dock.innerHTML = '';
+
+    // Group by category
+    const categories = {};
+    for (const item of items) {
+      const cat = item.category || 'other';
+      if (!categories[cat]) categories[cat] = [];
+      categories[cat].push(item);
+    }
+
+    // Icon map for building types
+    const iconMap = {
+      dungeon: '⚔', inn: '🍺', weapons: '🗡', armor: '🛡', magic: '✨',
+      music: '🎵', bank: '🏦', healer: '💊', temple: '⛪', wilderness: '🌲',
+      outskirts: '🏕', training: '📖', quests: '📜', home: '🏠',
+      status: '📊', quit: '🚪',
+    };
+
+    const catOrder = ['explore', 'services', 'progress', 'info'];
+    let first = true;
+
+    for (const cat of catOrder) {
+      const catItems = categories[cat];
+      if (!catItems || catItems.length === 0) continue;
+
+      if (!first) {
+        const divider = document.createElement('div');
+        divider.className = 'gui-dock-divider';
+        this.dock.appendChild(divider);
+      }
+      first = false;
+
+      const sectionEl = document.createElement('div');
+      sectionEl.className = 'gui-dock-section';
+
+      for (const item of catItems) {
+        const icon = iconMap[item.icon] || '📍';
+        const btn = document.createElement('div');
+        btn.className = 'gui-building';
+        btn.innerHTML = `
+          <span class="gui-building-key">${item.key}</span>
+          <span class="gui-building-icon">${icon}</span>
+          <span class="gui-building-name">${item.label}</span>
+        `;
+        btn.addEventListener('click', () => this.sendInput(item.key + '\n'));
+        btn.title = `${item.label} [${item.key}]`;
+        sectionEl.appendChild(btn);
+      }
+      this.dock.appendChild(sectionEl);
+    }
   }
 
   // ─── Line Processing ─────────────────────
@@ -334,6 +488,19 @@ class GameUI {
     }
   }
 
+  _applySceneDirect(imageFile, filter = '') {
+    if (this.state.currentScene === imageFile) return;
+    this.state.currentScene = imageFile;
+    this.sceneBg.style.backgroundImage =
+      `linear-gradient(to top, rgba(2,2,4,0.5) 0%, transparent 50%),
+       url('./assets/scenes/${imageFile}')`;
+    this.sceneBg.style.backgroundSize = 'cover, cover';
+    this.sceneBg.style.backgroundPosition = 'center, center';
+    this.sceneBg.style.backgroundRepeat = 'no-repeat, no-repeat';
+    this.sceneBg.style.imageRendering = 'pixelated';
+    this.sceneBg.style.filter = filter;
+  }
+
   _setSceneDescription(spans) {
     const text = spans.map(s => s.text).join('');
     this.sceneTitle.textContent = text;
@@ -429,9 +596,143 @@ class GameUI {
   }
 
   _updateDockFromServer() {
-    // Future: match server menu items with buildings to show/hide availability
-    // For now just clear the pending items
     this.serverMenuItems = [];
+  }
+
+  // ─── Dungeon Room Rendering ─────────────
+
+  _renderDungeonRoom(data) {
+    // Clear NPC area and show room info
+    this.npcArea.innerHTML = '';
+    this.toastArea.innerHTML = '';
+
+    // Room info overlay
+    const roomInfo = document.createElement('div');
+    roomInfo.className = 'gui-room-info';
+    roomInfo.innerHTML = `
+      <div class="gui-room-name">${data.roomName}</div>
+      <div class="gui-room-desc">${data.description || ''}</div>
+      ${data.atmosphere ? `<div class="gui-room-atmo">${data.atmosphere}</div>` : ''}
+      <div class="gui-room-indicators">
+        ${data.hasMonsters && !data.isCleared ? '<span class="gui-indicator danger">Monsters</span>' : ''}
+        ${data.isCleared ? '<span class="gui-indicator cleared">Cleared</span>' : ''}
+        ${data.hasTreasure ? '<span class="gui-indicator treasure">Treasure</span>' : ''}
+        ${data.hasEvent ? '<span class="gui-indicator event">Event</span>' : ''}
+        ${data.hasFeatures ? '<span class="gui-indicator feature">Feature</span>' : ''}
+      </div>
+      <div class="gui-room-floor">Floor ${data.floor} — ${data.theme}</div>
+    `;
+    this.npcArea.appendChild(roomInfo);
+
+    this.sceneTitle.textContent = data.atmosphere || '';
+  }
+
+  // ─── Combat Rendering (DD-style) ────────
+
+  _renderCombatDock() {
+    const combatActions = [
+      { key: 'A', label: 'Attack', category: 'combat', icon: 'fight' },
+      { key: 'D', label: 'Defend', category: 'combat', icon: 'armor' },
+      { key: 'P', label: 'Power', category: 'combat', icon: 'weapons' },
+      { key: 'E', label: 'Precise', category: 'combat', icon: 'examine' },
+      { key: 'H', label: 'Potions', category: 'items', icon: 'healer' },
+      { key: 'T', label: 'Taunt', category: 'tactics', icon: 'temple' },
+      { key: 'I', label: 'Disarm', category: 'tactics', icon: 'examine' },
+      { key: 'W', label: 'Hide', category: 'tactics', icon: 'wilderness' },
+      { key: 'R', label: 'Retreat', category: 'escape', icon: 'leave' },
+    ];
+    this._renderDockFromServer(combatActions);
+  }
+
+  _renderCombatStart(data) {
+    this.npcArea.innerHTML = '';
+    this.toastArea.innerHTML = '';
+
+    const spriteFile = this.monsterSpriteMap[data.family] || '';
+    const spriteHtml = spriteFile
+      ? `<img class="gui-monster-sprite" src="./assets/monsters/${spriteFile}" alt="${data.monsterName}" onerror="this.style.display='none'">`
+      : '';
+
+    const combat = document.createElement('div');
+    combat.className = 'gui-combat-encounter';
+    combat.innerHTML = `
+      <div class="gui-combat-title">COMBAT</div>
+      <div class="gui-monster-card">
+        ${spriteHtml}
+        <div class="gui-monster-name">${data.monsterName}</div>
+        <div class="gui-monster-level">Level ${data.monsterLevel}${data.isBoss ? ' — BOSS' : ''}</div>
+        <div class="gui-monster-hp-bar">
+          <div class="gui-monster-hp-fill" style="width: 100%"></div>
+        </div>
+        <div class="gui-monster-hp-text">${data.monsterHp.toLocaleString()} / ${data.monsterMaxHp.toLocaleString()}</div>
+      </div>
+    `;
+    this.npcArea.appendChild(combat);
+  }
+
+  _renderCombatStatus(data) {
+    // Update monster HP bars
+    if (data.monsters && data.monsters.length > 0) {
+      // Re-render the combat display with current state
+      this.npcArea.innerHTML = '';
+      const combat = document.createElement('div');
+      combat.className = 'gui-combat-encounter';
+
+      let monstersHtml = '';
+      for (const m of data.monsters) {
+        const hpPct = m.maxHp > 0 ? (m.hp / m.maxHp * 100) : 0;
+        const hpClass = hpPct < 25 ? 'critical' : hpPct < 50 ? 'warning' : '';
+        const spriteFile = this.monsterSpriteMap[m.family] || '';
+        const spriteHtml = spriteFile
+          ? `<img class="gui-monster-sprite" src="./assets/monsters/${spriteFile}" alt="${m.name}" onerror="this.style.display='none'">`
+          : '';
+        monstersHtml += `
+          <div class="gui-monster-card">
+            ${spriteHtml}
+            <div class="gui-monster-name">${m.name}${m.isBoss ? ' [BOSS]' : ''}</div>
+            <div class="gui-monster-level">Lv.${m.level}${m.status ? ` — ${m.status}` : ''}</div>
+            <div class="gui-monster-hp-bar">
+              <div class="gui-monster-hp-fill ${hpClass}" style="width: ${hpPct}%"></div>
+            </div>
+            <div class="gui-monster-hp-text">${m.hp.toLocaleString()} / ${m.maxHp.toLocaleString()}</div>
+          </div>
+        `;
+      }
+
+      combat.innerHTML = `
+        <div class="gui-combat-title">COMBAT — Round ${data.round || '?'}</div>
+        <div class="gui-combat-monsters">${monstersHtml}</div>
+      `;
+      this.npcArea.appendChild(combat);
+    }
+
+    // Update player HUD
+    if (data.playerHp !== undefined) {
+      this._updateHUD({
+        hp: data.playerHp, maxHp: data.playerMaxHp,
+        mana: data.playerMana, maxMana: data.playerMaxMana
+      });
+    }
+  }
+
+  _renderCombatEnd(data) {
+    this.npcArea.innerHTML = '';
+    const result = document.createElement('div');
+    result.className = 'gui-combat-result';
+    result.innerHTML = `
+      <div class="gui-combat-result-title">${data.outcome}</div>
+      <div class="gui-combat-rewards">
+        ${data.xpGained ? `<span class="gui-reward-xp">+${data.xpGained.toLocaleString()} XP</span>` : ''}
+        ${data.goldGained ? `<span class="gui-reward-gold">+${data.goldGained.toLocaleString()} Gold</span>` : ''}
+        ${data.lootName ? `<span class="gui-reward-loot">${data.lootName}</span>` : ''}
+      </div>
+    `;
+    this.npcArea.appendChild(result);
+
+    // Auto-clear after a few seconds
+    setTimeout(() => {
+      if (result.parentNode) result.remove();
+    }, 5000);
   }
 }
 
