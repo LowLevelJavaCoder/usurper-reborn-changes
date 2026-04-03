@@ -4622,12 +4622,14 @@ public abstract class BaseLocation
 
             if (player is Player p)
             {
-                // Strip ALL equipment
+                // Strip ALL equipment — unequip properly then clear the dictionary
+                // (UnequipSlot sets ID to 0 which corrupts saves; must clear entirely)
                 foreach (EquipmentSlot slot in Enum.GetValues(typeof(EquipmentSlot)))
                 {
                     if (slot == EquipmentSlot.None) continue;
                     p.UnequipSlot(slot);
                 }
+                p.EquippedItems.Clear(); // Remove all slot entries (prevents ID 0 in save)
 
                 // Clear inventory
                 p.Inventory.Clear();

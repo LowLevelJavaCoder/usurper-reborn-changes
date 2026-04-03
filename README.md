@@ -2,7 +2,7 @@
 
 ## A Persistent Online Text RPG with a Living World
 
-**ALPHA v0.53.9** | **FREE AND OPEN SOURCE** | **GPL v2**
+**ALPHA v0.53.12** | **FREE AND OPEN SOURCE** | **GPL v2**
 
 60+ autonomous NPCs wake up, go to work, visit taverns, fall in love, get married, have children, age, and eventually die of old age — all while you're offline. Log back in, read the news feed, and discover that the blacksmith married the barmaid, the king was assassinated, or a new generation just came of age. The world doesn't wait for you.
 
@@ -31,7 +31,7 @@ The core of Usurper Reborn is a 24/7 agent-based simulation. NPCs aren't quest d
 Beyond the simulation, there's a deep RPG with 100+ hours of content.
 
 ### Character Building
-- **11 Classes + 5 Prestige** — Warrior, Paladin, Assassin, Magician, Cleric, Ranger, Bard, Sage, Barbarian, Alchemist, Jester — plus 5 NG+ prestige classes (Tidesworn, Wavecaller, Cyclebreaker, Abysswarden, Voidreaver) unlocked by completing different endings
+- **12 Classes + 5 Prestige** — Warrior, Paladin, Assassin, Magician, Cleric, Ranger, Bard, Sage, Barbarian, Alchemist, Jester, Mystic Shaman — plus 5 NG+ prestige classes (Tidesworn, Wavecaller, Cyclebreaker, Abysswarden, Voidreaver) unlocked by completing different endings
 - **10 Races** — Human, Elf, Dwarf, Hobbit, Half-Elf, Orc, Gnome, Troll, Gnoll, Mutant — with race-specific lifespans, stats, and lore
 - **75 Spells** across 3 caster classes, 44 class abilities, meaningful stat scaling
 
@@ -261,6 +261,15 @@ For detailed BBS setup instructions, see [DOCS/BBS_DOOR_SETUP.md](DOCS/BBS_DOOR_
 - Additional companion personal quest storylines
 - Expanded faction recruitment ceremonies
 
+### v0.53.12 - Ancestral Spirits (Murder, NPC Survival & Bug Fixes)
+Murder punishment save corruption fix. Single-player NPC level diversity (spawn levels 1-80). "The Stranger" NPC removed (Noctura appears through events). Auto-update scripts for BBS sysops.
+
+### v0.53.11 - Ancestral Spirits (Murder, NPC Survival & Bug Fixes)
+Murder is a capital offense (double confirmation, 50% execution/50% prison+strip). NPC permadeath disabled. Player team NPC protection (throne challenge + wages blocked). Team XP redistribution fix. Searing Totem AoE + NPC teammate totems. Charm resist message. Companion loot equip fix. Curse detection fix (Ravanella). Instrument purchase fix. Electron client Darkest Dungeon-style combat UI with 32 HD sprites.
+
+### v0.53.10 - Ancestral Spirits (Hotfix)
+NPC orientation diversity fix. Compact mode Power Attack/Precise Strike fix. Companion loot equip item loss fix. Companion death equipment sync fix.
+
 ### v0.53.9 - Ancestral Spirits (Boss Difficulty, Defense Fix & Tank Overhaul)
 Old God boss difficulty overhaul — all 7 bosses massively buffed (HP 3-4x, STR 2-4x, DEF 2-4x) with extended enrage timers. Critical defense calculation fix: status bar DEF now matches actual damage reduction (was using sqrt-scaled ArmPow giving ~10% of displayed value). Monster special abilities now respect armor (were bypassing it entirely). "Armor Class" renamed to "Armor Power" for clarity. Hit Roll AC shown in combat status bar. Abyssal Anchor reworked into AoE taunt for Tidesworn tank rotation. Healing Elixir now targets allies. Spell buff duration displays "whole fight" instead of "999 rounds". XP redistribution toggle and player-inclusive fix. Website stats cache performance (20s→instant). NPC orientation diversity fix.
 
@@ -387,13 +396,14 @@ Join our Discord server for discussions, feedback, and updates:
 
 *"You are not a wave fighting the ocean. You ARE the ocean, dreaming of being a wave."*
 
-## Known Issues (Alpha v0.52.12)
+## Known Issues (Alpha v0.53.12)
 - Save files from earlier alpha versions may not be fully compatible
 - BBS FOSSIL mode not supported (use `--stdio` flag for FOSSIL-based BBSes)
 - Steam features only work when game is launched through Steam client
+- Electron graphical client inventory equip flow is partially functional (interactive overlays in progress)
 
 **Report bugs**: Press `!` in-game, [Discord](https://discord.gg/EZhwgDT6Ta), or [GitHub Issues](https://github.com/binary-knight/usurper-reborn/issues)
 
 ---
 
-**Status**: ALPHA v0.53.7 — The world is running. [Watch it live.](https://usurper-reborn.net)
+**Status**: ALPHA v0.53.12 — The world is running. [Watch it live.](https://usurper-reborn.net)

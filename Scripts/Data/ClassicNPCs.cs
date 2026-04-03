@@ -347,13 +347,8 @@ namespace UsurperRemake.Data
                 // Story-Connected NPCs (10) - These NPCs have lore significance
                 // ═══════════════════════════════════════════════════════════════════
 
-                // The Stranger (Noctura's mortal disguise - key story character)
-                new() { Name = "The Stranger", Class = CharacterClass.Sage, Race = CharacterRace.Human,
-                    Personality = "Enigmatic", Alignment = "Neutral", StartLevel = 50,
-                    Gender = GenderIdentity.Female, Orientation = SexualOrientation.Straight,
-                    IntimateStyle = RomanceStyle.Switch, RelationshipPref = RelationshipPreference.OpenRelationship,
-                    Romanticism = 0.5f, Passion = 0.7f, Adventurousness = 0.9f,
-                    StoryRole = "TheStranger", LoreNote = "Noctura in disguise. Guides the player while hiding her divine nature." },
+                // The Stranger removed — Noctura now appears through dungeon events and Old God encounters.
+                // The town NPC was confusing players since she had no interactive story content.
 
                 // Lysandra - Light path romance option (mentioned in StoryProgressionSystem)
                 new() { Name = "Lysandra Dawnwhisper", Class = CharacterClass.Paladin, Race = CharacterRace.Elf,

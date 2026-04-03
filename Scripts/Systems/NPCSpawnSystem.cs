@@ -141,6 +141,21 @@ namespace UsurperRemake.Systems
                 _ => random.Next(2) == 0 ? CharacterSex.Male : CharacterSex.Female
             };
 
+            // Spread NPC levels across 1-80 so the world feels established from day one.
+            // Use the template's StartLevel as a base but randomize widely.
+            // This gives a healthy mix of low, mid, and high-level NPCs.
+            int startLevel = template.StartLevel;
+            if (!UsurperRemake.BBS.DoorMode.IsOnlineMode)
+            {
+                // Single-player: randomize levels across the full range
+                // ~20% levels 1-15, ~30% levels 15-40, ~30% levels 40-65, ~20% levels 65-80
+                int roll = random.Next(100);
+                if (roll < 20) startLevel = random.Next(1, 16);
+                else if (roll < 50) startLevel = random.Next(15, 41);
+                else if (roll < 80) startLevel = random.Next(40, 66);
+                else startLevel = random.Next(65, 81);
+            }
+
             var npc = new NPC
             {
                 Name1 = template.Name,
@@ -148,7 +163,7 @@ namespace UsurperRemake.Systems
                 ID = $"npc_{template.Name.ToLower().Replace(" ", "_")}",  // Generate unique ID from name
                 Class = template.Class,
                 Race = template.Race,
-                Level = template.StartLevel,
+                Level = startLevel,
                 Age = random.Next(18, 50),
                 Sex = sex,
                 AI = CharacterAI.Computer,
@@ -1175,7 +1190,18 @@ namespace UsurperRemake.Systems
                 int age = 20 + random.Next(16);
 
                 // Level scaled to average of alive NPCs (±3 variance, min 1)
-                int level = Math.Max(1, targetLevel + random.Next(7) - 3);
+                // In single-player, ensure immigrants span a wider range (not all low level)
+                int level;
+                if (!UsurperRemake.BBS.DoorMode.IsOnlineMode)
+                {
+                    // Single-player: randomize immigrants across 1-60 range so the world stays diverse
+                    int floor = Math.Max(targetLevel, 10);
+                    level = Math.Max(1, floor + random.Next(21) - 10); // ±10 from floor
+                }
+                else
+                {
+                    level = Math.Max(1, targetLevel + random.Next(7) - 3);
+                }
 
                 // Compute BirthDate from age using the lifecycle rate
                 var birthDate = DateTime.Now.AddHours(-age * GameConfig.NpcLifecycleHoursPerYear);

@@ -637,6 +637,108 @@ Each node automatically gets its own:
 - **Discord**: https://discord.gg/EZhwgDT6Ta
 - **GitHub Issues**: https://github.com/binary-knight/usurper-reborn/issues
 
+## Automatic Updates
+
+Usurper Reborn includes update check scripts that can be run manually or via cron/Task Scheduler to keep the game up to date automatically. The scripts check GitHub Releases for new versions, back up the current installation, and extract the update.
+
+### Linux (cron)
+
+Copy `updatecheck.sh` to your install directory and make it executable:
+
+```bash
+cp scripts-server/updatecheck.sh /opt/usurper/
+chmod +x /opt/usurper/updatecheck.sh
+```
+
+Run manually:
+
+```bash
+# Check and update if available
+/opt/usurper/updatecheck.sh
+
+# Check only (don't install)
+/opt/usurper/updatecheck.sh --check-only
+
+# Force re-download
+/opt/usurper/updatecheck.sh --force
+```
+
+Set up a daily cron job (checks at 3am):
+
+```bash
+sudo crontab -e
+# Add this line:
+0 3 * * * /opt/usurper/updatecheck.sh >> /var/log/usurper-update.log 2>&1
+```
+
+Environment variables for custom installations:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `USURPER_DIR` | `/opt/usurper` | Game install directory |
+| `USURPER_BACKUP_DIR` | `/opt/usurper/backups` | Backup storage directory |
+| `USURPER_SERVICE` | `usurper-mud` | Systemd service to restart |
+| `USURPER_SSH_SERVICE` | `sshd-usurper` | SSH service to restart |
+
+The script automatically:
+- Detects the current version from `version.txt`
+- Downloads the Linux-x64 release asset from GitHub
+- Creates a timestamped backup in the `backups/` folder (keeps last 5)
+- Stops `usurper-mud` and `sshd-usurper` services
+- Extracts the update and restarts services
+
+### Windows (Task Scheduler)
+
+Copy `updatecheck.ps1` to your game directory. Run manually from PowerShell:
+
+```powershell
+# Check and update if available
+.\updatecheck.ps1
+
+# Check only
+.\updatecheck.ps1 -CheckOnly
+
+# Custom install directory
+.\updatecheck.ps1 -InstallDir "C:\sbbs\xtrn\usurper"
+
+# Force update
+.\updatecheck.ps1 -Force
+```
+
+Set up Task Scheduler for daily checks:
+
+1. Open **Task Scheduler** and create a new task
+2. **Trigger**: Daily at 3:00 AM
+3. **Action**: Start a program
+   - Program: `powershell.exe`
+   - Arguments: `-ExecutionPolicy Bypass -File "C:\path\to\updatecheck.ps1"`
+4. **Settings**: Run whether user is logged on or not
+
+The script automatically:
+- Detects platform (x64 or x86)
+- Downloads the correct release asset from GitHub
+- Creates a backup zip of the current binary
+- Stops any running UsurperReborn process
+- Extracts the update and writes `version.txt`
+
+### Exit Codes
+
+Both scripts use the same exit codes:
+
+| Code | Meaning |
+|------|---------|
+| 0 | Updated successfully |
+| 1 | Already up to date |
+| 2 | Error (check log output) |
+
+### Important Notes
+
+- The scripts require internet access to reach GitHub (or the fallback proxy at `usurper-reborn.net`)
+- Backups only include the game binary and DLL, not save files or databases
+- On Linux, the script needs `sudo` access to restart systemd services
+- On Windows, the script kills any running `UsurperReborn.exe` process before updating
+- The `version.txt` file in the install directory is used to track the current version
+
 ## References
 
 - [DOOR32.SYS Specification](https://github.com/NuSkooler/ansi-bbs/blob/master/docs/dropfile_formats/door32_sys.txt)
