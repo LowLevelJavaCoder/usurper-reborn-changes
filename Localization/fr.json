@@ -846,6 +846,7 @@
   "combat.loot_drop_from": "  ── BUTIN laissé par {0} ──",
   "combat.loot_drop_from_sr": "  BUTIN laissé par {0} :",
   "combat.loot_epic_drop": "      ** BUTIN ÉPIQUE! **",
+  "combat.loot_displaced_to_player": "{0} de {1} a été déplacé dans votre inventaire.",
   "combat.loot_equip_failed": "Impossible d’équiper : {0}",
   "combat.loot_equip_failed_inventory": "Impossible d’équiper : {0}. Ajouté à l’inventaire.",
   "combat.loot_equip_option": "(E)quiper immédiatement",

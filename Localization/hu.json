@@ -846,6 +846,7 @@
   "combat.loot_drop_from": "  ── ZSÁKMÁNY tőle: {0} ──",
   "combat.loot_drop_from_sr": "  ZSÁKMÁNY tőle: {0}:",
   "combat.loot_epic_drop": "      ** EPIKUS ZSÁKMÁNY! **",
+  "combat.loot_displaced_to_player": "{0} tőle: {1} a hátizsákodba került.",
   "combat.loot_equip_failed": "Nem sikerült felszerelni: {0}",
   "combat.loot_equip_failed_inventory": "Nem sikerült felszerelni: {0}. A hátizsákba rakod.",
   "combat.loot_equip_option": "(E) Felszerelés azonnal",

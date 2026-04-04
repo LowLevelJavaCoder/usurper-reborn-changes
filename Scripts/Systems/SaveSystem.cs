@@ -910,7 +910,14 @@ namespace UsurperRemake.Systems
                 DungeonFloorStates = SerializeDungeonFloorStates(player),
 
                 // Hint system - which hints have been shown
-                HintsShown = player.HintsShown ?? new HashSet<string>()
+                HintsShown = player.HintsShown ?? new HashSet<string>(),
+
+                // Daily counters (v0.53.12)
+                DrinksLeft = player.DrinksLeft,
+                PrisonsLeft = player.PrisonsLeft,
+                ExecuteLeft = player.ExecuteLeft,
+                QuestsLeft = player.QuestsLeft,
+                PrisonActivitiesToday = player.PrisonActivitiesToday
             };
         }
 

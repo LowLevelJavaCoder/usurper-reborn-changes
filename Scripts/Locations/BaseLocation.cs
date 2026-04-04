@@ -322,9 +322,10 @@ public abstract class BaseLocation
                 player.CTurf = false;
             }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             // Non-critical sync — don't break location entry
+            DebugLogger.Instance.LogError("LOCATION", $"[SyncPlayerWorldState] World state sync failed: {ex.Message}");
         }
     }
 
@@ -375,9 +376,10 @@ public abstract class BaseLocation
                 term.WriteLine($"  {Loc.Get("base.whisper_neutral")}");
             term.SetColor("white");
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             // Non-critical — don't let reputation whispers break location entry
+            DebugLogger.Instance.LogError("LOCATION", $"[CheckReputationWhispers] Reputation whisper failed: {ex.Message}");
         }
         return Task.CompletedTask;
     }
@@ -463,9 +465,10 @@ public abstract class BaseLocation
                 await terminal.PressAnyKey();
             }
         }
-        catch
+        catch (Exception ex)
         {
             // King system not available - ignore
+            DebugLogger.Instance.LogError("LOCATION", $"[CheckGuardDefenseAlert] King system guard check failed: {ex.Message}");
         }
     }
     
@@ -3679,7 +3682,7 @@ public abstract class BaseLocation
                 if (!string.IsNullOrEmpty(line)) return line;
             }
         }
-        catch { }
+        catch (Exception ex) { DebugLogger.Instance.LogError("LOCATION", $"[ReadCurrentFont] Failed to read font-choice.txt: {ex.Message}"); }
         return "JetBrains Mono";
     }
 
@@ -3694,7 +3697,7 @@ public abstract class BaseLocation
             var path = Path.Combine(AppContext.BaseDirectory, "font-choice.txt");
             File.WriteAllText(path, fontName);
         }
-        catch { }
+        catch (Exception ex) { DebugLogger.Instance.LogError("LOCATION", $"[WriteTerminalFont] Failed to write font-choice.txt: {ex.Message}"); }
     }
 
     /// <summary>
@@ -6928,7 +6931,7 @@ public abstract class BaseLocation
             var names = items.Select(i => i.ContainsKey("name") ? i["name"]?.ToString() ?? "?" : "?");
             return string.Join(", ", names);
         }
-        catch { return "items"; }
+        catch (Exception ex) { DebugLogger.Instance.LogError("LOCATION", $"[ParseTradeItems] Failed to parse trade item JSON: {ex.Message}"); return "items"; }
     }
 
     private async Task AcceptTradeOffer(SqlSaveBackend backend, TradeOffer offer)
@@ -6995,12 +6998,20 @@ public abstract class BaseLocation
             await backend.AddGoldToPlayer(offer.FromPlayer, offer.Gold);
         }
 
-        // Item returns not implemented — declined items are lost (gold is returned above)
+        // Return items to sender's inventory in their save data
+        if (!string.IsNullOrEmpty(offer.ItemsJson) && offer.ItemsJson != "[]")
+        {
+            await backend.AddItemsToPlayerSave(offer.FromPlayer, offer.ItemsJson);
+        }
 
-        await backend.SendMessage("System", offer.FromPlayer, "trade",
-            $"{currentPlayer.DisplayName} declined your package. Gold returned.");
+        bool hasItems = !string.IsNullOrEmpty(offer.ItemsJson) && offer.ItemsJson != "[]";
+        string returnMsg = hasItems
+            ? $"{currentPlayer.DisplayName} declined your package. Items and gold returned."
+            : $"{currentPlayer.DisplayName} declined your package. Gold returned.";
+
+        await backend.SendMessage("System", offer.FromPlayer, "trade", returnMsg);
         UsurperRemake.Server.MudServer.Instance?.SendToPlayer(offer.FromPlayer,
-            $"\u001b[93m  {currentPlayer.DisplayName} declined your package. Gold returned.\u001b[0m");
+            $"\u001b[93m  {returnMsg}\u001b[0m");
 
         terminal.SetColor("yellow");
         terminal.WriteLine(Loc.Get("base.trade_declined"));
@@ -7015,6 +7026,41 @@ public abstract class BaseLocation
         if (offer.Gold > 0)
         {
             currentPlayer.Gold += offer.Gold;
+        }
+
+        // Return items to sender (self) — parse from stored JSON
+        if (!string.IsNullOrEmpty(offer.ItemsJson) && offer.ItemsJson != "[]")
+        {
+            try
+            {
+                var items = System.Text.Json.JsonSerializer.Deserialize<List<UsurperRemake.Systems.InventoryItemData>>(
+                    offer.ItemsJson, new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase });
+                if (items != null)
+                {
+                    foreach (var itemData in items)
+                    {
+                        currentPlayer.Inventory.Add(new Item
+                        {
+                            Name = itemData.Name ?? "Unknown",
+                            Type = itemData.Type,
+                            Value = itemData.Value,
+                            Attack = itemData.Attack,
+                            Armor = itemData.Armor,
+                            HP = itemData.HP,
+                            Mana = itemData.Mana,
+                            Strength = itemData.Strength,
+                            Defence = itemData.Defence,
+                            Dexterity = itemData.Dexterity
+                        });
+                    }
+                    terminal.SetColor("bright_green");
+                    terminal.WriteLine($"  {items.Count} item(s) returned to your inventory.");
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Instance.LogError("TRADE", $"Failed to return cancelled trade items: {ex.Message}");
+            }
         }
 
         terminal.SetColor("yellow");
@@ -7664,7 +7710,7 @@ public abstract class BaseLocation
         for (int i = 0; i < listings.Count; i++)
         {
             try { items[i] = System.Text.Json.JsonSerializer.Deserialize<Item>(listings[i].ItemJson); }
-            catch { items[i] = null; }
+            catch (Exception ex) { DebugLogger.Instance.LogError("LOCATION", $"[BrowseAuctions] Failed to deserialize auction item: {ex.Message}"); items[i] = null; }
         }
 
         terminal.ClearScreen();
@@ -7925,8 +7971,9 @@ public abstract class BaseLocation
                 terminal.WriteLine(Loc.Get("base.auction_purchased", listing.ItemName, listing.Price.ToString("N0")));
             }
         }
-        catch
+        catch (Exception ex)
         {
+            DebugLogger.Instance.LogError("LOCATION", $"[ShowAuctionItemDetails] Auction purchase failed: {ex.Message}");
             terminal.SetColor("yellow");
             terminal.WriteLine(Loc.Get("base.auction_purchased_error"));
         }
@@ -8241,7 +8288,7 @@ public abstract class BaseLocation
                         var item = System.Text.Json.JsonSerializer.Deserialize<Item>(l.ItemJson);
                         if (item != null) { currentPlayer.Inventory.Add(item); collected++; }
                     }
-                    catch { }
+                    catch (Exception ex) { DebugLogger.Instance.LogError("LOCATION", $"[ShowMyAuctions] Failed to deserialize expired auction item: {ex.Message}"); }
                 }
             }
             if (collected > 0)
@@ -8274,7 +8321,7 @@ public abstract class BaseLocation
                     var item = System.Text.Json.JsonSerializer.Deserialize<Item>(listing.ItemJson);
                     if (item != null) currentPlayer.Inventory.Add(item);
                 }
-                catch { }
+                catch (Exception ex) { DebugLogger.Instance.LogError("LOCATION", $"[ShowMyAuctions] Failed to deserialize collected auction item: {ex.Message}"); }
                 terminal.SetColor("bright_green");
                 terminal.WriteLine(Loc.Get("base.auction_collected_back", listing.ItemName));
             }
@@ -8304,7 +8351,7 @@ public abstract class BaseLocation
                 var item = System.Text.Json.JsonSerializer.Deserialize<Item>(listing.ItemJson);
                 if (item != null) currentPlayer.Inventory.Add(item);
             }
-            catch { }
+            catch (Exception ex) { DebugLogger.Instance.LogError("LOCATION", $"[ShowMyAuctions] Failed to deserialize cancelled auction item: {ex.Message}"); }
 
             terminal.SetColor("bright_green");
             terminal.WriteLine(Loc.Get("base.auction_listing_cancelled"));

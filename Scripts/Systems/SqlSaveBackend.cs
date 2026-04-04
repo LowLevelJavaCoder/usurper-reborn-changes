@@ -2983,6 +2983,59 @@ namespace UsurperRemake.Systems
             }
         }
 
+        /// <summary>
+        /// Appends items (as InventoryItemData JSON array) to a player's inventory in their save data.
+        /// Used to return trade items to offline players on decline/expiry/cancel.
+        /// </summary>
+        public async Task AddItemsToPlayerSave(string username, string itemsJson)
+        {
+            if (string.IsNullOrEmpty(itemsJson) || itemsJson == "[]") return;
+            try
+            {
+                using var connection = OpenConnection();
+
+                // Read current inventory JSON
+                using var readCmd = connection.CreateCommand();
+                readCmd.CommandText = @"
+                    SELECT json_extract(player_data, '$.player.inventory')
+                    FROM players
+                    WHERE (LOWER(username) = LOWER(@username) OR LOWER(display_name) = LOWER(@username))
+                    AND player_data != '{}' AND LENGTH(player_data) > 2;
+                ";
+                readCmd.Parameters.AddWithValue("@username", username);
+                var currentJson = await Task.Run(() => readCmd.ExecuteScalar() as string);
+
+                // Merge arrays in C#
+                var options = new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase };
+                var existingItems = new List<System.Text.Json.JsonElement>();
+                if (!string.IsNullOrEmpty(currentJson) && currentJson != "null")
+                {
+                    var arr = System.Text.Json.JsonSerializer.Deserialize<List<System.Text.Json.JsonElement>>(currentJson);
+                    if (arr != null) existingItems = arr;
+                }
+                var newItems = System.Text.Json.JsonSerializer.Deserialize<List<System.Text.Json.JsonElement>>(itemsJson);
+                if (newItems != null) existingItems.AddRange(newItems);
+
+                string mergedJson = System.Text.Json.JsonSerializer.Serialize(existingItems);
+
+                // Write merged inventory back
+                using var writeCmd = connection.CreateCommand();
+                writeCmd.CommandText = @"
+                    UPDATE players
+                    SET player_data = json_set(player_data, '$.player.inventory', json(@mergedInventory))
+                    WHERE (LOWER(username) = LOWER(@username) OR LOWER(display_name) = LOWER(@username))
+                    AND player_data != '{}' AND LENGTH(player_data) > 2;
+                ";
+                writeCmd.Parameters.AddWithValue("@username", username);
+                writeCmd.Parameters.AddWithValue("@mergedInventory", mergedJson);
+                await Task.Run(() => writeCmd.ExecuteNonQuery());
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Instance.LogError("SQL", $"Failed to add items to {username}'s save: {ex.Message}");
+            }
+        }
+
         public async Task AddXPToPlayer(string username, long xpAmount)
         {
             try
@@ -3650,27 +3703,34 @@ namespace UsurperRemake.Systems
         try
         {
             using var connection = OpenConnection();
-            // Get expired offers to return gold
+            // Get expired offers to return gold and items
             using var selectCmd = connection.CreateCommand();
             selectCmd.CommandText = @"
-                SELECT id, from_player, gold FROM trade_offers
+                SELECT id, from_player, gold, items_json FROM trade_offers
                 WHERE status = 'pending' AND created_at < datetime('now', '-7 days');
             ";
-            var expiredOffers = new List<(long id, string fromPlayer, long gold)>();
+            var expiredOffers = new List<(long id, string fromPlayer, long gold, string itemsJson)>();
             using (var reader = await Task.Run(() => selectCmd.ExecuteReader()))
             {
                 while (reader.Read())
                 {
-                    expiredOffers.Add((reader.GetInt64(0), reader.GetString(1), reader.GetInt64(2)));
+                    expiredOffers.Add((reader.GetInt64(0), reader.GetString(1), reader.GetInt64(2),
+                        reader.IsDBNull(3) ? "[]" : reader.GetString(3)));
                 }
             }
 
-            // Mark expired and return gold
-            foreach (var (id, fromPlayer, gold) in expiredOffers)
+            // Mark expired and return gold + items
+            foreach (var (id, fromPlayer, gold, itemsJson) in expiredOffers)
             {
                 await UpdateTradeOfferStatus(id, "expired");
                 if (gold > 0) await AddGoldToPlayer(fromPlayer, gold);
-                await SendMessage("System", fromPlayer, "trade", $"Your trade package expired and {gold:N0} gold was returned.");
+                if (!string.IsNullOrEmpty(itemsJson) && itemsJson != "[]")
+                    await AddItemsToPlayerSave(fromPlayer, itemsJson);
+                bool hasItems = !string.IsNullOrEmpty(itemsJson) && itemsJson != "[]";
+                string returnMsg = hasItems
+                    ? $"Your trade package expired. {gold:N0} gold and items returned."
+                    : $"Your trade package expired and {gold:N0} gold was returned.";
+                await SendMessage("System", fromPlayer, "trade", returnMsg);
             }
         }
         catch (Exception ex)

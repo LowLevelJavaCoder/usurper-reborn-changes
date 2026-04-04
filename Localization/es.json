@@ -846,6 +846,7 @@
   "combat.loot_drop_from": "  ── BOTÍN de {0} ──",
   "combat.loot_drop_from_sr": "  BOTÍN de {0}:",
   "combat.loot_epic_drop": "      ** ¡BOTÍN ÉPICO! **",
+  "combat.loot_displaced_to_player": "{0} de {1} se movió a tu inventario.",
   "combat.loot_equip_failed": "No se pudo equipar: {0}",
   "combat.loot_equip_failed_inventory": "No se pudo equipar: {0}. Añadido al inventario.",
   "combat.loot_equip_option": "(E)quipar inmediatamente",

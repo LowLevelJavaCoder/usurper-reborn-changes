@@ -435,7 +435,7 @@ public partial class GameEngine
                 mainIsImmortal = mainData?.Player?.IsImmortal == true;
                 hasAltSlot = mainData?.Player?.HasEarnedAltSlot == true;
             }
-            catch { /* Failed to peek, assume no alt slot */ }
+            catch (Exception ex) { DebugLogger.Instance.LogError("ENGINE", $"[ShowCharacterSlots] Failed to peek alt slot data: {ex.Message}"); }
         }
 
         // Show character slots
@@ -839,7 +839,7 @@ public partial class GameEngine
                         // Also clean up sleeping_players entry for the alt
                         if (SaveSystem.Instance.Backend is SqlSaveBackend sqlDel)
                         {
-                            try { await sqlDel.UnregisterSleepingPlayer(altKey); } catch { }
+                            try { await sqlDel.UnregisterSleepingPlayer(altKey); } catch (Exception ex) { DebugLogger.Instance.LogError("ENGINE", $"[DeleteAltCharacter] Failed to unregister sleeping player '{altKey}': {ex.Message}"); }
                         }
                         terminal.WriteLine(Loc.Get("engine.delete_alt_done", altSave.PlayerName), "yellow");
                         await Task.Delay(2000);
@@ -1857,8 +1857,9 @@ public partial class GameEngine
                 target.PendingSpectateRequest = null;
             }
         }
-        catch
+        catch (Exception ex)
         {
+            DebugLogger.Instance.LogError("ENGINE", $"[RunSpectatorModeUI] Spectate request handling failed: {ex.Message}");
             accepted = false;
             request.Response.TrySetResult(false);
             target.PendingSpectateRequest = null;
@@ -1955,9 +1956,10 @@ public partial class GameEngine
                 mySession.LastActivityTime = DateTime.UtcNow;
             }
         }
-        catch
+        catch (Exception ex)
         {
             // Spectator disconnected or error
+            DebugLogger.Instance.LogError("ENGINE", $"[RunSpectatorLoop] Spectator session error: {ex.Message}");
         }
         finally
         {
@@ -1978,7 +1980,7 @@ public partial class GameEngine
                         $"\u001b[1;33m  * {mySession.Username} stopped watching your session.\u001b[0m");
                 }
             }
-            catch { }
+            catch (Exception ex) { DebugLogger.Instance.LogError("ENGINE", $"[RunSpectatorLoop] Failed to notify spectate target on disconnect: {ex.Message}"); }
         }
 
         terminal.SetColor("cyan");
@@ -3088,7 +3090,7 @@ public partial class GameEngine
                         if (entry != null) attackLog.Add(entry);
                 }
             }
-            catch { /* empty or invalid JSON — no attacks */ }
+            catch (Exception ex) { DebugLogger.Instance.LogError("ENGINE", $"[ProcessSleepReport] Failed to parse sleep attack log JSON: {ex.Message}"); }
 
             // Show report if anything happened
             if (attackLog.Count > 0 || sleepInfo.IsDead)
@@ -3113,10 +3115,10 @@ public partial class GameEngine
                     string attacker = entry["attacker"]?.GetValue<string>() ?? "Unknown";
                     string result = entry["result"]?.GetValue<string>() ?? "unknown";
                     long goldStolen = 0;
-                    try { goldStolen = entry["gold_stolen"]?.GetValue<long>() ?? 0; } catch { }
+                    try { goldStolen = entry["gold_stolen"]?.GetValue<long>() ?? 0; } catch (Exception ex) { DebugLogger.Instance.LogError("ENGINE", $"[ProcessSleepReport] Failed to parse gold_stolen: {ex.Message}"); }
                     string? itemStolen = entry["item_stolen"]?.GetValue<string>();
                     long xpLost = 0;
-                    try { xpLost = entry["xp_lost"]?.GetValue<long>() ?? 0; } catch { }
+                    try { xpLost = entry["xp_lost"]?.GetValue<long>() ?? 0; } catch (Exception ex) { DebugLogger.Instance.LogError("ENGINE", $"[ProcessSleepReport] Failed to parse xp_lost: {ex.Message}"); }
 
                     terminal.WriteLine("");
 
@@ -4523,6 +4525,13 @@ public partial class GameEngine
         player.DrugTolerance = playerData.DrugTolerance ?? new Dictionary<int, int>();
         // SafeHouseResting is cleared on login — player is no longer hiding
         player.SafeHouseResting = false;
+
+        // Restore daily counters (v0.53.12)
+        player.DrinksLeft = (byte)playerData.DrinksLeft;
+        player.PrisonsLeft = playerData.PrisonsLeft;
+        player.ExecuteLeft = playerData.ExecuteLeft;
+        player.QuestsLeft = playerData.QuestsLeft;
+        player.PrisonActivitiesToday = playerData.PrisonActivitiesToday;
 
         // Restore Daily Login Streak (v0.52.0)
         player.LoginStreak = playerData.LoginStreak;
@@ -5979,11 +5988,11 @@ public partial class GameEngine
             {
                 OnlineStateManager.Instance!.Shutdown().GetAwaiter().GetResult();
             }
-            catch { /* best-effort cleanup */ }
+            catch (Exception ex) { DebugLogger.Instance.LogError("ENGINE", $"[QuitGame] OnlineStateManager shutdown failed: {ex.Message}"); }
         }
         if (OnlineChatSystem.IsActive)
         {
-            try { OnlineChatSystem.Instance!.Shutdown(); } catch { }
+            try { OnlineChatSystem.Instance!.Shutdown(); } catch (Exception ex) { DebugLogger.Instance.LogError("ENGINE", $"[QuitGame] OnlineChatSystem shutdown failed: {ex.Message}"); }
         }
 
         terminal.WriteLine(Loc.Get("engine.goodbye"), "green");

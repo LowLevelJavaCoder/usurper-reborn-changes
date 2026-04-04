@@ -138,7 +138,18 @@ public class MudServer
                 }
 
                 // Handle each connection in a fire-and-forget task
-                _ = HandleConnectionAsync(client, sqlBackend, _cts.Token);
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await HandleConnectionAsync(client, sqlBackend, _cts.Token);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.Error.WriteLine($"[MUD] Connection handler crashed: {ex.Message}");
+                        DebugLogger.Instance.LogError("MUD", $"Connection handler crashed: {ex}");
+                    }
+                });
             }
         }
         finally

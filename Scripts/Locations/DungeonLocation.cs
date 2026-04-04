@@ -5425,7 +5425,7 @@ public class DungeonLocation : BaseLocation
             _lastDungeonRespawnBroadcast = DateTime.Now;
         }
         var msg = DungeonRespawnMessages[Random.Shared.Next(DungeonRespawnMessages.Length)];
-        try { NewsSystem.Instance?.Newsy(msg); } catch { }
+        try { NewsSystem.Instance?.Newsy(msg); } catch (Exception ex) { DebugLogger.Instance.LogError("DUNGEON", $"[BroadcastDungeonRespawn] Failed to broadcast respawn message: {ex.Message}"); }
     }
 
     /// <summary>
@@ -9863,7 +9863,7 @@ public class DungeonLocation : BaseLocation
                 _ = Task.Run(async () =>
                 {
                     try { await OnlineStateManager.Instance.SaveAllSharedState(); }
-                    catch { /* best-effort */ }
+                    catch (Exception ex) { DebugLogger.Instance.LogError("DUNGEON", $"[ManagePartyMemberEquipment] SaveAllSharedState failed after equip: {ex.Message}"); }
                 });
             }
         }
@@ -9950,7 +9950,7 @@ public class DungeonLocation : BaseLocation
             _ = Task.Run(async () =>
             {
                 try { await OnlineStateManager.Instance.SaveAllSharedState(); }
-                catch { /* best-effort */ }
+                catch (Exception ex) { DebugLogger.Instance.LogError("DUNGEON", $"[ManagePartyMemberEquipment] SaveAllSharedState failed after unequip: {ex.Message}"); }
             });
         }
 
@@ -16153,8 +16153,9 @@ public class DungeonLocation : BaseLocation
                 {
                     input = await term.GetInput("");
                 }
-                catch
+                catch (Exception ex)
                 {
+                    DebugLogger.Instance.LogError("DUNGEON", $"[GroupFollowerLoop] Follower input stream error: {ex.Message}");
                     break; // disconnect or stream error
                 }
 
@@ -16173,7 +16174,7 @@ public class DungeonLocation : BaseLocation
                     {
                         await player.CombatInputChannel.Writer.WriteAsync(trimmed);
                     }
-                    catch { /* channel closed */ }
+                    catch (Exception ex) { DebugLogger.Instance.LogError("DUNGEON", $"[GroupFollowerLoop] Combat input channel write failed: {ex.Message}"); }
                     continue;
                 }
 

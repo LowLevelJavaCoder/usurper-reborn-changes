@@ -7765,7 +7765,7 @@ public partial class CombatEngine
                     }
                 }
             }
-            catch { followerChoice = "P"; }
+            catch (Exception ex) { DebugLogger.Instance.LogError("COMBAT", $"[DisplayEquipmentDrop] Follower loot input failed: {ex.Message}"); followerChoice = "P"; }
 
             if (followerChoice == "E" && lootItem.IsIdentified && followerCanUse)
             {
@@ -7931,7 +7931,7 @@ public partial class CombatEngine
                 choice = "T";
             }
         }
-        catch { choice = "T"; }
+        catch (Exception ex) { DebugLogger.Instance.LogError("COMBAT", $"[PromptLootWinner] Loot winner input failed: {ex.Message}"); choice = "T"; }
 
         switch (choice)
         {
@@ -8380,7 +8380,7 @@ public partial class CombatEngine
                     otherTerm.WriteLine(Loc.Get("combat.timed_out_pass"));
                 }
             }
-            catch { otherChoice = "P"; }
+            catch (Exception ex) { DebugLogger.Instance.LogError("COMBAT", $"[OfferLootToOtherPlayers] Other player loot input failed: {ex.Message}"); otherChoice = "P"; }
 
             if (otherChoice == "E" && lootItem.IsIdentified && otherCanUse)
             {
@@ -21170,7 +21170,8 @@ public partial class CombatEngine
             if (abilities.Count > 0)
             {
                 // Pick highest-damage ability
-                var chosen = abilities.OrderByDescending(a => a.BaseDamage).First();
+                var chosen = abilities.OrderByDescending(a => a.BaseDamage).FirstOrDefault();
+                if (chosen == null) return;
                 computer.SpendStamina(chosen.StaminaCost);
                 var abilityResult = ClassAbilitySystem.UseAbility(computer, chosen.Id, random);
 
@@ -23979,7 +23980,8 @@ public partial class CombatEngine
         if (doomTargets.Count > 0)
         {
             // Dispel the most urgent doom (lowest countdown)
-            var target = doomTargets.OrderBy(t => t.DoomCountdown).First();
+            var target = doomTargets.OrderBy(t => t.DoomCountdown).FirstOrDefault();
+            if (target == null) return false;
             target.DoomCountdown = 0;
             terminal.SetColor("bright_green");
             terminal.WriteLine($"  {healer.DisplayName} dispels DOOM from {target.DisplayName}!");
@@ -23994,7 +23996,8 @@ public partial class CombatEngine
 
         if (corruptTargets.Count > 0)
         {
-            var target = corruptTargets.OrderByDescending(t => t.CorruptionStacks).First();
+            var target = corruptTargets.OrderByDescending(t => t.CorruptionStacks).FirstOrDefault();
+            if (target == null) return false;
             int removed = Math.Min(target.CorruptionStacks, 3 + healer.Level / 20);
             target.CorruptionStacks = Math.Max(0, target.CorruptionStacks - removed);
             terminal.SetColor("bright_green");
@@ -24360,9 +24363,10 @@ public partial class CombatEngine
                     terminal.WriteLine($"  {Loc.Get("combat.timed_out_auto")}");
                     input = "A";
                 }
-                catch
+                catch (Exception ex)
                 {
                     // Channel closed (disconnect) — auto-attack
+                    DebugLogger.Instance.LogError("COMBAT", $"[ProcessGroupedPlayerTurn] Combat input channel error: {ex.Message}");
                     input = "A";
                 }
 

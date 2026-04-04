@@ -846,6 +846,7 @@
   "combat.loot_drop_from": "  ── BOTTINO da {0} ──",
   "combat.loot_drop_from_sr": "  BOTTINO da {0}:",
   "combat.loot_epic_drop": "      ** BOTTINO EPICO! **",
+  "combat.loot_displaced_to_player": "{0} da {1} è stato spostato nel tuo inventario.",
   "combat.loot_equip_failed": "Impossibile equipaggiare: {0}",
   "combat.loot_equip_failed_inventory": "Impossibile equipaggiare: {0}. Aggiunto all'inventario.",
   "combat.loot_equip_option": "(E)quipaggia subito",

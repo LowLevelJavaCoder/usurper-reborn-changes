@@ -649,6 +649,13 @@ namespace UsurperRemake.Systems
 
         // MUD title — free-form string shown in /who (set via /title command, ANSI codes allowed)
         public string MudTitle { get; set; } = "";
+
+        // Daily counters (v0.53.12)
+        public int DrinksLeft { get; set; }
+        public int PrisonsLeft { get; set; }
+        public int ExecuteLeft { get; set; }
+        public int QuestsLeft { get; set; }
+        public int PrisonActivitiesToday { get; set; }
     }
 
     /// <summary>
