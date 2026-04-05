@@ -155,6 +155,7 @@ public class WeaponShopLocation : BaseLocation
 
         WriteSRMenuOption("S", Loc.Get("weapon_shop.sell"));
         WriteSRMenuOption("A", Loc.Get("shop.auto_buy"));
+        WriteSRMenuOption("F", Loc.Get("weapon_shop.reforge"));
 
         terminal.WriteLine("");
         WriteSRMenuOption("R", Loc.Get("shop.return"));
@@ -194,6 +195,7 @@ public class WeaponShopLocation : BaseLocation
         terminal.WriteLine("");
         WriteSRMenuOption("S", Loc.Get("weapon_shop.sell"));
         WriteSRMenuOption("A", Loc.Get("shop.auto_buy"));
+        WriteSRMenuOption("F", Loc.Get("weapon_shop.reforge"));
         terminal.WriteLine("");
         WriteSRMenuOption("R", Loc.Get("shop.return"));
         terminal.WriteLine("");
@@ -234,7 +236,7 @@ public class WeaponShopLocation : BaseLocation
         terminal.SetColor("cyan");
         terminal.WriteLine(Loc.Get("weapon_shop.categories"));
         ShowBBSMenuRow(("1", "bright_yellow", Loc.Get("weapon_shop.bbs_one_hand")), ("2", "bright_yellow", Loc.Get("weapon_shop.bbs_two_hand")), ("3", "bright_yellow", Loc.Get("weapon_shop.bbs_bows")), ("4", "bright_yellow", Loc.Get("weapon_shop.bbs_shields")));
-        ShowBBSMenuRow(("S", "bright_green", Loc.Get("weapon_shop.bbs_sell")), ("A", "bright_cyan", Loc.Get("weapon_shop.bbs_auto_buy")), ("R", "bright_red", Loc.Get("weapon_shop.bbs_return")));
+        ShowBBSMenuRow(("S", "bright_green", Loc.Get("weapon_shop.bbs_sell")), ("A", "bright_cyan", Loc.Get("weapon_shop.bbs_auto_buy")), ("F", "bright_magenta", Loc.Get("weapon_shop.bbs_reforge")), ("R", "bright_red", Loc.Get("weapon_shop.bbs_return")));
 
         // Footer
         ShowBBSFooter();
@@ -632,6 +634,10 @@ public class WeaponShopLocation : BaseLocation
 
             case "A":
                 await AutoBuyBestWeapon();
+                return false;
+
+            case "F":
+                await ReforgeWeapon();
                 return false;
 
             case "?":
@@ -1075,6 +1081,233 @@ public class WeaponShopLocation : BaseLocation
         }
 
         await Pause();
+    }
+
+    /// <summary>
+    /// Reforge the player's equipped main-hand weapon.
+    /// Rerolls stat bonuses within +/-15% variance of current values,
+    /// with a 20% chance to upgrade rarity by one tier (max Artifact).
+    /// Cost scales quadratically: level * level * 50 gold.
+    /// </summary>
+    private async Task ReforgeWeapon()
+    {
+        terminal.ClearScreen();
+        WriteSectionHeader(Loc.Get("weapon_shop.reforge_title"), "bright_magenta");
+        terminal.WriteLine("");
+
+        var weapon = currentPlayer.GetEquipment(EquipmentSlot.MainHand);
+        if (weapon == null)
+        {
+            terminal.WriteLine(Loc.Get("weapon_shop.reforge_no_weapon"), "red");
+            await terminal.PressAnyKey();
+            return;
+        }
+
+        long cost = (long)currentPlayer.Level * currentPlayer.Level * GameConfig.ReforgeCostMultiplier;
+
+        terminal.SetColor("cyan");
+        terminal.WriteLine(Loc.Get("weapon_shop.reforge_desc", shopkeeperName));
+        terminal.WriteLine("");
+
+        // Show current weapon stats
+        terminal.SetColor("white");
+        terminal.WriteLine(Loc.Get("weapon_shop.reforge_current"));
+        terminal.SetColor(weapon.GetRarityColor());
+        terminal.Write($"  {weapon.Name}");
+        WriteEquipmentStatSummary(weapon);
+        terminal.WriteLine("");
+        terminal.SetColor("gray");
+        terminal.WriteLine($"  {Loc.Get("weapon_shop.reforge_rarity")}: {weapon.Rarity}");
+        terminal.WriteLine("");
+
+        // Show cost
+        terminal.SetColor("yellow");
+        terminal.WriteLine(Loc.Get("weapon_shop.reforge_cost", $"{cost:N0}"));
+        terminal.SetColor("gray");
+        terminal.WriteLine(Loc.Get("weapon_shop.reforge_gold", $"{currentPlayer.Gold:N0}"));
+        terminal.WriteLine("");
+
+        if (currentPlayer.Gold < cost)
+        {
+            terminal.WriteLine(Loc.Get("ui.not_enough_gold"), "red");
+            await terminal.PressAnyKey();
+            return;
+        }
+
+        terminal.SetColor("bright_yellow");
+        terminal.WriteLine(Loc.Get("weapon_shop.reforge_warning"));
+        terminal.WriteLine("");
+
+        var confirm = await terminal.GetInput(Loc.Get("weapon_shop.reforge_confirm"));
+        if (confirm?.Trim().ToUpper() != "Y")
+        {
+            terminal.WriteLine(Loc.Get("ui.cancelled"), "gray");
+            await terminal.PressAnyKey();
+            return;
+        }
+
+        // Deduct gold
+        currentPlayer.Gold -= cost;
+        currentPlayer.Statistics?.RecordGoldSpent(cost);
+
+        // Clone the weapon and reroll stats
+        var reforged = weapon.Clone();
+        reforged.Id = weapon.Id; // Keep the same ID so the equipped reference stays valid
+
+        // Determine if rarity upgrades
+        bool rarityUpgraded = false;
+        if (weapon.Rarity < EquipmentRarity.Artifact && Random.Shared.NextDouble() < GameConfig.ReforgeUpgradeChance)
+        {
+            reforged.Rarity = weapon.Rarity + 1;
+            rarityUpgraded = true;
+        }
+
+        // Reroll stat bonuses with +/-15% variance
+        double variance = GameConfig.ReforgeVariance;
+        double rarityBoost = rarityUpgraded ? 1.15 : 1.0; // Rarity upgrade gives +15% to all stats
+
+        reforged.WeaponPower = RerollStat(weapon.WeaponPower, variance, rarityBoost, minValue: 1);
+        reforged.StrengthBonus = RerollStat(weapon.StrengthBonus, variance, rarityBoost);
+        reforged.DexterityBonus = RerollStat(weapon.DexterityBonus, variance, rarityBoost);
+        reforged.ConstitutionBonus = RerollStat(weapon.ConstitutionBonus, variance, rarityBoost);
+        reforged.IntelligenceBonus = RerollStat(weapon.IntelligenceBonus, variance, rarityBoost);
+        reforged.WisdomBonus = RerollStat(weapon.WisdomBonus, variance, rarityBoost);
+        reforged.CharismaBonus = RerollStat(weapon.CharismaBonus, variance, rarityBoost);
+        reforged.AgilityBonus = RerollStat(weapon.AgilityBonus, variance, rarityBoost);
+        reforged.MaxHPBonus = RerollStat(weapon.MaxHPBonus, variance, rarityBoost);
+        reforged.MaxManaBonus = RerollStat(weapon.MaxManaBonus, variance, rarityBoost);
+        reforged.DefenceBonus = RerollStat(weapon.DefenceBonus, variance, rarityBoost);
+        reforged.StaminaBonus = RerollStat(weapon.StaminaBonus, variance, rarityBoost);
+        reforged.CriticalChanceBonus = RerollStat(weapon.CriticalChanceBonus, variance, rarityBoost);
+        reforged.CriticalDamageBonus = RerollStat(weapon.CriticalDamageBonus, variance, rarityBoost);
+        reforged.LifeSteal = RerollStat(weapon.LifeSteal, variance, rarityBoost);
+        reforged.MagicResistance = RerollStat(weapon.MagicResistance, variance, rarityBoost);
+        reforged.PoisonDamage = RerollStat(weapon.PoisonDamage, variance, rarityBoost);
+
+        // Recalculate value based on new stats
+        reforged.Value = Math.Max(weapon.Value, (long)(reforged.WeaponPower * 15 * (1.0 + (int)reforged.Rarity * 0.5)));
+
+        // Show reforging animation
+        terminal.WriteLine("");
+        terminal.SetColor("bright_magenta");
+        terminal.WriteLine(Loc.Get("weapon_shop.reforge_working", shopkeeperName));
+        await Task.Delay(1500);
+
+        if (rarityUpgraded)
+        {
+            terminal.WriteLine("");
+            terminal.SetColor("bright_yellow");
+            terminal.WriteLine(Loc.Get("weapon_shop.reforge_rarity_up", reforged.Rarity.ToString()));
+        }
+
+        terminal.WriteLine("");
+
+        // Show comparison
+        terminal.SetColor("white");
+        terminal.WriteLine(Loc.Get("weapon_shop.reforge_result"));
+        terminal.SetColor(reforged.GetRarityColor());
+        terminal.Write($"  {reforged.Name}");
+        WriteEquipmentStatSummary(reforged);
+        terminal.WriteLine("");
+        terminal.SetColor("gray");
+        terminal.WriteLine($"  {Loc.Get("weapon_shop.reforge_rarity")}: {reforged.Rarity}");
+        terminal.WriteLine("");
+
+        // Show stat changes
+        ShowStatChange(Loc.Get("ui.stat_wp"), weapon.WeaponPower, reforged.WeaponPower);
+        ShowStatChange(Loc.Get("ui.stat_str"), weapon.StrengthBonus, reforged.StrengthBonus);
+        ShowStatChange(Loc.Get("ui.stat_dex"), weapon.DexterityBonus, reforged.DexterityBonus);
+        ShowStatChange(Loc.Get("ui.stat_con"), weapon.ConstitutionBonus, reforged.ConstitutionBonus);
+        ShowStatChange(Loc.Get("ui.stat_int"), weapon.IntelligenceBonus, reforged.IntelligenceBonus);
+        ShowStatChange(Loc.Get("ui.stat_wis"), weapon.WisdomBonus, reforged.WisdomBonus);
+        ShowStatChange(Loc.Get("ui.stat_cha"), weapon.CharismaBonus, reforged.CharismaBonus);
+        ShowStatChange(Loc.Get("ui.stat_agi"), weapon.AgilityBonus, reforged.AgilityBonus);
+        ShowStatChange(Loc.Get("ui.stat_crit"), weapon.CriticalChanceBonus, reforged.CriticalChanceBonus);
+        ShowStatChange(Loc.Get("ui.stat_leech"), weapon.LifeSteal, reforged.LifeSteal);
+        terminal.WriteLine("");
+
+        // Ask to accept or keep original
+        terminal.SetColor("bright_yellow");
+        var accept = await terminal.GetInput(Loc.Get("weapon_shop.reforge_accept"));
+
+        if (accept?.Trim().ToUpper() == "Y")
+        {
+            // Apply the reforged stats directly to the existing equipment object
+            weapon.WeaponPower = reforged.WeaponPower;
+            weapon.Rarity = reforged.Rarity;
+            weapon.StrengthBonus = reforged.StrengthBonus;
+            weapon.DexterityBonus = reforged.DexterityBonus;
+            weapon.ConstitutionBonus = reforged.ConstitutionBonus;
+            weapon.IntelligenceBonus = reforged.IntelligenceBonus;
+            weapon.WisdomBonus = reforged.WisdomBonus;
+            weapon.CharismaBonus = reforged.CharismaBonus;
+            weapon.AgilityBonus = reforged.AgilityBonus;
+            weapon.MaxHPBonus = reforged.MaxHPBonus;
+            weapon.MaxManaBonus = reforged.MaxManaBonus;
+            weapon.DefenceBonus = reforged.DefenceBonus;
+            weapon.StaminaBonus = reforged.StaminaBonus;
+            weapon.CriticalChanceBonus = reforged.CriticalChanceBonus;
+            weapon.CriticalDamageBonus = reforged.CriticalDamageBonus;
+            weapon.LifeSteal = reforged.LifeSteal;
+            weapon.MagicResistance = reforged.MagicResistance;
+            weapon.PoisonDamage = reforged.PoisonDamage;
+            weapon.Value = reforged.Value;
+
+            // Recalculate player stats with new weapon values
+            currentPlayer.RecalculateStats();
+
+            terminal.WriteLine("");
+            terminal.SetColor("bright_green");
+            terminal.WriteLine(Loc.Get("weapon_shop.reforge_accepted", shopkeeperName));
+        }
+        else
+        {
+            terminal.WriteLine("");
+            terminal.SetColor("gray");
+            terminal.WriteLine(Loc.Get("weapon_shop.reforge_kept", shopkeeperName));
+        }
+
+        await terminal.PressAnyKey();
+    }
+
+    /// <summary>
+    /// Reroll a stat value with +/-variance around the original, multiplied by rarityBoost.
+    /// For stats that are 0, they stay 0 (no new stats are invented).
+    /// Negative stats (from cursed items) can become more or less negative.
+    /// </summary>
+    private static int RerollStat(int original, double variance, double rarityBoost, int minValue = int.MinValue)
+    {
+        if (original == 0) return 0;
+
+        double baseValue = original * rarityBoost;
+        double range = Math.Abs(baseValue) * variance;
+        double rolled = baseValue + (Random.Shared.NextDouble() * 2 - 1) * range;
+
+        int result = (int)Math.Round(rolled);
+
+        // Preserve sign: positive stays positive, negative stays negative
+        if (original > 0 && result < 1) result = 1;
+        if (original < 0 && result > -1) result = -1;
+
+        return Math.Max(result, minValue);
+    }
+
+    /// <summary>
+    /// Display a stat change with color coding (green for improvement, red for worse).
+    /// Only shows stats that have a non-zero value.
+    /// </summary>
+    private void ShowStatChange(string label, int oldValue, int newValue)
+    {
+        if (oldValue == 0 && newValue == 0) return;
+
+        int diff = newValue - oldValue;
+        string color = diff > 0 ? "bright_green" : diff < 0 ? "red" : "gray";
+        string sign = diff > 0 ? "+" : "";
+
+        terminal.SetColor("gray");
+        terminal.Write($"  {label}: {oldValue} -> ");
+        terminal.SetColor(color);
+        terminal.WriteLine($"{newValue} ({sign}{diff})");
     }
 
     private async Task AutoBuyBestWeapon()

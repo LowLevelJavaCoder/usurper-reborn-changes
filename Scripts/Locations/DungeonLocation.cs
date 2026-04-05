@@ -10512,7 +10512,7 @@ public class DungeonLocation : BaseLocation
                     WriteSRMenuOption("U", Loc.Get("dungeon.use_potion_self", healAmount));
                 else
                     WriteSRMenuOption("U", Loc.Get("dungeon.no_potions"));
-                WriteSRMenuOption("B", Loc.Get("dungeon.buy_potions_monk", costPerPotion, Math.Max(75, player.Level * 3)));
+                WriteSRMenuOption("B", Loc.Get("dungeon.buy_potions_monk", costPerPotion, GameConfig.ManaPotionBaseCost + player.Level * GameConfig.ManaPotionLevelMultiplier));
                 if (player.Healing > 0 && player.HP < player.MaxHP)
                     WriteSRMenuOption("H", Loc.Get("dungeon.heal_full"));
                 if (allPartyMembers.Count > 0 && player.Healing > 0)
@@ -10567,7 +10567,7 @@ public class DungeonLocation : BaseLocation
                 terminal.SetColor("darkgray");
                 terminal.Write("] ");
                 terminal.SetColor("white");
-                terminal.WriteLine(Loc.Get("dungeon.buy_potions_monk", costPerPotion, Math.Max(75, player.Level * 3)));
+                terminal.WriteLine(Loc.Get("dungeon.buy_potions_monk", costPerPotion, GameConfig.ManaPotionBaseCost + player.Level * GameConfig.ManaPotionLevelMultiplier));
 
                 // Quick heal - use potions until full
                 if (player.Healing > 0 && player.HP < player.MaxHP)
@@ -11326,7 +11326,7 @@ public class DungeonLocation : BaseLocation
 
         // Calculate costs
         int healCost = 50 + (player.Level * 10);
-        int manaCost = Math.Max(75, player.Level * 3);
+        int manaCost = GameConfig.ManaPotionBaseCost + (player.Level * GameConfig.ManaPotionLevelMultiplier);
 
         terminal.SetColor("yellow");
         terminal.WriteLine(Loc.Get("dungeon.monk_your_gold", player.Gold));

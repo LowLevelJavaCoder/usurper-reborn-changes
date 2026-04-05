@@ -671,7 +671,7 @@ public class LevelMasterLocation : BaseLocation
             case CharacterClass.Sage:
                 player.BaseIntelligence += 5;
                 player.BaseWisdom += 4;
-                player.BaseMaxMana += 18;
+                player.BaseMaxMana += 14;     // v0.53.14: was 18, still highest mana pool but not 2x Cleric
                 player.BaseMaxHP += 5;
                 player.BaseStrength += 1;
                 player.BaseDefence += 1;
@@ -697,10 +697,10 @@ public class LevelMasterLocation : BaseLocation
                 break;
 
             case CharacterClass.Barbarian:
-                player.BaseStrength += 4;     // v0.47.5: was 5, reduced to curb one-shot damage
+                player.BaseStrength += 3;     // v0.53.14: was 4, matches Warrior; compensated with highest stamina
                 player.BaseConstitution += 4;
                 player.BaseMaxHP += 12;       // v0.50.5: was 15, glass cannon needs to feel glass
-                player.BaseStamina += 2;
+                player.BaseStamina += 3;      // v0.53.14: was 2, highest stamina for ability spam identity
                 break;
 
             case CharacterClass.Paladin:
@@ -800,8 +800,8 @@ public class LevelMasterLocation : BaseLocation
                 break;
 
             case CharacterClass.MysticShaman:
-                player.BaseStrength += 3;
-                player.BaseDefence += 2;
+                player.BaseStrength += 2;     // v0.53.14: was 3, weaker melee than Warrior to justify spell access
+                player.BaseDefence += 1;      // v0.53.14: was 2, hybrid tax — use totems to compensate
                 player.BaseIntelligence += 3;
                 player.BaseConstitution += 2;
                 player.BaseStamina += 2;
@@ -855,7 +855,7 @@ public class LevelMasterLocation : BaseLocation
             case CharacterClass.Sage:
                 player.BaseIntelligence = Math.Max(1, player.BaseIntelligence - 5);
                 player.BaseWisdom = Math.Max(1, player.BaseWisdom - 4);
-                player.BaseMaxMana = Math.Max(0, player.BaseMaxMana - 18);
+                player.BaseMaxMana = Math.Max(0, player.BaseMaxMana - 14);
                 player.BaseMaxHP = Math.Max(10, player.BaseMaxHP - 5);
                 player.BaseStrength = Math.Max(1, player.BaseStrength - 1);
                 player.BaseDefence = Math.Max(1, player.BaseDefence - 1);
@@ -877,10 +877,10 @@ public class LevelMasterLocation : BaseLocation
                 player.BaseDefence = Math.Max(1, player.BaseDefence - 2);
                 break;
             case CharacterClass.Barbarian:
-                player.BaseStrength = Math.Max(1, player.BaseStrength - 4);
+                player.BaseStrength = Math.Max(1, player.BaseStrength - 3);
                 player.BaseConstitution = Math.Max(1, player.BaseConstitution - 4);
                 player.BaseMaxHP = Math.Max(10, player.BaseMaxHP - 12);
-                player.BaseStamina = Math.Max(1, player.BaseStamina - 2);
+                player.BaseStamina = Math.Max(1, player.BaseStamina - 3);
                 break;
             case CharacterClass.Paladin:
                 player.BaseStrength = Math.Max(1, player.BaseStrength - 3);
@@ -967,8 +967,8 @@ public class LevelMasterLocation : BaseLocation
                 player.BaseMaxMana = Math.Max(0, player.BaseMaxMana - 10);
                 break;
             case CharacterClass.MysticShaman:
-                player.BaseStrength = Math.Max(1, player.BaseStrength - 3);
-                player.BaseDefence = Math.Max(1, player.BaseDefence - 2);
+                player.BaseStrength = Math.Max(1, player.BaseStrength - 2);
+                player.BaseDefence = Math.Max(1, player.BaseDefence - 1);
                 player.BaseIntelligence = Math.Max(1, player.BaseIntelligence - 3);
                 player.BaseConstitution = Math.Max(1, player.BaseConstitution - 2);
                 player.BaseStamina = Math.Max(1, player.BaseStamina - 2);
@@ -1027,7 +1027,7 @@ public class LevelMasterLocation : BaseLocation
             case CharacterClass.Sage:
                 expInt  += levelsGained * 5;
                 expWis  += levelsGained * 4;
-                expMana += levelsGained * 18;
+                expMana += levelsGained * 14;
                 expHP   += levelsGained * 5;
                 expStr  += levelsGained;
                 expDef  += levelsGained;
@@ -1049,10 +1049,10 @@ public class LevelMasterLocation : BaseLocation
                 expDef  += levelsGained * 2;
                 break;
             case CharacterClass.Barbarian:
-                expStr  += levelsGained * 4;
+                expStr  += levelsGained * 3;
                 expCon  += levelsGained * 4;
                 expHP   += levelsGained * 12;
-                expSta  += levelsGained * 2;
+                expSta  += levelsGained * 3;
                 break;
             case CharacterClass.Paladin:
                 expStr  += levelsGained * 3;
@@ -1139,8 +1139,8 @@ public class LevelMasterLocation : BaseLocation
                 expMana += levelsGained * 12;
                 break;
             case CharacterClass.MysticShaman:
-                expStr  += levelsGained * 3;
-                expDef  += levelsGained * 2;
+                expStr  += levelsGained * 2;
+                expDef  += levelsGained;
                 expInt  += levelsGained * 3;
                 expCon  += levelsGained * 2;
                 expSta  += levelsGained * 2;

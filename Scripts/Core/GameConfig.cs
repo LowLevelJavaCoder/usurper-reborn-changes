@@ -518,9 +518,19 @@ public static partial class GameConfig
     // Magic shop constants
     public const string DefaultMagicShopOwner = "Ravanella"; // Default gnome owner
     public const int DefaultIdentificationCost = 1500;
-    public const int HealingPotionLevelMultiplier = 5; // Level × 5 gold per potion
+    public const int HealingPotionBaseCost = 50;       // Base potion cost (before level scaling)
+    public const int HealingPotionLevelMultiplier = 5; // Additional cost per player level
     public const int MaxHealingPotions = 50; // Maximum potions player can carry
-    
+
+    // Mana potion constants
+    public const int ManaPotionBaseCost = 75;          // Base mana potion cost (before level scaling)
+    public const int ManaPotionLevelMultiplier = 5;    // Additional cost per player level
+
+    // Reforging constants (endgame gold sink)
+    public const int ReforgeCostMultiplier = 50;       // Cost = level * level * this
+    public const double ReforgeUpgradeChance = 0.20;   // 20% chance to upgrade rarity
+    public const double ReforgeVariance = 0.15;        // +/-15% stat variance on reroll
+
     // Magic item types sold in shop
     public const int MagicItemTypeNeck = 10;  // Amulets, necklaces
     public const int MagicItemTypeFingers = 5; // Rings
@@ -958,6 +968,11 @@ public static partial class GameConfig
     public const float FatigueExhaustedDamagePenalty = -0.10f; // -10% damage when Exhausted
     public const float FatigueExhaustedDefensePenalty = -0.10f; // -10% defense when Exhausted
     public const float FatigueExhaustedXPPenalty = -0.10f;    // -10% XP when Exhausted
+    // Session XP diminishing returns (v0.54.0) — online mode only
+    public const long SessionXPDiminishThreshold = 50000;      // XP earned before diminishing kicks in
+    public const double SessionXPDiminishRate = 0.002;          // 0.2% reduction per 1000 XP over threshold
+    public const double SessionXPDiminishFloor = 0.25;          // Never reduce below 25% XP
+    public const int SessionXPDiminishMessageInterval = 10;     // Show fatigue message every N combats
     // Study / Library
     public const float StudyXPBonus = 0.05f;                  // +5% XP from combat
     // Servants' Quarters

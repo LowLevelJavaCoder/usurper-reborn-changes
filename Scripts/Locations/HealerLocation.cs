@@ -28,8 +28,18 @@ public class HealerLocation : BaseLocation
     private const int PoisonBaseCost = 200;
 
     // Healing costs
-    private const int HealingPotionCost = 50;      // Cost per potion
+    private const int HealingPotionBaseCost = 50;  // Base cost per potion
+    private const int HealingPotionPerLevel = 5;   // Additional cost per player level
     private const int FullHealCostPerHP = 2;       // Cost per HP restored
+
+    /// <summary>
+    /// Calculate healing potion cost scaled by player level.
+    /// Level 1: 55g, Level 25: 175g, Level 50: 300g, Level 100: 550g
+    /// </summary>
+    private static int GetHealingPotionCost(int playerLevel)
+    {
+        return HealingPotionBaseCost + playerLevel * HealingPotionPerLevel;
+    }
 
     /// <summary>
     /// Calculate disease/ailment cure cost with diminishing scaling
@@ -404,8 +414,8 @@ public class HealerLocation : BaseLocation
         terminal.SetColor("white");
         terminal.WriteLine(Loc.Get("healer.menu_heal_hp", FullHealCostPerHP));
         terminal.WriteLine(Loc.Get("healer.menu_full_heal"));
-        terminal.WriteLine(Loc.Get("healer.menu_buy_potions", HealingPotionCost));
-        terminal.WriteLine(Loc.Get("healer.menu_mana_potions", Math.Max(75, player.Level * 3)));
+        terminal.WriteLine(Loc.Get("healer.menu_buy_potions", GetHealingPotionCost(player.Level)));
+        terminal.WriteLine(Loc.Get("healer.menu_mana_potions", GameConfig.ManaPotionBaseCost + player.Level * GameConfig.ManaPotionLevelMultiplier));
         terminal.WriteLine(Loc.Get("healer.menu_poison_cure", $"{CalculateDiseaseCost(PoisonBaseCost, player.Level):N0}"));
         terminal.WriteLine("");
 
@@ -647,9 +657,11 @@ public class HealerLocation : BaseLocation
     {
         var player = GetCurrentPlayer();
 
+        int potionCost = GetHealingPotionCost(player.Level);
+
         terminal.WriteLine("");
         terminal.SetColor("cyan");
-        var (_, _, singlePotionWithTax) = CityControlSystem.CalculateHealingTaxedPrice(HealingPotionCost);
+        var (_, _, singlePotionWithTax) = CityControlSystem.CalculateHealingTaxedPrice(potionCost);
         terminal.WriteLine(Loc.Get("healer.potions_price", singlePotionWithTax, Manager));
         terminal.WriteLine("");
 
@@ -678,7 +690,7 @@ public class HealerLocation : BaseLocation
 
         quantity = Math.Min(quantity, maxCanCarry);
 
-        long cost = quantity * HealingPotionCost;
+        long cost = quantity * potionCost;
         var (potionKingTax, potionCityTax, potionTotalWithTax) = CityControlSystem.CalculateHealingTaxedPrice(cost);
 
         if (player.Gold < potionTotalWithTax)
@@ -714,7 +726,7 @@ public class HealerLocation : BaseLocation
         // v0.52.5: Non-casters can buy mana potions to give to teammates via Aid Ally
         // (restriction removed — was blocking non-mana classes entirely)
 
-        int potionPrice = Math.Max(75, player.Level * 3);
+        int potionPrice = GameConfig.ManaPotionBaseCost + player.Level * GameConfig.ManaPotionLevelMultiplier;
         int manaRestored = 30 + player.Level * 5;
         var (_, _, singleManaWithTax) = CityControlSystem.CalculateHealingTaxedPrice(potionPrice);
 

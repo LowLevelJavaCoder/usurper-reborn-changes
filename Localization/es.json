@@ -785,6 +785,8 @@
   "combat.drug_drain": "[Efecto de Drogas] Las drogas drenan {0} PV de tu cuerpo!",
   "combat.facing": "Te enfrentas a: {0}",
   "combat.fatigue_exhaustion": "(El agotamiento pesa sobre ti)",
+  "combat.session_xp_diminished": "(Te sientes mentalmente agotado. Descansar podria ayudarte a aprender mas eficientemente.)",
+  "combat.session_xp_reduced": "(Fatiga de sesion: XP reducida al {0}%)",
   "combat.fighting_alongside": "Luchando a tu lado:",
   "combat.monster_says": "{0} dice: \"{1}\"",
   "combat.monster_uses_ability": "¡{0} usa {1}!",

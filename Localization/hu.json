@@ -785,6 +785,8 @@
   "combat.drug_drain": "[Szer mellékhatása] A szerek {0} ÉP-t szívnak el a testedből!",
   "combat.facing": "Akivel szemben állsz: {0}",
   "combat.fatigue_exhaustion": "(A kimerültség mázsás súlyként nehezedik rád)",
+  "combat.session_xp_diminished": "(Szellemileg kimerultnek erzed magad. A pihenes segithet hatekonyabban tanulni.)",
+  "combat.session_xp_reduced": "(Munkamenet faradsag: XP {0}%-ra csokkent)",
   "combat.fighting_alongside": "Az oldaladon harcolnak:",
   "combat.monster_says": "{0} mondja: \"{1}\"",
   "combat.monster_uses_ability": "{0} használja a következőt: {1}!",

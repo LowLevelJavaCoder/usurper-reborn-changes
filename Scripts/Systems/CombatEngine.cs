@@ -5660,6 +5660,9 @@ public partial class CombatEngine
             expReward -= (long)(expReward * GameConfig.FatigueExhaustedXPPenalty);
         }
 
+        // Session XP diminishing returns (online mode only)
+        expReward = ApplySessionXPDiminishing(result.Player, expReward, terminal);
+
         // Auto-reset XP distribution when fighting solo — prevents 0% XP trap
         bool hasXPTeammates = result.Teammates != null && result.Teammates.Any(t => t != null && !t.IsGroupedPlayer);
         if (!hasXPTeammates && result.Player.TeamXPPercent[0] < 100)
@@ -5956,7 +5959,7 @@ public partial class CombatEngine
 
         // Calculate costs (scales with level)
         int healCostPerPotion = 50 + (player.Level * 10);
-        int manaCostPerPotion = Math.Max(75, player.Level * 3);
+        int manaCostPerPotion = GameConfig.ManaPotionBaseCost + (player.Level * GameConfig.ManaPotionLevelMultiplier);
 
         // Show what's available
         if (canBuyHealing && canBuyMana)
@@ -16670,6 +16673,9 @@ public partial class CombatEngine
             adjustedExp -= (long)(adjustedExp * GameConfig.FatigueExhaustedXPPenalty);
         }
 
+        // Session XP diminishing returns (online mode only)
+        adjustedExp = ApplySessionXPDiminishing(result.Player, adjustedExp, terminal);
+
         // Auto-reset XP distribution when fighting solo — prevents 0% XP trap
         bool hasXPTeammatesMM = result.Teammates != null && result.Teammates.Any(t => t != null && !t.IsGroupedPlayer);
         if (!hasXPTeammatesMM && result.Player.TeamXPPercent[0] < 100)
@@ -22472,6 +22478,40 @@ public partial class CombatEngine
         }
     }
 
+    /// <summary>
+    /// Apply session XP diminishing returns for online mode.
+    /// After earning SessionXPDiminishThreshold XP in a single session, XP gradually reduces.
+    /// Returns the diminished XP amount and updates the player's SessionXPEarned.
+    /// </summary>
+    private long ApplySessionXPDiminishing(Character player, long expReward, TerminalEmulator terminal)
+    {
+        if (!UsurperRemake.BBS.DoorMode.IsOnlineMode)
+            return expReward;
+
+        // Apply diminishing returns if over threshold
+        if (player.SessionXPEarned > GameConfig.SessionXPDiminishThreshold)
+        {
+            long overThreshold = player.SessionXPEarned - GameConfig.SessionXPDiminishThreshold;
+            double diminishFactor = Math.Max(GameConfig.SessionXPDiminishFloor, 1.0 - (overThreshold / 1000.0) * GameConfig.SessionXPDiminishRate);
+            expReward = (long)(expReward * diminishFactor);
+
+            // Show subtle message every N combats when diminishing is active
+            if (player.SessionCombatCount % GameConfig.SessionXPDiminishMessageInterval == 0)
+            {
+                terminal.SetColor("dark_yellow");
+                terminal.WriteLine(Loc.Get("combat.session_xp_diminished"));
+                int pct = (int)(diminishFactor * 100);
+                terminal.WriteLine(Loc.Get("combat.session_xp_reduced", pct.ToString()));
+            }
+        }
+
+        // Track XP earned and combat count this session
+        player.SessionXPEarned += expReward;
+        player.SessionCombatCount++;
+
+        return expReward;
+    }
+
     private static void AutoDistributeTeamXP(Character player, List<Character>? teammates)
     {
         if (teammates == null || teammates.Count == 0) return;
@@ -24926,6 +24966,16 @@ public partial class CombatEngine
             if (groupXPMult < 1.0f)
                 playerExp = (long)(playerExp * groupXPMult);
 
+            // Session XP diminishing returns (online mode only) — grouped player path
+            if (UsurperRemake.BBS.DoorMode.IsOnlineMode && groupedPlayer.SessionXPEarned > GameConfig.SessionXPDiminishThreshold)
+            {
+                long gpOverThreshold = groupedPlayer.SessionXPEarned - GameConfig.SessionXPDiminishThreshold;
+                double gpDiminishFactor = Math.Max(GameConfig.SessionXPDiminishFloor, 1.0 - (gpOverThreshold / 1000.0) * GameConfig.SessionXPDiminishRate);
+                playerExp = (long)(playerExp * gpDiminishFactor);
+            }
+            groupedPlayer.SessionXPEarned += playerExp;
+            groupedPlayer.SessionCombatCount++;
+
             // Apply rewards
             int levelBefore = groupedPlayer.Level;
             groupedPlayer.Experience += playerExp;
@@ -24958,6 +25008,16 @@ public partial class CombatEngine
                     $"\u001b[33m  Gold gained: {goldPerPlayer:N0}\u001b[0m";
                 if (groupXPMult < 1.0f)
                     rewardMsg += $"\n\u001b[33m  (Group level gap penalty: {(int)(groupXPMult * 100)}% XP rate)\u001b[0m";
+
+                // Session XP diminishing message for grouped players
+                if (groupedPlayer.SessionXPEarned > GameConfig.SessionXPDiminishThreshold
+                    && groupedPlayer.SessionCombatCount % GameConfig.SessionXPDiminishMessageInterval == 0)
+                {
+                    long gpMsgOver = groupedPlayer.SessionXPEarned - GameConfig.SessionXPDiminishThreshold;
+                    int gpPct = (int)(Math.Max(GameConfig.SessionXPDiminishFloor, 1.0 - (gpMsgOver / 1000.0) * GameConfig.SessionXPDiminishRate) * 100);
+                    rewardMsg += $"\n\u001b[33m  {Loc.Get("combat.session_xp_diminished")}\u001b[0m";
+                    rewardMsg += $"\n\u001b[33m  {Loc.Get("combat.session_xp_reduced", gpPct.ToString())}\u001b[0m";
+                }
 
                 // Level-up notification
                 if (groupedPlayer.Level > levelBefore)

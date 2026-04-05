@@ -488,6 +488,14 @@ public class Character
         return ("Exhausted", "bright_red");
     }
 
+    // Session XP pacing (v0.54.0) — transient, resets on login, NOT serialized
+    /// <summary>Total XP earned this session. Used for diminishing returns in online mode.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public long SessionXPEarned { get; set; }
+    /// <summary>Combats fought this session. Used to throttle diminishing-returns messages.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public int SessionCombatCount { get; set; }
+
     // Team HQ upgrade levels (v0.52.8) — cached from DB on login, not serialized
     public int HQArmoryLevel { get; set; }    // +5% attack per level
     public int HQBarracksLevel { get; set; }  // +5% defense per level

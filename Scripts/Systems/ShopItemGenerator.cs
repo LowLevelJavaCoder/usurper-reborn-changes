@@ -609,15 +609,12 @@ public static class ShopItemGenerator
         _ => 0.5f,
     };
 
-    // v0.52.5: Tightened rarity bands so shops stay relevant longer
+    // v0.53.14: Shop items capped at Uncommon — they lack special effects and have reduced
+    // stats (85% power), so higher rarity labels were misleading (e.g. "Artifact" at level 76+).
     private static EquipmentRarity GetRarityForLevel(int level) => level switch
     {
-        <= 10 => EquipmentRarity.Common,
-        <= 20 => EquipmentRarity.Uncommon,
-        <= 35 => EquipmentRarity.Rare,
-        <= 55 => EquipmentRarity.Epic,
-        <= 75 => EquipmentRarity.Legendary,
-        _ => EquipmentRarity.Artifact,
+        <= 20 => EquipmentRarity.Common,
+        _ => EquipmentRarity.Uncommon,
     };
 
     private static List<CharacterClass> ParseClassRestrictions(string[] classes)

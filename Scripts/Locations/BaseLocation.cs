@@ -5191,6 +5191,15 @@ public abstract class BaseLocation
                 if (currentPlayer.HQInfirmaryLevel > 0)
                     terminal.WriteLine($"  - Team Infirmary Lv{currentPlayer.HQInfirmaryLevel}: +{currentPlayer.HQInfirmaryLevel * 10}% potion healing");
             }
+            // Session XP diminishing returns indicator (online mode only)
+            if (UsurperRemake.BBS.DoorMode.IsOnlineMode && currentPlayer.SessionXPEarned > GameConfig.SessionXPDiminishThreshold)
+            {
+                long overThreshold = currentPlayer.SessionXPEarned - GameConfig.SessionXPDiminishThreshold;
+                double diminishFactor = Math.Max(GameConfig.SessionXPDiminishFloor, 1.0 - (overThreshold / 1000.0) * GameConfig.SessionXPDiminishRate);
+                int pct = (int)(diminishFactor * 100);
+                terminal.SetColor("dark_yellow");
+                terminal.WriteLine($"  - Session Fatigue: XP at {pct}% (earned {currentPlayer.SessionXPEarned:N0} this session)");
+            }
             terminal.WriteLine("");
         }
 

@@ -785,6 +785,8 @@
   "combat.drug_drain": "[Effetto Collaterale Droga] Le droghe ti sottraggono {0} PV!",
   "combat.facing": "Stai affrontando: {0}",
   "combat.fatigue_exhaustion": "(Lo sfinimento grava pesantemente su di te)",
+  "combat.session_xp_diminished": "(Ti senti mentalmente esausto. Riposare potrebbe aiutarti ad imparare in modo piu efficiente.)",
+  "combat.session_xp_reduced": "(Stanchezza da sessione: XP ridotta al {0}%)",
   "combat.fighting_alongside": "Combattono al tuo fianco:",
   "combat.monster_says": "{0} dice: \"{1}\"",
   "combat.monster_uses_ability": "{0} usa {1}!",
