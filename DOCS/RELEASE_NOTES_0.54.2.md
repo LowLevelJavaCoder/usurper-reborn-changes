@@ -37,6 +37,32 @@ The `/stats` alias was shown as `/s` and `/inventory` as `/i` in the quick comma
 
 Quitting a team as the sole member left a ghost team with 1 member in the database. Root cause: `UpdatePlayerTeamMemberCount` counted players by querying `player_data` in the database, but the quitting player's save data hadn't been written yet — so the SQL query still found them in the team. Fix: save player data to DB before counting, then explicitly check for zero players AND zero NPCs and delete the team record if empty.
 
+## Old God Boss Balance Pass
+
+All 7 Old God bosses retuned for a challenging but survivable experience with a full party. Boss defense values were too high for players to deal meaningful damage, and enrage mechanics were overly punishing.
+
+**Boss stat changes (HP / STR / DEF):**
+- Maelketh (Floor 25): 100K/600/320 → **55K/420/180**
+- Veloura (Floor 40): 200K/560/400 → **120K/400/220**
+- Thorgrim (Floor 55): 400K/1200/800 → **250K/850/450**
+- Noctura (Floor 70): 600K/1400/560 → **380K/1000/320**
+- Aurelion (Floor 85): 800K/1600/500 → **500K/1150/300**
+- Terravok (Floor 95): 1M/1800/600 → **650K/1300/380**
+- Manwe (Floor 100): 1.5M/2400/800 → **900K/1700/500** (attacks 4→3)
+
+**Global boss mechanic changes:**
+- Potion cooldown: 2 rounds → **1 round**
+- Enrage damage multiplier: 2.5x → **2.0x**
+- Enrage defense multiplier: 1.5x → **1.3x**
+- Enrage extra attacks: +3 → **+2**
+- Corruption damage: 15/stack → **10/stack**
+- Corruption max stacks: 10 → **8**
+- Doom timer: 3 rounds → **4 rounds**
+
+## False Error Log Fix
+
+`RestoreNPCs` logged `[ERR] No NPC data in save` on every online player login — this is expected behavior (player saves don't store NPCs in online mode; the world sim manages them). Downgraded to `[DBG]` to stop false Discord alerts.
+
 ## Security & Thread Safety
 
 - **SQL injection fix** — 2 interpolated SQL values in SqlSaveBackend parameterized: `PruneCombatEvents` days parameter and `UpdateTeamWarScore` column selection (now uses two hardcoded query strings instead of string-interpolated column name).
@@ -50,7 +76,9 @@ New persistent log watcher agent (`usurper-log-watcher.service`) monitors `debug
 
 ### Files Changed
 
-- `Scripts/Core/GameConfig.cs` — Version 0.54.2
+- `Scripts/Core/GameConfig.cs` — Version 0.54.2; boss balance constants (potion cooldown, enrage multipliers, corruption, doom)
+- `Scripts/Core/GameEngine.cs` — RestoreNPCs empty-list log downgraded from ERR to DBG
+- `Scripts/Data/OldGodsData.cs` — All 7 Old God boss stats retuned (HP, STR, DEF); Manwe attacks 4→3
 - `Scripts/Systems/WorldSimService.cs` — LoadWorldState catch block no longer wipes NPCs; per-NPC error handling with skip+log in RestoreNPCsFromData; TolerantEnumReadOnlyConverterFactory in jsonOptions
 - `Scripts/Systems/OnlineStateManager.cs` — TolerantEnumReadOnlyConverterFactory in jsonOptions
 - `Scripts/Utils/TolerantEnumConverter.cs` — New TolerantEnumReadOnlyConverterFactory, TolerantEnumNumericConverter, NullableTolerantEnumNumericConverter (reads tolerantly, writes as numbers)

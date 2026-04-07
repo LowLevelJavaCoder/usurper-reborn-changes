@@ -53,13 +53,13 @@ public static partial class GameConfig
     public const float CriticalHitMultiplier = 2.0f;  // Critical hit damage multiplier
 
     // Boss fight party balance constants (v0.52.1)
-    public const int BossPotionCooldownRounds = 2;          // Rounds between potion uses in boss fights
-    public const double BossEnrageDamageMultiplier = 2.5;   // Damage multiplier when boss enrages
-    public const double BossEnrageDefenseMultiplier = 1.5;  // Defense multiplier when boss enrages
-    public const int BossEnrageExtraAttacks = 3;            // Extra attacks per round when enraged
-    public const int BossCorruptionDamageBase = 15;         // Base damage per corruption stack per round
-    public const int BossCorruptionMaxStacks = 10;          // Max corruption stacks
-    public const int BossDoomDefaultRounds = 3;             // Rounds before Doom kills target
+    public const int BossPotionCooldownRounds = 1;          // Rounds between potion uses in boss fights (was 2)
+    public const double BossEnrageDamageMultiplier = 2.0;   // Damage multiplier when boss enrages (was 2.5)
+    public const double BossEnrageDefenseMultiplier = 1.3;  // Defense multiplier when boss enrages (was 1.5)
+    public const int BossEnrageExtraAttacks = 2;            // Extra attacks per round when enraged (was 3)
+    public const int BossCorruptionDamageBase = 10;         // Base damage per corruption stack per round (was 15)
+    public const int BossCorruptionMaxStacks = 8;           // Max corruption stacks (was 10)
+    public const int BossDoomDefaultRounds = 4;             // Rounds before Doom kills target (was 3)
     public const double BossTankAoEAbsorption = 0.60;       // 60% of AoE absorbed by taunting tank
     public const double BossPhaseImmunityResidual = 0.10;   // 10% damage still gets through immunity
     public const int BossChannelInterruptSpeedThreshold = 80; // Agility needed to attempt interrupt
@@ -102,13 +102,13 @@ public static partial class GameConfig
     public static float ModCriticalHitMultiplier { get; set; } = CriticalHitMultiplier;
     public static float ModBackstabMultiplier { get; set; } = BackstabMultiplier;
     public static float ModBerserkMultiplier { get; set; } = BerserkMultiplier;
-    public static int ModBossPotionCooldownRounds { get; set; } = BossPotionCooldownRounds;
-    public static double ModBossEnrageDamageMultiplier { get; set; } = BossEnrageDamageMultiplier;
-    public static double ModBossEnrageDefenseMultiplier { get; set; } = BossEnrageDefenseMultiplier;
-    public static int ModBossEnrageExtraAttacks { get; set; } = BossEnrageExtraAttacks;
-    public static int ModBossCorruptionDamageBase { get; set; } = BossCorruptionDamageBase;
-    public static int ModBossCorruptionMaxStacks { get; set; } = BossCorruptionMaxStacks;
-    public static int ModBossDoomDefaultRounds { get; set; } = BossDoomDefaultRounds;
+    public static int ModBossPotionCooldownRounds { get; set; } = BossPotionCooldownRounds;           // was 2
+    public static double ModBossEnrageDamageMultiplier { get; set; } = BossEnrageDamageMultiplier;   // was 2.5
+    public static double ModBossEnrageDefenseMultiplier { get; set; } = BossEnrageDefenseMultiplier; // was 1.5
+    public static int ModBossEnrageExtraAttacks { get; set; } = BossEnrageExtraAttacks;             // was 3
+    public static int ModBossCorruptionDamageBase { get; set; } = BossCorruptionDamageBase;         // was 15
+    public static int ModBossCorruptionMaxStacks { get; set; } = BossCorruptionMaxStacks;           // was 10
+    public static int ModBossDoomDefaultRounds { get; set; } = BossDoomDefaultRounds;               // was 3
     public static double ModBossTankAoEAbsorption { get; set; } = BossTankAoEAbsorption;
     public static double ModBossPhaseImmunityResidual { get; set; } = BossPhaseImmunityResidual;
     public static int ModBossChannelInterruptSpeedThreshold { get; set; } = BossChannelInterruptSpeedThreshold;
