@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using UsurperRemake.Data;
+using UsurperRemake.Utils;
 
 namespace UsurperRemake.Systems
 {
@@ -41,7 +42,8 @@ namespace UsurperRemake.Systems
         {
             WriteIndented = false,
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-            IncludeFields = true
+            IncludeFields = true,
+            Converters = { new TolerantEnumReadOnlyConverterFactory() }
         };
 
         public WorldSimService(
@@ -254,8 +256,23 @@ namespace UsurperRemake.Systems
             }
             catch (Exception ex)
             {
-                DebugLogger.Instance.LogError("WORLDSIM", $"Failed to load world state: {ex.Message}. Initializing fresh.");
-                await NPCSpawnSystem.Instance.ForceReinitializeNPCs();
+                DebugLogger.Instance.LogError("WORLDSIM", $"Failed to load world state: {ex.Message}\n{ex.StackTrace}");
+
+                // CRITICAL: Do NOT wipe NPCs on load failure. If we already have NPCs in memory
+                // (e.g., from a previous successful load), keep them. Wiping 120+ leveled NPCs
+                // because of one bad NPC record is catastrophic — players lose team members and
+                // all NPC levels reset to 5-10.
+                var existingCount = NPCSpawnSystem.Instance.ActiveNPCs.Count;
+                if (existingCount > 0)
+                {
+                    DebugLogger.Instance.LogWarning("WORLDSIM", $"Keeping {existingCount} existing NPCs in memory despite load failure. NOT reinitializing.");
+                }
+                else
+                {
+                    // Only initialize fresh NPCs if we truly have none (first-ever startup with corrupt DB)
+                    DebugLogger.Instance.LogWarning("WORLDSIM", "No NPCs in memory and load failed. Initializing fresh as last resort.");
+                    await NPCSpawnSystem.Instance.InitializeClassicNPCs();
+                }
             }
         }
 
@@ -1241,8 +1258,11 @@ namespace UsurperRemake.Systems
 
             NPC? kingNpc = null;
 
+            int skippedCount = 0;
             foreach (var data in npcData)
             {
+              try
+              {
                 var npc = new NPC
                 {
                     Id = data.Id,
@@ -1666,6 +1686,15 @@ namespace UsurperRemake.Systems
 
                 if (data.IsKing)
                     kingNpc = npc;
+              }
+              catch (Exception ex)
+              {
+                // Skip this NPC but continue restoring the rest — one bad NPC must not
+                // kill the entire world state (was previously wiping 120+ NPCs)
+                skippedCount++;
+                DebugLogger.Instance.LogError("WORLDSIM",
+                    $"Failed to restore NPC '{data.Name}' (Class={data.Class}, Level={data.Level}): {ex.Message}\n{ex.StackTrace}");
+              }
             }
 
             // Restore king
@@ -1677,8 +1706,14 @@ namespace UsurperRemake.Systems
 
             NPCSpawnSystem.Instance.MarkAsInitialized();
 
+            if (skippedCount > 0)
+            {
+                DebugLogger.Instance.LogWarning("WORLDSIM",
+                    $"Skipped {skippedCount} NPCs due to errors during restoration (see above for details)");
+            }
+
             DebugLogger.Instance.LogInfo("WORLDSIM",
-                $"Restored {npcData.Count} NPCs, {npcData.Count(n => n.IsDead)} dead");
+                $"Restored {npcData.Count - skippedCount}/{npcData.Count} NPCs, {npcData.Count(n => n.IsDead)} dead");
         }
 
         /// <summary>

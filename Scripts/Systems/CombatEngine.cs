@@ -7498,6 +7498,20 @@ public partial class CombatEngine
                                 terminal.SetColor("bright_green");
                                 terminal.WriteLine(Loc.Get("combat.loot_ally_picks_up", teammateName, lootItem.Name, upgradePercent));
                                 itemTaken = true;
+
+                                // Persist companion equipment immediately — without this,
+                                // companion loot pickup is lost on disconnect/logout
+                                _ = Task.Run(async () =>
+                                {
+                                    try
+                                    {
+                                        SaveSystem.Instance.ResetAutoSaveThrottle();
+                                        await SaveSystem.Instance.AutoSave(player);
+                                        if (UsurperRemake.BBS.DoorMode.IsOnlineMode && OnlineStateManager.Instance != null)
+                                            await OnlineStateManager.Instance.SaveAllSharedState();
+                                    }
+                                    catch (Exception ex) { DebugLogger.Instance.LogError("COMBAT", $"Failed to save after companion loot pickup: {ex.Message}"); }
+                                });
                             }
                         }
                     }
@@ -7920,6 +7934,19 @@ public partial class CombatEngine
                                 terminal.SetColor("bright_green");
                                 terminal.WriteLine(Loc.Get("combat.loot_ally_picks_up", teammateName, lootItem.Name, upgradePercent));
                                 itemTaken = true;
+
+                                // Persist companion equipment immediately
+                                _ = Task.Run(async () =>
+                                {
+                                    try
+                                    {
+                                        SaveSystem.Instance.ResetAutoSaveThrottle();
+                                        await SaveSystem.Instance.AutoSave(player);
+                                        if (UsurperRemake.BBS.DoorMode.IsOnlineMode && OnlineStateManager.Instance != null)
+                                            await OnlineStateManager.Instance.SaveAllSharedState();
+                                    }
+                                    catch (Exception ex) { DebugLogger.Instance.LogError("COMBAT", $"Failed to save after companion loot pickup: {ex.Message}"); }
+                                });
                             }
                         }
                     }

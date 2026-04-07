@@ -1975,9 +1975,17 @@ namespace UsurperRemake.Systems
                     terminal.WriteLine("");
                     await Task.Delay(500);
 
+                    // Save team XP distribution — arena combat runs solo (no teammates),
+                    // and HandleVictory resets all teammate XP slots to 0 when fighting alone.
+                    // Without this, returning to dungeon party combat loses XP distribution.
+                    var savedXP = (int[])player.TeamXPPercent.Clone();
+
                     // Real interactive combat
                     var combatEngine = new CombatEngine(terminal);
                     var result = await combatEngine.PlayerVsMonster(player, champion, offerMonkEncounter: false);
+
+                    // Restore team XP distribution
+                    Array.Copy(savedXP, player.TeamXPPercent, savedXP.Length);
 
                     if (result.Outcome == CombatOutcome.Victory)
                     {

@@ -18,7 +18,7 @@ namespace UsurperRemake.Systems
         public static NPCSpawnSystem Instance => instance ??= new NPCSpawnSystem();
 
         private List<NPC> spawnedNPCs = new();
-        private Random random = new();
+        private Random random = Random.Shared;
         private bool npcsInitialized = false;
 
         /// <summary>
@@ -144,10 +144,10 @@ namespace UsurperRemake.Systems
             // Spread NPC levels across 1-80 so the world feels established from day one.
             // Use the template's StartLevel as a base but randomize widely.
             // This gives a healthy mix of low, mid, and high-level NPCs.
+            // Applied to BOTH single-player and online mode so that if NPCs are ever
+            // regenerated fresh, the world doesn't start with every NPC at level 5-10.
             int startLevel = template.StartLevel;
-            if (!UsurperRemake.BBS.DoorMode.IsOnlineMode)
             {
-                // Single-player: randomize levels across the full range
                 // ~20% levels 1-15, ~30% levels 15-40, ~30% levels 40-65, ~20% levels 65-80
                 int roll = random.Next(100);
                 if (roll < 20) startLevel = random.Next(1, 16);

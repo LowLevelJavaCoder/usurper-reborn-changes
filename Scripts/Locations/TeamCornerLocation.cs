@@ -952,13 +952,28 @@ public class TeamCornerLocation : BaseLocation
 
             WorldSimulator.UnregisterPlayerTeam(oldTeam);
 
-            // Online mode: update member count, delete team if empty
+            // Online mode: save player data FIRST so the DB reflects the team change,
+            // THEN update member count. Without this, the SQL count still finds the
+            // quitting player in the team (stale player_data) and never reaches 0.
             if (DoorMode.IsOnlineMode)
             {
+                SaveSystem.Instance.ResetAutoSaveThrottle();
+                await SaveSystem.Instance.AutoSave(currentPlayer);
+
                 var backend = SaveSystem.Instance.Backend as SqlSaveBackend;
                 if (backend != null)
                 {
                     await backend.UpdatePlayerTeamMemberCount(oldTeam);
+
+                    // If team is now empty (no players AND no NPCs), delete it
+                    var remainingPlayers = await backend.GetPlayerTeamMembers(oldTeam);
+                    var remainingNPCs = NPCSpawnSystem.Instance.ActiveNPCs
+                        .Count(n => n.Team == oldTeam && !n.IsDead && !n.IsPermaDead);
+                    if (remainingPlayers.Count == 0 && remainingNPCs == 0)
+                    {
+                        await backend.DeletePlayerTeam(oldTeam);
+                        DebugLogger.Instance.LogInfo("TEAM", $"Team '{oldTeam}' dissolved — no members remaining");
+                    }
                 }
             }
 

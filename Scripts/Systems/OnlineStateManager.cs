@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using UsurperRemake.BBS;
 using UsurperRemake.Data;
+using UsurperRemake.Utils;
 using UsurperRemake.Server;
 
 namespace UsurperRemake.Systems
@@ -90,7 +91,8 @@ namespace UsurperRemake.Systems
                 WriteIndented = false,
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
                 IncludeFields = true,
-                NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString
+                NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString,
+                Converters = { new TolerantEnumReadOnlyConverterFactory() }
             };
         }
 

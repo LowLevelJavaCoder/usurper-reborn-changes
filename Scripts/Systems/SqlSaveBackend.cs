@@ -1254,7 +1254,8 @@ namespace UsurperRemake.Systems
                 // Delete old events by age
                 using (var cmd = conn.CreateCommand())
                 {
-                    cmd.CommandText = $"DELETE FROM combat_events WHERE created_at < datetime('now', '-{daysToKeep} days');";
+                    cmd.CommandText = "DELETE FROM combat_events WHERE created_at < datetime('now', '-' || @days || ' days');";
+                    cmd.Parameters.AddWithValue("@days", daysToKeep);
                     await cmd.ExecuteNonQueryAsync();
                 }
 
@@ -4088,8 +4089,9 @@ namespace UsurperRemake.Systems
         {
             using var connection = OpenConnection();
             using var cmd = connection.CreateCommand();
-            string col = challengerWon ? "challenger_wins" : "defender_wins";
-            cmd.CommandText = $"UPDATE team_wars SET {col} = {col} + 1 WHERE id = @id;";
+            cmd.CommandText = challengerWon
+                ? "UPDATE team_wars SET challenger_wins = challenger_wins + 1 WHERE id = @id;"
+                : "UPDATE team_wars SET defender_wins = defender_wins + 1 WHERE id = @id;";
             cmd.Parameters.AddWithValue("@id", warId);
             await cmd.ExecuteNonQueryAsync();
         }

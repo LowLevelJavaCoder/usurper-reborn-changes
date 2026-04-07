@@ -647,6 +647,8 @@ function dashPollFeed() {
         const snapshot = npcs.map(n => ({
           name: n.name || n.Name,
           level: n.level || n.Level || 1,
+          class: n.class !== undefined ? n.class : (n.Class !== undefined ? n.Class : -1),
+          race: n.race !== undefined ? n.race : (n.Race !== undefined ? n.Race : -1),
           location: n.location || n.Location || 'Unknown',
           alive: !(n.isDead || n.IsDead),
           married: !!(n.isMarried || n.IsMarried),
@@ -1520,6 +1522,8 @@ async function handleDashRequest(req, res) {
         const snapshot = npcs.map(n => ({
           name: n.name || n.Name,
           level: n.level || n.Level || 1,
+          class: n.class !== undefined ? n.class : (n.Class !== undefined ? n.Class : -1),
+          race: n.race !== undefined ? n.race : (n.Race !== undefined ? n.Race : -1),
           location: n.location || n.Location || 'Unknown',
           alive: !(n.isDead || n.IsDead),
           married: !!(n.isMarried || n.IsMarried),

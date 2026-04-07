@@ -3675,6 +3675,13 @@ public class InnLocation : BaseLocation
 
         SaveSystem.Instance.ResetAutoSaveThrottle();
         await SaveSystem.Instance.AutoSave(currentPlayer);
+
+        // Online mode: persist companion equipment to shared state so it survives world-sim reloads
+        if (UsurperRemake.BBS.DoorMode.IsOnlineMode && OnlineStateManager.Instance != null)
+        {
+            try { await OnlineStateManager.Instance.SaveAllSharedState(); }
+            catch (Exception ex) { DebugLogger.Instance.LogError("INN", $"SaveAllSharedState failed after companion equipment change: {ex.Message}"); }
+        }
     }
 
     /// <summary>
@@ -4309,7 +4316,15 @@ public class InnLocation : BaseLocation
             terminal.WriteLine(Loc.Get("inn.equip_best_done", equippedCount, target.DisplayName));
             // Sync wrapper equipment back to companion BEFORE saving
             CompanionSystem.Instance?.SyncCompanionEquipment(target);
+            SaveSystem.Instance.ResetAutoSaveThrottle();
             await SaveSystem.Instance.AutoSave(currentPlayer);
+
+            // Online mode: persist companion equipment to shared state
+            if (UsurperRemake.BBS.DoorMode.IsOnlineMode && OnlineStateManager.Instance != null)
+            {
+                try { await OnlineStateManager.Instance.SaveAllSharedState(); }
+                catch (Exception ex) { DebugLogger.Instance.LogError("INN", $"SaveAllSharedState failed after EquipBest: {ex.Message}"); }
+            }
         }
         else
         {

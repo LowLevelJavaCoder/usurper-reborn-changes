@@ -4860,7 +4860,8 @@ public partial class GameEngine
     {
         if (npcData == null || npcData.Count == 0)
         {
-            DebugLogger.Instance.LogError("NPC", "No NPC data in save — NPCs will be empty!");
+            // Expected in online mode — player saves don't store NPCs (world sim manages them via world_state)
+            DebugLogger.Instance.LogDebug("NPC", "No NPC data in player save (normal for online mode)");
             return;
         }
 

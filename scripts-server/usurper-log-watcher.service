@@ -1,0 +1,17 @@
+[Unit]
+Description=Usurper Reborn Log Watcher
+After=usurper-mud.service
+Wants=usurper-mud.service
+
+[Service]
+Type=simple
+ExecStart=/opt/usurper/log-watcher.sh
+Restart=always
+RestartSec=10
+User=usurper
+Group=usurper
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

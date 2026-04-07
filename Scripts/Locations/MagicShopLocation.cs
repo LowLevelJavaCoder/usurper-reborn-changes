@@ -2346,7 +2346,17 @@ public partial class MagicShopLocation : BaseLocation
                     }
                 }
 
-                if (player.EquipItem(item, targetSlot, out string msg))
+                // If this exact item ID is already equipped (e.g., same ring on the other finger),
+                // clone it as a new dynamic equipment entry so both slots have unique IDs.
+                // Without this, the duplicate-ID guard in EquipItem/RecalculateStats removes one.
+                var equipItem = item;
+                if (player.EquippedItems.Values.Contains(item.Id))
+                {
+                    equipItem = item.Clone();
+                    EquipmentDatabase.RegisterDynamic(equipItem);
+                }
+
+                if (player.EquipItem(equipItem, targetSlot, out string msg))
                 {
                     player.RecalculateStats();
                     terminal.SetColor("bright_green");

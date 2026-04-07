@@ -69,6 +69,96 @@ namespace UsurperRemake.Utils
         }
     }
 
+    /// <summary>
+    /// Like TolerantEnumConverterFactory but writes enums as numbers (not strings).
+    /// Use this for internal serialization (world state, online state) where downstream
+    /// consumers (dashboard, stats API) expect numeric enum IDs.
+    /// Reads are tolerant of both string and numeric values.
+    /// </summary>
+    public class TolerantEnumReadOnlyConverterFactory : JsonConverterFactory
+    {
+        public override bool CanConvert(Type typeToConvert)
+        {
+            return typeToConvert.IsEnum ||
+                   (Nullable.GetUnderlyingType(typeToConvert)?.IsEnum == true);
+        }
+
+        public override JsonConverter CreateConverter(Type typeToConvert, JsonSerializerOptions options)
+        {
+            var enumType = Nullable.GetUnderlyingType(typeToConvert) ?? typeToConvert;
+            var converterType = typeof(TolerantEnumNumericConverter<>).MakeGenericType(enumType);
+            var converter = (JsonConverter)Activator.CreateInstance(converterType)!;
+
+            if (Nullable.GetUnderlyingType(typeToConvert) != null)
+            {
+                var nullableType = typeof(NullableTolerantEnumNumericConverter<>).MakeGenericType(enumType);
+                return (JsonConverter)Activator.CreateInstance(nullableType)!;
+            }
+
+            return converter;
+        }
+    }
+
+    /// <summary>
+    /// Reads enums tolerantly (strings or numbers), writes as numbers.
+    /// </summary>
+    public class TolerantEnumNumericConverter<T> : JsonConverter<T> where T : struct, Enum
+    {
+        public override T Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            if (reader.TokenType == JsonTokenType.String)
+            {
+                var value = reader.GetString()?.Trim();
+                if (string.IsNullOrEmpty(value))
+                    return default;
+                if (Enum.TryParse<T>(value, ignoreCase: true, out var result))
+                    return result;
+
+                UsurperRemake.Systems.DebugLogger.Instance.LogWarning("GAMEDATA",
+                    $"Unknown {typeof(T).Name} value: '{value}', using default");
+                return default;
+            }
+
+            if (reader.TokenType == JsonTokenType.Number)
+            {
+                var intVal = reader.GetInt32();
+                if (Enum.IsDefined(typeof(T), intVal))
+                    return (T)Enum.ToObject(typeof(T), intVal);
+
+                UsurperRemake.Systems.DebugLogger.Instance.LogWarning("GAMEDATA",
+                    $"Unknown {typeof(T).Name} numeric value: {intVal}, using default");
+                return default;
+            }
+
+            return default;
+        }
+
+        public override void Write(Utf8JsonWriter writer, T value, JsonSerializerOptions options)
+        {
+            writer.WriteNumberValue(Convert.ToInt32(value));
+        }
+    }
+
+    public class NullableTolerantEnumNumericConverter<T> : JsonConverter<T?> where T : struct, Enum
+    {
+        private readonly TolerantEnumNumericConverter<T> _inner = new();
+
+        public override T? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            if (reader.TokenType == JsonTokenType.Null)
+                return null;
+            return _inner.Read(ref reader, typeof(T), options);
+        }
+
+        public override void Write(Utf8JsonWriter writer, T? value, JsonSerializerOptions options)
+        {
+            if (value == null)
+                writer.WriteNullValue();
+            else
+                _inner.Write(writer, value.Value, options);
+        }
+    }
+
     public class NullableTolerantEnumConverter<T> : JsonConverter<T?> where T : struct, Enum
     {
         private readonly TolerantEnumConverter<T> _inner = new();

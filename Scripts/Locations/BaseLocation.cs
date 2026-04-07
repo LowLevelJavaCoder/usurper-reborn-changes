@@ -2693,8 +2693,8 @@ public abstract class BaseLocation
             }, 18 + 1 + desc.Length + 1);
         }
 
-        WriteCmdAlias("/stats", "/s", Loc.Get("base.help_stats"));
-        WriteCmdAlias("/inventory", "/i", Loc.Get("base.help_inventory"));
+        WriteCmdAlias("/stats", "%", Loc.Get("base.help_stats"));
+        WriteCmdAlias("/inventory", "*", Loc.Get("base.help_inventory"));
         WriteCmdAlias("/quests", "/q", Loc.Get("base.help_quests"));
         WriteCmdAlias("/gold", "/g", Loc.Get("base.help_gold"));
         WriteCmdAlias("/health", "/hp", Loc.Get("base.help_health"));
@@ -2796,8 +2796,8 @@ public abstract class BaseLocation
         terminal.SetColor("white");
         terminal.WriteLine(Loc.Get("base.help_commands_work"));
         terminal.WriteLine("");
-        terminal.WriteLine($"/stats or /s {Loc.Get("base.help_stats")}");
-        terminal.WriteLine($"/inventory or /i {Loc.Get("base.help_inventory")}");
+        terminal.WriteLine($"/stats or % {Loc.Get("base.help_stats")}");
+        terminal.WriteLine($"/inventory or * {Loc.Get("base.help_inventory")}");
         terminal.WriteLine($"/quests or /q {Loc.Get("base.help_quests")}");
         terminal.WriteLine($"/gold or /g {Loc.Get("base.help_gold")}");
         terminal.WriteLine($"/health or /hp {Loc.Get("base.help_health")}");
