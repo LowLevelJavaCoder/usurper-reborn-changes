@@ -335,6 +335,9 @@ public class DailySystemManager
         player.PitFightsToday = 0;
         player.DesecrationsToday = 0;
 
+        // Reset session XP tracking (prevents bypass by logging out/in to clear diminishing returns)
+        player.SessionXPEarned = 0;
+
         // Reset real-world-date daily tracking (online mode persistence)
         player.SethFightsToday = 0;
         player.ArmWrestlesToday = 0;

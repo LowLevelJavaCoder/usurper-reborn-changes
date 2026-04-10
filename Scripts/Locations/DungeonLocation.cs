@@ -14436,8 +14436,8 @@ public class DungeonLocation : BaseLocation
     }
 
     /// <summary>
-    /// Lyris Quest: "The Light That Was" - Find Aurelion's artifact
-    /// Triggers on floor 85 (Aurelion's domain)
+    /// Lyris Quest: "The Deepwood's Heart" - Find the mother-tree seed
+    /// Triggers on floors 80-90
     /// </summary>
     private async Task<bool> CheckLyrisQuestEncounter(Character player, UsurperRemake.Systems.Companion lyris,
         DungeonRoom room, UsurperRemake.Systems.StoryProgressionSystem story)
@@ -14609,8 +14609,9 @@ public class DungeonLocation : BaseLocation
             UsurperRemake.Systems.CompanionId.Lyris, true);
 
         // Bonus: Lyris gains power
-        lyris.BaseStats.MagicPower += 25;
-        lyris.BaseStats.HealingPower += 15;
+        lyris.BaseStats.Attack += 20;
+        lyris.BaseStats.Speed += 15;
+        lyris.BaseStats.HealingPower += 10;
         terminal.WriteLine(Loc.Get("quest.lyris_light.bonus"), "bright_cyan");
 
         await terminal.PressAnyKey();

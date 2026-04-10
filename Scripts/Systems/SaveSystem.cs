@@ -559,7 +559,8 @@ namespace UsurperRemake.Systems
                     ClassRestrictions = equip.ClassRestrictions?.Select(c => (int)c).ToList(),
                     IsUnique = equip.IsUnique,
                     HasBossSlayer = equip.HasBossSlayer,
-                    HasTitanResolve = equip.HasTitanResolve
+                    HasTitanResolve = equip.HasTitanResolve,
+                    IsIdentified = equip.IsIdentified
                 }).ToList(),
 
                 // Base stats
@@ -1253,7 +1254,8 @@ namespace UsurperRemake.Systems
                             ClassRestrictions = equip.ClassRestrictions?.Select(c => (int)c).ToList(),
                             IsUnique = equip.IsUnique,
                             HasBossSlayer = equip.HasBossSlayer,
-                            HasTitanResolve = equip.HasTitanResolve
+                            HasTitanResolve = equip.HasTitanResolve,
+                            IsIdentified = equip.IsIdentified
                         }).ToList() ?? new List<DynamicEquipmentData>(),
 
                     // Skill proficiency

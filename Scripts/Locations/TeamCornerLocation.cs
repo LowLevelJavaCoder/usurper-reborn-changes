@@ -397,12 +397,13 @@ public class TeamCornerLocation : BaseLocation
                 teamGroups.Remove(existingTeam);
                 int totalMembers = existingTeam.MemberCount + 1;
                 long totalPower = existingTeam.TotalPower + playerPower;
+                int totalLevels = existingTeam.AverageLevel * existingTeam.MemberCount + currentPlayer.Level;
                 teamGroups.Add(new
                 {
                     TeamName = existingTeam.TeamName,
                     MemberCount = totalMembers,
                     TotalPower = totalPower,
-                    AverageLevel = (int)(totalPower / totalMembers),
+                    AverageLevel = totalLevels / totalMembers,
                     ControlsTurf = existingTeam.ControlsTurf || currentPlayer.CTurf,
                     IsPlayerTeam = true
                 });
@@ -1749,8 +1750,8 @@ public class TeamCornerLocation : BaseLocation
             DisplayEquipmentSlot(target, EquipmentSlot.Hands, Loc.Get("team.slot_hands"));
             DisplayEquipmentSlot(target, EquipmentSlot.Legs, Loc.Get("team.slot_legs"));
             DisplayEquipmentSlot(target, EquipmentSlot.Feet, Loc.Get("team.slot_feet"));
-            DisplayEquipmentSlot(target, EquipmentSlot.Waist, Loc.Get("team.slot_waist", "Belt"));
-            DisplayEquipmentSlot(target, EquipmentSlot.Face, Loc.Get("team.slot_face", "Face"));
+            DisplayEquipmentSlot(target, EquipmentSlot.Waist, Loc.Get("team.slot_waist"));
+            DisplayEquipmentSlot(target, EquipmentSlot.Face, Loc.Get("team.slot_face"));
             DisplayEquipmentSlot(target, EquipmentSlot.Cloak, Loc.Get("team.slot_cloak"));
             DisplayEquipmentSlot(target, EquipmentSlot.Neck, Loc.Get("team.slot_neck"));
             DisplayEquipmentSlot(target, EquipmentSlot.LFinger, Loc.Get("team.slot_left_ring"));

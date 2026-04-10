@@ -927,6 +927,7 @@ namespace UsurperRemake.Systems
         public bool IsUnique { get; set; }
         public bool HasBossSlayer { get; set; }
         public bool HasTitanResolve { get; set; }
+        public bool IsIdentified { get; set; } = true;
     }
 
     /// <summary>

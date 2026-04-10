@@ -202,7 +202,11 @@ namespace UsurperRemake.Systems
         /// </summary>
         private void ConvertChildToNPC(Child child)
         {
-            // GD.Print($"[Family] {child.Name} has come of age and is now an adult!");
+            // Idempotency: skip if already converted (prevents duplicate NPCs across save/load)
+            if (child.Deleted) return;
+            var existingAdult = NPCSpawnSystem.Instance?.ActiveNPCs
+                ?.FirstOrDefault(n => n.Name2 == child.Name && n.BirthDate == child.BirthDate);
+            if (existingAdult != null) { child.Deleted = true; return; }
 
             // Create NPC from child
             var npc = new NPC
@@ -642,7 +646,9 @@ namespace UsurperRemake.Systems
                     LastParentingDay = data.LastParentingDay
                 };
 
-                _children.Add(child);
+                // Prevent duplicates (same name + same parents)
+                if (!_children.Any(c => c.Name == child.Name && c.MotherID == child.MotherID && c.FatherID == child.FatherID))
+                    _children.Add(child);
             }
 
             // GD.Print($"[Family] Loaded {_children.Count} children from save");

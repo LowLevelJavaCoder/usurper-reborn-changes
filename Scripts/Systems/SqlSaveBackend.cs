@@ -63,7 +63,7 @@ namespace UsurperRemake.Systems
             if (!string.IsNullOrEmpty(dir))
                 Directory.CreateDirectory(dir);
 
-            connectionString = $"Data Source={databasePath}";
+            connectionString = $"Data Source={databasePath};Pooling=true";
 
             jsonOptions = new JsonSerializerOptions
             {
@@ -1024,9 +1024,11 @@ namespace UsurperRemake.Systems
             try
             {
                 using var connection = OpenConnection();
+                using var transaction = connection.BeginTransaction();
 
-                // Verify we own the lock before deleting
+                // Verify we own the lock before deleting (atomic with transaction)
                 using var readCmd = connection.CreateCommand();
+                readCmd.Transaction = transaction;
                 readCmd.CommandText = "SELECT value FROM world_state WHERE key = @key;";
                 readCmd.Parameters.AddWithValue("@key", WORLDSIM_LOCK_KEY);
                 var currentValue = readCmd.ExecuteScalar() as string;
@@ -1039,6 +1041,7 @@ namespace UsurperRemake.Systems
                         if (doc.RootElement.TryGetProperty("owner", out var ownerEl) &&
                             ownerEl.GetString() != ownerId)
                         {
+                            transaction.Rollback();
                             return; // Not our lock
                         }
                     }
@@ -1046,10 +1049,12 @@ namespace UsurperRemake.Systems
                 }
 
                 using var deleteCmd = connection.CreateCommand();
+                deleteCmd.Transaction = transaction;
                 deleteCmd.CommandText = "DELETE FROM world_state WHERE key = @key;";
                 deleteCmd.Parameters.AddWithValue("@key", WORLDSIM_LOCK_KEY);
                 deleteCmd.ExecuteNonQuery();
 
+                transaction.Commit();
                 DebugLogger.Instance.LogInfo("SQL", $"WorldSim lock released by '{ownerId}'");
             }
             catch (Exception ex)
@@ -1583,7 +1588,12 @@ namespace UsurperRemake.Systems
             {
                 using var connection = OpenConnection();
                 using var cmd = connection.CreateCommand();
-                cmd.CommandText = "UPDATE messages SET is_read = 1 WHERE LOWER(to_player) = LOWER(@username) AND is_read = 0;";
+                // Must match the same messages as GetUnreadMessages — both username AND display_name,
+                // otherwise messages sent to display_name are fetched but never marked read (infinite loop)
+                cmd.CommandText = @"UPDATE messages SET is_read = 1
+                    WHERE (LOWER(to_player) = LOWER(@username)
+                           OR to_player IN (SELECT display_name FROM players WHERE LOWER(username) = LOWER(@username)))
+                    AND is_read = 0;";
                 cmd.Parameters.AddWithValue("@username", username);
                 await cmd.ExecuteNonQueryAsync();
             }

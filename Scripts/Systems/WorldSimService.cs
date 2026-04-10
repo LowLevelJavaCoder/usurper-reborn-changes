@@ -1566,10 +1566,12 @@ namespace UsurperRemake.Systems
                     npc.SkillTrainingProgress = new Dictionary<string, int>(data.SkillTrainingProgress);
                 }
 
-                // Fix XP for legacy data
-                if (npc.Experience <= 0 && npc.Level > 1)
+                // Fix XP for legacy data — also catches NPCs whose Experience was set from
+                // template.StartLevel instead of their actual Level (bug in GenerateNPCStats)
+                long expectedMinXP = GetExperienceForLevel(npc.Level);
+                if (npc.Experience < expectedMinXP && npc.Level > 1)
                 {
-                    npc.Experience = GetExperienceForLevel(npc.Level);
+                    npc.Experience = expectedMinXP;
                 }
 
                 // Fix base stats if not set

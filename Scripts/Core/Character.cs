@@ -1407,7 +1407,8 @@ public class Character
     
     // Missing inventory system
     public List<Item> Inventory { get; set; } = new();
-    
+    public bool IsInventoryFull => Inventory.Count >= GameConfig.MaxInventoryItems;
+
     // Current values (convenience properties)
     public long CurrentHP 
     { 

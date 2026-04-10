@@ -513,17 +513,17 @@ namespace UsurperRemake.Systems
             new NarrativeDreamData
             {
                 Id = "dream_grief_lyris",
-                Title = "Starlight Fades",
+                Title = "The Last Arrow",
                 RequiresCompanionDeath = "Lyris",
                 Priority = 30,
                 Content = new[] {
-                    "You dream of Lyris.",
-                    "Shes standing somewhere bright. She looks peaceful.",
-                    "'Its okay,' she says. 'I knew this would happen eventually.'",
-                    "She smiles at you. Then the light takes her and shes gone."
+                    "You dream of a forest that doesnt exist anymore.",
+                    "Lyris is there, bow in hand, watching the canopy.",
+                    "'The trees are growing back,' she says. 'It just took a while.'",
+                    "She nocks an arrow, aims at nothing, and lets it fly into the green."
                 },
                 AwakeningGain = 1,
-                PhilosophicalHint = "She didnt seem sad. Thats the strange part."
+                PhilosophicalHint = "She looked like she was home. Thats the strange part."
             },
 
             new NarrativeDreamData
@@ -585,13 +585,13 @@ namespace UsurperRemake.Systems
                 MinAwakening = 1, MaxAwakening = 6,
                 Priority = 15,
                 Content = new[] {
-                    "You dream of a campfire. Lyris sits across from you, watching the flames.",
-                    "'I've seen this before,' she says quietly. 'You, sleeping. Me, watching.'",
-                    "'But from the other side. Like I was the dreamer and you were the dream.'",
-                    "She looks at you with those old, knowing eyes. 'You'll understand eventually.'"
+                    "You dream of a campfire. Lyris sits across from you, fletching arrows.",
+                    "'I used to do this every night,' she says. 'In the Deepwood. Before.'",
+                    "She holds one up, inspecting the feather. 'You never run out of things to fix.'",
+                    "She looks at you with those steady, patient eyes. 'Stay sharp out there.'"
                 },
                 AwakeningGain = 1,
-                PhilosophicalHint = "She knows something. She's known for a long time."
+                PhilosophicalHint = "She seems calmer around you. Like standing watch with someone she trusts."
             },
 
             new NarrativeDreamData

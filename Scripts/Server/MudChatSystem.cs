@@ -1430,10 +1430,36 @@ public static class MudChatSystem
             }
             terminal.SetColor("bright_yellow");
             terminal.WriteLine($"  {Systems.Loc.Get("guild.bank_items_header", items.Count, Systems.GuildSystem.MaxBankItems)}");
-            terminal.SetColor("cyan");
             for (int i = 0; i < items.Count; i++)
             {
+                terminal.SetColor("cyan");
                 terminal.WriteLine($"    {Systems.Loc.Get("guild.bank_items_entry", items[i].Id, items[i].ItemName, items[i].DepositedBy)}");
+
+                // Show item stats from stored JSON
+                try
+                {
+                    var item = System.Text.Json.JsonSerializer.Deserialize<Item>(items[i].ItemJson);
+                    if (item != null)
+                    {
+                        var stats = new System.Collections.Generic.List<string>();
+                        if (item.Attack > 0) stats.Add($"ATK:{item.Attack}");
+                        if (item.Armor > 0) stats.Add($"AP:{item.Armor}");
+                        if (item.Strength != 0) stats.Add($"STR:{item.Strength:+#;-#}");
+                        if (item.Defence != 0) stats.Add($"DEF:{item.Defence:+#;-#}");
+                        if (item.Dexterity != 0) stats.Add($"DEX:{item.Dexterity:+#;-#}");
+                        if (item.Agility != 0) stats.Add($"AGI:{item.Agility:+#;-#}");
+                        if (item.Wisdom != 0) stats.Add($"WIS:{item.Wisdom:+#;-#}");
+                        if (item.Charisma != 0) stats.Add($"CHA:{item.Charisma:+#;-#}");
+                        if (item.HP != 0) stats.Add($"HP:{item.HP:+#;-#}");
+                        if (item.Mana != 0) stats.Add($"MP:{item.Mana:+#;-#}");
+                        if (stats.Count > 0)
+                        {
+                            terminal.SetColor("gray");
+                            terminal.WriteLine($"      {string.Join("  ", stats)}");
+                        }
+                    }
+                }
+                catch { /* Skip stats if JSON can't be parsed */ }
             }
             terminal.SetColor("gray");
             terminal.WriteLine($"  {Systems.Loc.Get("guild.hint_gwithdraw_item")}");

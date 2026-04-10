@@ -738,7 +738,10 @@ public partial class GameEngine
 
             case "A":
                 GameConfig.ScreenReaderMode = !GameConfig.ScreenReaderMode;
-                UsurperRemake.Systems.SysOpConfigSystem.Instance.SaveConfig();
+                // Only persist to sysop_config in single-player/BBS mode (server-wide setting)
+                // In MUD mode, SR preference is per-player (stored in their save data)
+                if (!UsurperRemake.BBS.DoorMode.IsOnlineMode)
+                    UsurperRemake.Systems.SysOpConfigSystem.Instance.SaveConfig();
                 terminal.WriteLine("");
                 if (GameConfig.ScreenReaderMode)
                 {
@@ -3384,6 +3387,10 @@ public partial class GameEngine
             }
             terminal.WriteLine("");
 
+            // Mark direct messages as read so they don't re-appear via chat polling
+            if (directMessages.Count > 0)
+                await backend.MarkMessagesRead(username);
+
             await terminal.PressAnyKey();
         }
         catch (Exception ex)
@@ -3820,6 +3827,7 @@ public partial class GameEngine
 
             Name1 = playerData.Name1 ?? "",
             Name2 = playerData.Name2 ?? "",
+            RealName = !string.IsNullOrEmpty(playerData.RealName) ? playerData.RealName : (playerData.Name1 ?? ""),
             Level = playerData.Level,
             Experience = playerData.Experience,
             HP = playerData.HP,
@@ -4136,16 +4144,21 @@ public partial class GameEngine
                     ClassRestrictions = equipData.ClassRestrictions?.Select(c => (CharacterClass)c).ToList() ?? new List<CharacterClass>(),
                     IsUnique = equipData.IsUnique,
                     HasBossSlayer = equipData.HasBossSlayer,
-                    HasTitanResolve = equipData.HasTitanResolve
+                    HasTitanResolve = equipData.HasTitanResolve,
+                    IsIdentified = equipData.IsIdentified
                 };
 
-                // Migration: legacy loot items may have WeaponType=None because InferWeaponType
-                // wasn't called when they were first looted. Fix them on load so weapon requirements
-                // (Bard instruments, Ranger bows, Assassin daggers, Mage staves) work correctly.
-                if (equipment.Slot == EquipmentSlot.MainHand && equipment.WeaponType == WeaponType.None)
+                // Migration: loot items may have wrong WeaponType — either None (legacy) or
+                // Sword (multi-monster equip path defaulted to Sword instead of inferring).
+                // Re-infer from name on load so weapon requirements work correctly.
+                if (equipment.Slot == EquipmentSlot.MainHand || equipment.Slot == EquipmentSlot.OffHand)
                 {
-                    equipment.WeaponType = ShopItemGenerator.InferWeaponType(equipment.Name);
-                    equipment.Handedness = ShopItemGenerator.InferHandedness(equipment.WeaponType);
+                    var inferred = ShopItemGenerator.InferWeaponType(equipment.Name);
+                    if (equipment.WeaponType != inferred)
+                    {
+                        equipment.WeaponType = inferred;
+                        equipment.Handedness = ShopItemGenerator.InferHandedness(inferred);
+                    }
                 }
 
                 if (UsurperRemake.BBS.DoorMode.IsOnlineMode)
@@ -5117,12 +5130,12 @@ public partial class GameEngine
                 npc.Enemies = new List<string>(data.Enemies);
             }
 
-            // Fix Experience if it's 0 - legacy saves may not have tracked NPC XP
-            // NPCs need proper XP to level up correctly from combat
-            if (npc.Experience <= 0 && npc.Level > 1)
+            // Fix Experience if it's too low for the NPC's level — legacy saves may not have
+            // tracked NPC XP, or GenerateNPCStats may have used template.StartLevel instead of actual Level
+            long expectedMinXP = GetExperienceForNPCLevel(npc.Level);
+            if (npc.Experience < expectedMinXP && npc.Level > 1)
             {
-                npc.Experience = GetExperienceForNPCLevel(npc.Level);
-                // GD.Print($"[GameEngine] Initialized {npc.Name}'s XP to {npc.Experience} for level {npc.Level}");
+                npc.Experience = expectedMinXP;
             }
 
             // Initialize base stats if they're not set (legacy save compatibility)
@@ -5236,8 +5249,21 @@ public partial class GameEngine
                         ClassRestrictions = equipData.ClassRestrictions?.Select(c => (CharacterClass)c).ToList() ?? new List<CharacterClass>(),
                         IsUnique = equipData.IsUnique,
                         HasBossSlayer = equipData.HasBossSlayer,
-                        HasTitanResolve = equipData.HasTitanResolve
+                        HasTitanResolve = equipData.HasTitanResolve,
+                        IsIdentified = equipData.IsIdentified
                     };
+
+                    // Migration: re-infer weapon type from name (fixes multi-monster equip
+                    // path that defaulted to Sword instead of inferring)
+                    if (equipment.Slot == EquipmentSlot.MainHand || equipment.Slot == EquipmentSlot.OffHand)
+                    {
+                        var inferred = ShopItemGenerator.InferWeaponType(equipment.Name);
+                        if (equipment.WeaponType != inferred)
+                        {
+                            equipment.WeaponType = inferred;
+                            equipment.Handedness = ShopItemGenerator.InferHandedness(inferred);
+                        }
+                    }
 
                     // Register and get the new ID (may differ from saved ID)
                     int newId = EquipmentDatabase.RegisterDynamic(equipment);

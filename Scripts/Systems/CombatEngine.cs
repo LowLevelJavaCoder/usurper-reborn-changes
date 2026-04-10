@@ -1458,6 +1458,32 @@ public partial class CombatEngine
             if (player.HP > player.MaxHP) player.HP = player.MaxHP;
         }
 
+        // Clean up temporary combat buffs (matches single-monster/PvP cleanup)
+        player.IsRaging = false;
+        player.TempAttackBonus = 0;
+        player.TempAttackBonusDuration = 0;
+        player.TempDefenseBonus = 0;
+        player.TempDefenseBonusDuration = 0;
+        player.MagicACBonus = 0;
+        player.DodgeNextAttack = false;
+        player.HasBloodlust = false;
+        player.HasStatusImmunity = false;
+        player.StatusImmunityDuration = 0;
+        player.DeathsEmbraceActive = false;
+        player.StatusLifestealPercent = 0;
+        player.RemoveStatus(StatusEffect.Protected);
+        player.RemoveStatus(StatusEffect.Blessed);
+        player.RemoveStatus(StatusEffect.Haste);
+        player.RemoveStatus(StatusEffect.Reflecting);
+        player.ActiveTotemType = 0;
+        player.ActiveTotemRounds = 0;
+        player.ActiveTotemPower = 0;
+        player.ShamanEnchantType = 0;
+        player.ShamanEnchantRounds = 0;
+        player.ShamanEnchantPower = 0;
+        player.UnmakingCooldown = 0;
+        player.DelugeCooldown = 0;
+
         return result;
     }
 
@@ -5397,6 +5423,18 @@ public partial class CombatEngine
         if (currentTeammates != null)
             allPartyMembers.AddRange(currentTeammates.Where(t => t.IsAlive));
 
+        // === BOSS PARTY MECHANICS: Priority actions before normal AI ===
+        if (BossContext != null && teammate.IsAlive)
+        {
+            // Priority 1: Healer classes try to dispel Doom or cleanse Corruption
+            if (IsHealerClass(teammate) && TryHealerCleanse(teammate, currentPlayer, result))
+                return;
+
+            // Priority 2: Fast characters try to interrupt boss channeling
+            if (monster.IsChanneling && TryInterruptBossChannel(monster, teammate))
+                return;
+        }
+
         // Wrap single monster in a list for the multi-monster ability/spell methods
         var monsterList = new List<Monster> { monster };
 
@@ -5908,9 +5946,16 @@ public partial class CombatEngine
                     };
                 }
 
-                result.Player.Inventory.Add(lootItem);
-                terminal.WriteLine(Loc.Get("combat.picked_up", lootItem.Name), "bright_green");
-                result.ItemsFound.Add(lootItem.Name);
+                if (!result.Player.IsInventoryFull)
+                {
+                    result.Player.Inventory.Add(lootItem);
+                    terminal.WriteLine(Loc.Get("combat.picked_up", lootItem.Name), "bright_green");
+                    result.ItemsFound.Add(lootItem.Name);
+                }
+                else
+                {
+                    terminal.WriteLine($"  Inventory full — {lootItem.Name} dropped.", "red");
+                }
             }
         }
 
@@ -5944,9 +5989,16 @@ public partial class CombatEngine
                     };
                 }
 
-                result.Player.Inventory.Add(lootItem);
-                terminal.WriteLine(Loc.Get("combat.picked_up", lootItem.Name), "bright_green");
-                result.ItemsFound.Add(lootItem.Name);
+                if (!result.Player.IsInventoryFull)
+                {
+                    result.Player.Inventory.Add(lootItem);
+                    terminal.WriteLine(Loc.Get("combat.picked_up", lootItem.Name), "bright_green");
+                    result.ItemsFound.Add(lootItem.Name);
+                }
+                else
+                {
+                    terminal.WriteLine($"  Inventory full — {lootItem.Name} dropped.", "red");
+                }
             }
         }
 
@@ -6557,8 +6609,9 @@ public partial class CombatEngine
 
     /// <summary>
     /// Consolidates lifesteal, elemental procs, sunforged healing, and poison coating.
+    /// Set isSpellDamage=true to skip weapon-based enchantments (lifedrinker, elemental procs, poison coating).
     /// </summary>
-    private void ApplyPostHitEnchantments(Character attacker, Monster target, long damage, CombatResult result)
+    private void ApplyPostHitEnchantments(Character attacker, Monster target, long damage, CombatResult result, bool isSpellDamage = false)
     {
         if (damage <= 0 || target == null) return;
 
@@ -6576,16 +6629,19 @@ public partial class CombatEngine
                 terminal.WriteLine(Loc.Get("combat.tm_dark_drain", attackerName, lifesteal), "dark_magenta");
         }
 
-        // Equipment lifesteal (Lifedrinker enchant)
-        int equipLifeSteal = attacker.GetEquipmentLifeSteal();
-        if (equipLifeSteal > 0)
+        // Equipment lifesteal (Lifedrinker enchant) — weapon-based, skip for spells
+        if (!isSpellDamage)
         {
-            long stolen = Math.Max(1, damage * equipLifeSteal / 100);
-            attacker.HP = Math.Min(attacker.MaxHP, attacker.HP + stolen);
-            if (isPlayer)
-                terminal.WriteLine(Loc.Get("combat.lifedrinker", stolen), "dark_green");
-            else
-                terminal.WriteLine(Loc.Get("combat.tm_lifedrinker", attackerName, stolen), "dark_green");
+            int equipLifeSteal = attacker.GetEquipmentLifeSteal();
+            if (equipLifeSteal > 0)
+            {
+                long stolen = Math.Max(1, damage * equipLifeSteal / 100);
+                attacker.HP = Math.Min(attacker.MaxHP, attacker.HP + stolen);
+                if (isPlayer)
+                    terminal.WriteLine(Loc.Get("combat.lifedrinker", stolen), "dark_green");
+                else
+                    terminal.WriteLine(Loc.Get("combat.tm_lifedrinker", attackerName, stolen), "dark_green");
+            }
         }
 
         // Divine Boon lifesteal (from worshipped player-god)
@@ -6621,8 +6677,9 @@ public partial class CombatEngine
                 terminal.WriteLine(Loc.Get("combat.tm_dark_energy_siphon", attackerName, statusSteal), "dark_red");
         }
 
-        // Elemental enchant procs
-        CheckElementalEnchantProcs(attacker, target, damage, result);
+        // Elemental enchant procs — weapon-based, skip for spells
+        if (!isSpellDamage)
+            CheckElementalEnchantProcs(attacker, target, damage, result);
 
         // Sunforged Blade: heals lowest-HP ally for 10% of damage dealt
         if (ArtifactSystem.Instance.HasSunforgedBlade() && currentTeammates != null && currentTeammates.Count > 0)
@@ -6644,11 +6701,11 @@ public partial class CombatEngine
             }
         }
 
-        // Apply poison coating effects on hit
-        if (target.IsAlive)
+        // Apply poison coating effects on hit — weapon-based, skip for spells
+        if (!isSpellDamage && target.IsAlive)
             ApplyPoisonEffectsOnHit(attacker, target, isPlayer);
 
-        // Gnoll racial: Poisonous Bite — 15% chance to poison on hit
+        // Gnoll racial: Poisonous Bite — 15% chance to poison on hit (melee only)
         if (attacker.Race == CharacterRace.Gnoll && target.IsAlive && !target.Poisoned && random.Next(100) < 15)
         {
             target.Poisoned = true;
@@ -7119,7 +7176,10 @@ public partial class CombatEngine
                     terminal.WriteLine(Loc.Get("combat.loot_equip_option"));
                 }
             }
-            terminal.WriteLine(Loc.Get("combat.loot_take_option"));
+            if (selectedCharacter.IsInventoryFull)
+                terminal.WriteLine($"  [T] Take (INVENTORY FULL - {selectedCharacter.Inventory.Count}/{GameConfig.MaxInventoryItems})", "red");
+            else
+                terminal.WriteLine(Loc.Get("combat.loot_take_option"));
             terminal.WriteLine(Loc.Get("combat.loot_pass_option"));
             terminal.WriteLine("");
 
@@ -7203,10 +7263,18 @@ public partial class CombatEngine
                 {
                     terminal.SetColor("yellow");
                     terminal.WriteLine(Loc.Get("combat.unidentified_no_equip"));
-                    player.Inventory.Add(lootItem);
-                    string unidDisplayName = LootGenerator.GetUnidentifiedName(lootItem);
-                    terminal.SetColor("cyan");
-                    terminal.WriteLine(Loc.Get("combat.loot_added_inventory", unidDisplayName));
+                    if (!player.IsInventoryFull)
+                    {
+                        player.Inventory.Add(lootItem);
+                        string unidDisplayName = LootGenerator.GetUnidentifiedName(lootItem);
+                        terminal.SetColor("cyan");
+                        terminal.WriteLine(Loc.Get("combat.loot_added_inventory", unidDisplayName));
+                    }
+                    else
+                    {
+                        terminal.SetColor("red");
+                        terminal.WriteLine($"  Inventory full — item dropped.");
+                    }
                     break;
                 }
                 // Convert Item to Equipment and equip properly
@@ -7444,19 +7512,35 @@ public partial class CombatEngine
                 else
                 {
                     // Equip failed - add to inventory instead
-                    actualPlayer.Inventory.Add(lootItem);
                     terminal.SetColor("yellow");
                     terminal.WriteLine(Loc.Get("combat.loot_equip_failed", equipMsg));
-                    terminal.WriteLine(Loc.Get("combat.loot_added_inventory", lootItem.Name));
+                    if (!actualPlayer.IsInventoryFull)
+                    {
+                        actualPlayer.Inventory.Add(lootItem);
+                        terminal.WriteLine(Loc.Get("combat.loot_added_inventory", lootItem.Name));
+                    }
+                    else
+                    {
+                        terminal.SetColor("red");
+                        terminal.WriteLine($"  Inventory full — item dropped.");
+                    }
                 }
                 break;
 
             case "T":
-                // Add to inventory
-                player.Inventory.Add(lootItem);
-                terminal.SetColor("cyan");
-                string invName = lootItem.IsIdentified ? lootItem.Name : LootGenerator.GetUnidentifiedName(lootItem);
-                terminal.WriteLine(Loc.Get("combat.loot_added_inventory", invName));
+                // Add to inventory (with capacity check)
+                if (player.IsInventoryFull)
+                {
+                    terminal.SetColor("red");
+                    terminal.WriteLine($"  Your inventory is full ({GameConfig.MaxInventoryItems}/{GameConfig.MaxInventoryItems})! Item dropped.");
+                }
+                else
+                {
+                    player.Inventory.Add(lootItem);
+                    terminal.SetColor("cyan");
+                    string invName = lootItem.IsIdentified ? lootItem.Name : LootGenerator.GetUnidentifiedName(lootItem);
+                    terminal.WriteLine(Loc.Get("combat.loot_added_inventory", invName));
+                }
                 break;
 
             default:
@@ -8038,10 +8122,18 @@ public partial class CombatEngine
                 {
                     winnerTerm.SetColor("yellow");
                     winnerTerm.WriteLine(Loc.Get("combat.unidentified_no_equip"));
-                    winner.Inventory.Add(lootItem);
-                    string unidName = LootGenerator.GetUnidentifiedName(lootItem);
-                    winnerTerm.SetColor("cyan");
-                    winnerTerm.WriteLine(Loc.Get("combat.loot_added_inventory", unidName));
+                    if (!winner.IsInventoryFull)
+                    {
+                        winner.Inventory.Add(lootItem);
+                        string unidName = LootGenerator.GetUnidentifiedName(lootItem);
+                        winnerTerm.SetColor("cyan");
+                        winnerTerm.WriteLine(Loc.Get("combat.loot_added_inventory", unidName));
+                    }
+                    else
+                    {
+                        winnerTerm.SetColor("red");
+                        winnerTerm.WriteLine($"  Inventory full — item dropped.");
+                    }
                     break;
                 }
 
@@ -8050,8 +8142,8 @@ public partial class CombatEngine
                 if (lootItem.Type == global::ObjType.Weapon)
                 {
                     var knownEquip = EquipmentDatabase.GetByName(lootItem.Name);
-                    var lootHandedness = knownEquip?.Handedness ?? WeaponHandedness.OneHanded;
-                    var lootWeaponType = knownEquip?.WeaponType ?? WeaponType.Sword;
+                    var lootWeaponType = knownEquip?.WeaponType ?? ShopItemGenerator.InferWeaponType(lootItem.Name);
+                    var lootHandedness = knownEquip?.Handedness ?? ShopItemGenerator.InferHandedness(lootWeaponType);
 
                     equipment = Equipment.CreateWeapon(
                         id: 10000 + random.Next(10000),
@@ -8165,18 +8257,34 @@ public partial class CombatEngine
                 }
                 else
                 {
-                    winner.Inventory.Add(lootItem);
                     winnerTerm.SetColor("yellow");
                     winnerTerm.WriteLine(Loc.Get("combat.loot_equip_failed", equipMsg));
-                    winnerTerm.WriteLine(Loc.Get("combat.loot_added_inventory", lootItem.Name));
+                    if (!winner.IsInventoryFull)
+                    {
+                        winner.Inventory.Add(lootItem);
+                        winnerTerm.WriteLine(Loc.Get("combat.loot_added_inventory", lootItem.Name));
+                    }
+                    else
+                    {
+                        winnerTerm.SetColor("red");
+                        winnerTerm.WriteLine($"  Inventory full — item dropped.");
+                    }
                 }
                 break;
 
             case "T":
-                winner.Inventory.Add(lootItem);
-                winnerTerm.SetColor("cyan");
-                string invName = lootItem.IsIdentified ? lootItem.Name : LootGenerator.GetUnidentifiedName(lootItem);
-                winnerTerm.WriteLine(Loc.Get("combat.loot_added_inventory", invName));
+                if (winner.IsInventoryFull)
+                {
+                    winnerTerm.SetColor("red");
+                    winnerTerm.WriteLine($"  Your inventory is full ({GameConfig.MaxInventoryItems}/{GameConfig.MaxInventoryItems})! Item dropped.");
+                }
+                else
+                {
+                    winner.Inventory.Add(lootItem);
+                    winnerTerm.SetColor("cyan");
+                    string invName = lootItem.IsIdentified ? lootItem.Name : LootGenerator.GetUnidentifiedName(lootItem);
+                    winnerTerm.WriteLine(Loc.Get("combat.loot_added_inventory", invName));
+                }
                 break;
 
             default:
@@ -9809,7 +9917,7 @@ public partial class CombatEngine
         _ => 0.25 // 25% floor for 4th+ targets
     };
 
-    private async Task ApplyAoEDamage(List<Monster> monsters, long totalDamage, CombatResult result, string damageSource = "AoE attack")
+    private async Task ApplyAoEDamage(List<Monster> monsters, long totalDamage, CombatResult result, string damageSource = "AoE attack", bool isSpellDamage = false, Character? attacker = null)
     {
         var livingMonsters = monsters.Where(m => m.IsAlive).ToList();
         if (livingMonsters.Count == 0) return;
@@ -9863,8 +9971,9 @@ public partial class CombatEngine
             terminal.WriteLine($"-{actualDamage} HP");
 
             // Apply all post-hit enchantment effects (lifesteal, elemental procs, sunforged, poison)
-            if (result.Player != null)
-                ApplyPostHitEnchantments(result.Player, monster, actualDamage, result);
+            var enchantAttacker = attacker ?? result.Player;
+            if (enchantAttacker != null)
+                ApplyPostHitEnchantments(enchantAttacker, monster, actualDamage, result, isSpellDamage);
 
             if (monster.HP <= 0)
             {
@@ -10403,13 +10512,13 @@ public partial class CombatEngine
         {
             case CombatActionType.Attack:
                 Monster target = null;
-                if (action.TargetIndex.HasValue)
+                if (action.TargetIndex.HasValue && action.TargetIndex.Value < monsters.Count)
                 {
                     target = monsters[action.TargetIndex.Value];
                 }
                 else
                 {
-                    // Random target
+                    // Random target (or fallback if index was out of bounds)
                     target = GetRandomLivingMonster(monsters);
                 }
 
@@ -11355,7 +11464,7 @@ public partial class CombatEngine
                 // AoE abilities hit all monsters
                 terminal.SetColor("bright_red");
                 terminal.WriteLine(Loc.Get("combat.ability_aoe_all"));
-                await ApplyAoEDamage(monsters, actualDamage, result, ability.Name);
+                await ApplyAoEDamage(monsters, actualDamage, result, ability.Name, attacker: player);
                 // AoE confusion: confuse surviving monsters
                 if (abilityResult.SpecialEffect == "aoe_confusion")
                 {
@@ -13913,7 +14022,7 @@ public partial class CombatEngine
                 totalDamage = spellInfo.Level * 50 + (player.Intelligence / 2);
             }
             totalDamage = DifficultySystem.ApplyPlayerDamageMultiplier(totalDamage);
-            await ApplyAoEDamage(monsters, totalDamage, result, spellInfo.Name);
+            await ApplyAoEDamage(monsters, totalDamage, result, spellInfo.Name, isSpellDamage: true);
 
             // Apply self-healing from attack spells (e.g. Deluge of Sanctity)
             if (spellResult.Healing > 0)

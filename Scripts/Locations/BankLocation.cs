@@ -1096,8 +1096,7 @@ public class BankLocation : BaseLocation
             return;
         }
 
-        // Initialize robbery attempts if not yet set this session
-        // (BankRobberyAttempts is not serialized — starts at 0 each session)
+        // Initialize robbery attempts if not yet set (reset daily by MaintenanceSystem)
         if (currentPlayer.BankRobberyAttempts <= 0 && _robberyAttemptsToday == 0)
         {
             currentPlayer.BankRobberyAttempts = GameConfig.DefaultBankRobberyAttempts;

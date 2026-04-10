@@ -8935,6 +8935,7 @@ public abstract class BaseLocation
             StrengthBonus = invItem.Strength,
             DexterityBonus = invItem.Dexterity,
             AgilityBonus = invItem.Agility,
+            StaminaBonus = invItem.Stamina,
             WisdomBonus = invItem.Wisdom,
             CharismaBonus = invItem.Charisma,
             MaxHPBonus = invItem.HP,
@@ -8946,7 +8947,7 @@ public abstract class BaseLocation
             Rarity = EquipmentRarity.Common
         };
 
-        // Transfer CON/INT from LootEffects
+        // Transfer all LootEffects (enchantments, stat bonuses, special properties)
         if (invItem.LootEffects != null)
         {
             foreach (var (effectType, value) in invItem.LootEffects)
@@ -8954,6 +8955,24 @@ public abstract class BaseLocation
                 var effect = (LootGenerator.SpecialEffect)effectType;
                 switch (effect)
                 {
+                    case LootGenerator.SpecialEffect.FireDamage: equipment.HasFireEnchant = true; break;
+                    case LootGenerator.SpecialEffect.IceDamage: equipment.HasFrostEnchant = true; break;
+                    case LootGenerator.SpecialEffect.LightningDamage: equipment.HasLightningEnchant = true; break;
+                    case LootGenerator.SpecialEffect.PoisonDamage:
+                        equipment.HasPoisonEnchant = true;
+                        equipment.PoisonDamage = Math.Max(equipment.PoisonDamage, value);
+                        break;
+                    case LootGenerator.SpecialEffect.HolyDamage: equipment.HasHolyEnchant = true; break;
+                    case LootGenerator.SpecialEffect.ShadowDamage: equipment.HasShadowEnchant = true; break;
+                    case LootGenerator.SpecialEffect.LifeSteal: equipment.LifeSteal = Math.Max(equipment.LifeSteal, Math.Max(5, value / 2)); break;
+                    case LootGenerator.SpecialEffect.ManaSteal: equipment.ManaSteal = Math.Max(equipment.ManaSteal, Math.Max(5, value / 2)); break;
+                    case LootGenerator.SpecialEffect.CriticalStrike: equipment.CriticalChanceBonus = Math.Max(equipment.CriticalChanceBonus, value); break;
+                    case LootGenerator.SpecialEffect.CriticalDamage: equipment.CriticalDamageBonus = Math.Max(equipment.CriticalDamageBonus, value); break;
+                    case LootGenerator.SpecialEffect.ArmorPiercing: equipment.ArmorPiercing = Math.Max(equipment.ArmorPiercing, value); break;
+                    case LootGenerator.SpecialEffect.Thorns: equipment.Thorns = Math.Max(equipment.Thorns, value); break;
+                    case LootGenerator.SpecialEffect.Regeneration: equipment.HPRegen = Math.Max(equipment.HPRegen, value); break;
+                    case LootGenerator.SpecialEffect.ManaRegen: equipment.ManaRegen = Math.Max(equipment.ManaRegen, value); break;
+                    case LootGenerator.SpecialEffect.MagicResist: equipment.MagicResistance = Math.Max(equipment.MagicResistance, value); break;
                     case LootGenerator.SpecialEffect.Constitution: equipment.ConstitutionBonus += value; break;
                     case LootGenerator.SpecialEffect.Intelligence: equipment.IntelligenceBonus += value; break;
                     case LootGenerator.SpecialEffect.AllStats:
@@ -8961,12 +8980,8 @@ public abstract class BaseLocation
                         equipment.IntelligenceBonus += value;
                         equipment.CharismaBonus += value;
                         break;
-                    case LootGenerator.SpecialEffect.BossSlayer:
-                        equipment.HasBossSlayer = true;
-                        break;
-                    case LootGenerator.SpecialEffect.TitanResolve:
-                        equipment.HasTitanResolve = true;
-                        break;
+                    case LootGenerator.SpecialEffect.BossSlayer: equipment.HasBossSlayer = true; break;
+                    case LootGenerator.SpecialEffect.TitanResolve: equipment.HasTitanResolve = true; break;
                 }
             }
         }

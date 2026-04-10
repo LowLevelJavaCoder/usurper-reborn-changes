@@ -65,15 +65,16 @@ namespace UsurperRemake.Systems
             {
                 Id = CompanionId.Lyris,
                 Name = "Lyris",
-                Title = "The Wandering Star",
+                Title = "The Silent Arrow",
                 Type = CompanionType.Romance,
 
                 Description = "A traveler with silver-streaked hair and a habit of staring at you like she " +
                              "knows something you dont. Speaks in riddles. Knows too much.",
 
-                BackstoryBrief = "Lyris was once a priestess of Aurelion, the god of light. When Manwe corrupted " +
-                                "the Old Gods, she was cast out, neither fully mortal nor divine. She wanders " +
-                                "endlessly, seeking a way to heal the gods she once served.",
+                BackstoryBrief = "Lyris once served as a warden of the Deepwood, an ancient forest that bordered " +
+                                "the Old Gods' domain. When Manwe's corruption spread, the Deepwood withered and " +
+                                "its creatures twisted into monsters. Lyris alone survived, driven underground " +
+                                "into the dungeon, tracking the source of the corruption.",
 
                 RecruitLevel = 15,
                 RecruitLocation = "Dungeon Level 15 - Forgotten Shrine",
@@ -91,9 +92,9 @@ namespace UsurperRemake.Systems
                 CombatRole = CombatRole.Hybrid,
                 Abilities = new[] { "Precise Shot", "Hunter's Mark", "Nature's Blessing", "Camouflage" },
 
-                PersonalQuestName = "The Light That Was",
-                PersonalQuestDescription = "Help Lyris recover an artifact that could restore Aurelion's true nature.",
-                PersonalQuestLocationHint = "Dungeon floors 80-90 (near Aurelion's domain)",
+                PersonalQuestName = "The Deepwood's Heart",
+                PersonalQuestDescription = "Help Lyris recover a seed from the Deepwood's mother-tree, buried deep in the dungeon.",
+                PersonalQuestLocationHint = "Dungeon floors 80-90",
 
                 RomanceAvailable = true,
                 CanDiePermanently = true,
@@ -385,7 +386,7 @@ namespace UsurperRemake.Systems
         {
             return activeCompanions
                 .Select(id => companions.TryGetValue(id, out var c) ? c : null)
-                .Where(c => c != null)!;
+                .Where(c => c != null && !c.IsDead)!;
         }
 
         /// <summary>
@@ -2049,7 +2050,7 @@ namespace UsurperRemake.Systems
                 CombatRole.Tank => WeaponType.Sword,        // Aldric (Warrior) - swords
                 CombatRole.Damage => WeaponType.Dagger,     // Vex (Assassin) - daggers for backstab
                 CombatRole.Healer => WeaponType.Mace,       // Mira (Cleric) - maces
-                CombatRole.Hybrid => WeaponType.Sword,      // Lyris (Ranger) - swords
+                CombatRole.Hybrid => WeaponType.Bow,        // Lyris (Ranger) - bows
                 CombatRole.Bard => WeaponType.Instrument,   // Melodia (Bard) - instruments for songs
                 _ => WeaponType.Sword
             };
@@ -2378,18 +2379,18 @@ namespace UsurperRemake.Systems
                     {
                         "Lyris tilts her head, listening to something only she can hear.",
                         "\"The air currents here... they flow deeper than they should.\"",
-                        "Lyris traces a glyph on the wall. \"Old magic. Fading.\"",
+                        "Lyris kneels, studying scratch marks on the stone. \"Something nests nearby.\"",
                         "\"Nature doesn't reach down here. That's what makes it sad.\"",
-                        "Lyris closes her eyes briefly. \"The spirits are restless on this floor.\"",
-                        "\"Do you feel it? The stone remembers who built these halls.\"",
+                        "Lyris nocks an arrow without looking up. \"Movement. Two corridors ahead.\"",
+                        "\"These tracks are fresh. We're not the only hunters down here.\"",
                         "Lyris adjusts her bow. \"Something ahead. I can sense it.\"",
-                        "\"Aurelion walked these halls once. I can feel his footprints in the light.\"",
-                        "Lyris hums a melody you almost recognize. Then stops.",
-                        "\"The deeper we go, the closer to the truth.\"",
+                        "\"The Deepwood used to stretch above these tunnels. I can still smell the roots.\"",
+                        "Lyris tests the air with two fingers. \"Stale. Nothing's moved through here in days.\"",
+                        "\"The deeper we go, the closer to the source of the corruption.\"",
                     });
-                    if (afterCombat) pool.Add("Lyris touches a fallen enemy gently. \"Return to the earth.\"");
-                    if (dungeonLevel >= 60) pool.Add("\"We're close to his domain. Aurelion... I'm coming.\"");
-                    if (dungeonLevel >= 80) pool.Add("Lyris's eyes glow faintly. \"The divine and mortal are thin here.\"");
+                    if (afterCombat) pool.Add("Lyris retrieves her arrows from the fallen. \"Waste nothing.\"");
+                    if (dungeonLevel >= 60) pool.Add("\"The corruption is stronger here. We're getting close to its heart.\"");
+                    if (dungeonLevel >= 80) pool.Add("Lyris draws her bowstring tight. \"I can feel the Deepwood's pain from here.\"");
                     break;
 
                 case CompanionId.Mira:

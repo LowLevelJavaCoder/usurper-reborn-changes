@@ -354,7 +354,7 @@ namespace UsurperRemake.Systems
         /// </summary>
         private void GenerateNPCStats(NPC npc, NPCTemplate template)
         {
-            var level = template.StartLevel;
+            var level = npc.Level;
 
             // Base stats increase with level
             npc.Strength = 10 + (level * 5) + random.Next(-5, 6);

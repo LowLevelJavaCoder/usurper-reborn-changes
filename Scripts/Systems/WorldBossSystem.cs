@@ -845,23 +845,59 @@ namespace UsurperRemake.Systems
 
         private async Task ProcessUseItem(Character player, TerminalEmulator terminal)
         {
-            // Simple potion use — Character.Healing is the potion count
-            if (player.Healing > 0)
-            {
-                long healAmount = (long)(player.MaxHP * 0.3);
-                player.HP = Math.Min(player.MaxHP, player.HP + healAmount);
-                player.Healing--;
+            bool hasHealing = player.Healing > 0 && player.HP < player.MaxHP;
+            bool hasMana = player.ManaPotions > 0 && player.Mana < player.MaxMana;
 
-                terminal.SetColor("bright_green");
-                terminal.WriteLine($"  {Loc.Get("world_boss.drink_potion", healAmount, player.HP, player.MaxHP)}");
-                terminal.SetColor("gray");
-                terminal.WriteLine($"  {Loc.Get("world_boss.potions_remaining", player.Healing)}");
-            }
-            else
+            if (!hasHealing && !hasMana)
             {
                 terminal.SetColor("gray");
                 terminal.WriteLine($"  {Loc.Get("ui.no_healing_potions")}");
+                return;
             }
+
+            // If player has both types, let them choose
+            if (hasHealing && hasMana)
+            {
+                terminal.WriteLine($"  {Loc.Get("combat.which_potion")}", "cyan");
+                terminal.WriteLine($"    (H) Healing Potion  ({player.Healing}/{player.MaxPotions})", "green");
+                terminal.WriteLine($"    (M) Mana Potion     ({player.ManaPotions}/{player.MaxManaPotions})", "blue");
+                string choice = await terminal.GetInput("  > ");
+                if (choice.Equals("M", StringComparison.OrdinalIgnoreCase))
+                {
+                    UseManaPotion(player, terminal);
+                    return;
+                }
+                // Default to healing potion
+            }
+            else if (!hasHealing && hasMana)
+            {
+                UseManaPotion(player, terminal);
+                return;
+            }
+
+            // Healing potion
+            long healAmount = (long)(player.MaxHP * 0.3);
+            player.HP = Math.Min(player.MaxHP, player.HP + healAmount);
+            player.Healing--;
+
+            terminal.SetColor("bright_green");
+            terminal.WriteLine($"  {Loc.Get("world_boss.drink_potion", healAmount, player.HP, player.MaxHP)}");
+            terminal.SetColor("gray");
+            terminal.WriteLine($"  {Loc.Get("world_boss.potions_remaining", player.Healing)}");
+        }
+
+        private void UseManaPotion(Character player, TerminalEmulator terminal)
+        {
+            long manaRestore = 30 + player.Level * 5;
+            long manaNeeded = player.MaxMana - player.Mana;
+            long actualRestore = Math.Min(manaRestore, manaNeeded);
+            player.Mana += actualRestore;
+            player.ManaPotions--;
+
+            terminal.SetColor("bright_blue");
+            terminal.WriteLine($"  You drink a mana potion and recover {actualRestore} MP!");
+            terminal.SetColor("gray");
+            terminal.WriteLine($"  Mana potions remaining: {player.ManaPotions}/{player.MaxManaPotions}");
         }
 
         private async Task<long> ProcessClassAbility(Character player, TerminalEmulator terminal,

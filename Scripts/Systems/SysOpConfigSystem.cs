@@ -107,7 +107,8 @@ namespace UsurperRemake.Systems
             // Feature toggles
             GameConfig.DisableOnlinePlay = _config.DisableOnlinePlay;
             // Accessibility: only restore from config if CLI flag did not already enable it
-            if (!GameConfig.ScreenReaderMode)
+            // In MUD mode, SR is per-player (from save data) — don't load server-wide default
+            if (!GameConfig.ScreenReaderMode && !UsurperRemake.BBS.DoorMode.IsOnlineMode)
                 GameConfig.ScreenReaderMode = _config.ScreenReaderMode;
 
             // Online server
