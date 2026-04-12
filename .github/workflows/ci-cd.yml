@@ -675,7 +675,7 @@ jobs:
 
       - name: Install steamcmd
         run: |
-          sudo apt-get update -qq
+          sudo apt-get update -qq || true
           sudo apt-get install -y -qq lib32gcc-s1
           mkdir -p ~/steamcmd && cd ~/steamcmd
           curl -sqL "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz" | tar zxvf -

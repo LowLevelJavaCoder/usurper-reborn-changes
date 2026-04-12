@@ -23,6 +23,7 @@ namespace UsurperRemake.BBS
         private readonly BBSSessionInfo _sessionInfo;
         private bool _disposed = false;
         private bool _usingRawHandle = false; // True if using FileStream fallback
+        private IntPtr _rawSocketHandle = IntPtr.Zero; // Original socket handle from DOOR32.SYS for CloseHandle on dispose
         private string _currentColor = "white";
 
         // Windows API imports for handle validation and duplication
@@ -44,6 +45,9 @@ namespace UsurperRemake.BBS
 
         [DllImport("kernel32.dll")]
         private static extern IntPtr GetCurrentProcess();
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool CloseHandle(IntPtr hObject);
 
         private const int FILE_TYPE_UNKNOWN = 0x0000;
         private const int FILE_TYPE_DISK = 0x0001;
@@ -635,10 +639,11 @@ namespace UsurperRemake.BBS
                 // On Windows: this is a SOCKET handle (UINT_PTR)
                 // On Linux: this is a file descriptor (int)
                 var intPtrHandle = new IntPtr(handle);
+                _rawSocketHandle = intPtrHandle; // Store for CloseHandle on dispose
                 LogVerbose($"IntPtr created: {intPtrHandle}");
 
-                var safeHandle = new SafeSocketHandle(intPtrHandle, ownsHandle: true);
-                LogVerbose($"SafeSocketHandle created (ownsHandle=true). IsInvalid={safeHandle.IsInvalid}, IsClosed={safeHandle.IsClosed}");
+                var safeHandle = new SafeSocketHandle(intPtrHandle, ownsHandle: false);
+                LogVerbose($"SafeSocketHandle created (ownsHandle=false). IsInvalid={safeHandle.IsInvalid}, IsClosed={safeHandle.IsClosed}");
 
                 if (safeHandle.IsInvalid)
                 {
@@ -1295,22 +1300,18 @@ namespace UsurperRemake.BBS
             try { _stream?.Dispose(); } catch { }
             try { _rawHandleStream?.Dispose(); } catch { }
 
-            // Shutdown and close the socket so the BBS can reclaim the handle.
-            // The DOOR32.SYS spec requires the door process to close the inherited socket
-            // before exiting — otherwise the BBS can't reuse the connection and the player
-            // has to fully disconnect to play again.
-            if (_socket != null)
+            // Release our handle reference so the BBS knows the door has exited.
+            // IMPORTANT: We use CloseHandle (not closesocket/Socket.Close/Socket.Shutdown)
+            // because the BBS still needs the TCP connection alive — it shares the socket
+            // via handle inheritance. CloseHandle releases OUR reference without tearing
+            // down the connection. closesocket/Shutdown would send TCP FIN and disconnect
+            // the user from the BBS entirely.
+            if (_rawSocketHandle != IntPtr.Zero && Environment.OSVersion.Platform == PlatformID.Win32NT)
             {
-                try
-                {
-                    if (_socket.Connected)
-                        _socket.Shutdown(SocketShutdown.Both);
-                }
-                catch { }
-                try { _socket.Close(); } catch { }
-                try { _socket.Dispose(); } catch { }
-                _socket = null;
+                try { CloseHandle(_rawSocketHandle); } catch { }
+                _rawSocketHandle = IntPtr.Zero;
             }
+            _socket = null;
         }
 
         #endregion
