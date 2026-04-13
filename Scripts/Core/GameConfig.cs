@@ -9,8 +9,8 @@ using System.Collections.Generic;
 public static partial class GameConfig
 {
     // Version information
-    public const string Version = "0.54.7";
-    public const string VersionName = "The Soul Update";
+    public const string Version = "0.55.0";
+    public const string VersionName = "The Specialist";
     public const string DiscordInvite = "discord.gg/EZhwgDT6Ta";
 
     // Electron graphical client mode — emits JSON events via OSC sequences

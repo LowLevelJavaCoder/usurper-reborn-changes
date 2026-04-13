@@ -818,6 +818,26 @@ public class LevelMasterLocation : BaseLocation
                 break;
         }
 
+        // Apply specialization stat growth bonuses (NPC teammates only, additive)
+        if (player is NPC npc && npc.Specialization != ClassSpecialization.None)
+        {
+            var spec = UsurperRemake.Data.SpecializationData.GetSpec(npc.Specialization);
+            if (spec != null)
+            {
+                player.BaseStrength += spec.BonusStrength;
+                player.BaseConstitution += spec.BonusConstitution;
+                player.BaseMaxHP += spec.BonusMaxHP;
+                player.BaseDefence += spec.BonusDefence;
+                player.BaseIntelligence += spec.BonusIntelligence;
+                player.BaseWisdom += spec.BonusWisdom;
+                player.BaseCharisma += spec.BonusCharisma;
+                player.BaseMaxMana += spec.BonusMaxMana;
+                player.BaseDexterity += spec.BonusDexterity;
+                player.BaseAgility += spec.BonusAgility;
+                player.BaseStamina += spec.BonusStamina;
+            }
+        }
+
         // Recalculate all stats from base values
         player.RecalculateStats();
     }

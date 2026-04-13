@@ -228,12 +228,22 @@ namespace UsurperRemake.Systems
             // Play credits
             await PlayCredits(player, ending, terminal);
 
-            // Offer Immortal Ascension (before NG+)
-            bool ascended = await OfferImmortality(player, ending, terminal);
-            if (ascended) return; // Player became a god — skip NG+
+            // Offer Immortal Ascension or New Game+ — loop until the player picks one
+            while (true)
+            {
+                bool ascended = await OfferImmortality(player, ending, terminal);
+                if (ascended) return; // Player became a god
 
-            // Offer New Game+
-            await OfferNewGamePlus(player, ending, terminal);
+                bool startedNgPlus = await OfferNewGamePlus(player, ending, terminal);
+                if (startedNgPlus) return; // Player started NG+
+
+                // Player declined both — loop back and offer again
+                terminal.WriteLine("");
+                terminal.WriteLine("  You must choose: ascend to godhood or begin the cycle anew.", "bright_yellow");
+                terminal.WriteLine("  There is no going back to the mortal world after defeating Manwe.", "gray");
+                terminal.WriteLine("");
+                await terminal.GetInputAsync("  Press Enter to choose again...");
+            }
         }
 
         #region Ending Sequences
@@ -1344,8 +1354,14 @@ namespace UsurperRemake.Systems
             terminal.WriteLine($"  {Loc.Get("ending.immortal_renounce")}", "gray");
             terminal.WriteLine("");
 
-            var response = await terminal.GetInputAsync(Loc.Get("ending.immortal_ascend_prompt"));
-            if (response.Trim().ToUpper() != "Y") return false;
+            string response;
+            while (true)
+            {
+                response = (await terminal.GetInputAsync(Loc.Get("ending.immortal_ascend_prompt"))).Trim().ToUpper();
+                if (response == "Y" || response == "YES") break;
+                if (response == "N" || response == "NO") return false;
+                terminal.WriteLine("  Please enter Y or N.", "gray");
+            }
 
             // Choose divine name
             terminal.WriteLine("");
@@ -1468,7 +1484,7 @@ namespace UsurperRemake.Systems
 
         #region New Game Plus
 
-        private async Task OfferNewGamePlus(Character player, EndingType ending, TerminalEmulator terminal)
+        private async Task<bool> OfferNewGamePlus(Character player, EndingType ending, TerminalEmulator terminal)
         {
             terminal.Clear();
             terminal.WriteLine("");
@@ -1540,28 +1556,27 @@ namespace UsurperRemake.Systems
             }
             terminal.WriteLine("");
 
-            var response = await terminal.GetInputAsync($"  {Loc.Get("ending.ngplus_begin_prompt")} ");
+            string response;
+            while (true)
+            {
+                response = (await terminal.GetInputAsync($"  {Loc.Get("ending.ngplus_begin_prompt")} ")).Trim().ToUpper();
+                if (response == "Y" || response == "YES" || response == "N" || response == "NO") break;
+                terminal.WriteLine("  Please enter Y or N.", "gray");
+            }
 
-            if (response.ToUpper() == "Y")
+            if (response == "Y" || response == "YES")
             {
                 await CycleSystem.Instance.StartNewCycle(player, ending, terminal);
                 // Signal the game to restart with a new character
                 GameEngine.Instance.PendingNewGamePlus = true;
-            }
-            else
-            {
-                terminal.WriteLine("");
-                terminal.WriteLine($"  {Loc.Get("ending.ngplus_decline_1")}", "bright_magenta");
-                terminal.WriteLine($"  {Loc.Get("ending.ngplus_decline_2")}", "bright_magenta");
-                terminal.WriteLine("");
 
-                await terminal.GetInputAsync($"  {Loc.Get("ending.ngplus_return_prompt")}");
+                // Mark the ending sequence as fully completed
+                StoryProgressionSystem.Instance.SetStoryFlag("ending_sequence_completed", true);
+                try { await SaveSystem.Instance.AutoSave(player); } catch { }
+                return true;
             }
 
-            // Mark the ending sequence as fully completed (player answered the NG+ prompt).
-            // This prevents re-triggering on reconnect if they disconnected mid-sequence.
-            StoryProgressionSystem.Instance.SetStoryFlag("ending_sequence_completed", true);
-            try { await SaveSystem.Instance.AutoSave(player); } catch { /* best effort */ }
+            return false;
         }
 
         #endregion

@@ -96,7 +96,7 @@ public class TeamCornerLocation : BaseLocation
         WriteMenuOption("C", Loc.Get("team.menu_create"), "J", Loc.Get("team.menu_join"));
         WriteMenuOption("Q", Loc.Get("team.menu_quit"), "A", Loc.Get("team.menu_apply"));
         WriteMenuOption("N", Loc.Get("team.menu_recruit_npc"), "2", Loc.Get("team.menu_sack"));
-        WriteMenuOption("G", Loc.Get("team.menu_equip"), "", "");
+        WriteMenuOption("G", Loc.Get("team.menu_equip"), "X", Loc.Get("team.menu_specialize"));
         terminal.WriteLine("");
 
         terminal.SetColor("cyan");
@@ -160,6 +160,7 @@ public class TeamCornerLocation : BaseLocation
         WriteSRMenuOption("N", Loc.Get("team_corner.recruit_npc"));
         WriteSRMenuOption("2", Loc.Get("team_corner.sack"));
         WriteSRMenuOption("G", Loc.Get("team_corner.equip"));
+        WriteSRMenuOption("X", Loc.Get("team_corner.specialize"));
         terminal.WriteLine("");
 
         terminal.SetColor("cyan");
@@ -323,6 +324,10 @@ public class TeamCornerLocation : BaseLocation
 
             case "G":
                 await EquipMember();
+                return false;
+
+            case "X":
+                await SpecializeMember();
                 return false;
 
             case "W":
@@ -635,8 +640,9 @@ public class TeamCornerLocation : BaseLocation
                 else
                     terminal.SetColor("red");
 
+                string specTag = member.Specialization != ClassSpecialization.None ? $" [{member.Specialization}]" : "";
                 string status = member.IsAlive ? Loc.Get("team.status_alive") : (member.IsPermaDead ? Loc.Get("team.status_gone") : Loc.Get("team.status_dead_label"));
-                terminal.WriteLine($"{member.DisplayName,-20} {member.Class,-12} {member.Level,-5} {hpDisplay,-12} {location,-15} {status,-8}");
+                terminal.WriteLine($"{member.DisplayName,-20} {member.Class}{specTag,-12} {member.Level,-5} {hpDisplay,-12} {location,-15} {status,-8}");
             }
 
             terminal.WriteLine("");
@@ -658,9 +664,10 @@ public class TeamCornerLocation : BaseLocation
             // Show NPC members
             foreach (var member in teamMembers)
             {
+                string specTag = member.Specialization != ClassSpecialization.None ? $" [{member.Specialization}]" : "";
                 string status = member.IsAlive ? "" : Loc.Get("team.member_dead_tag");
                 terminal.SetColor("white");
-                terminal.WriteLine($"  {member.DisplayName} - Level {member.Level} {member.ClassName}{status}");
+                terminal.WriteLine($"  {member.DisplayName} - Level {member.Level} {member.ClassName}{specTag}{status}");
             }
         }
     }
@@ -1209,6 +1216,13 @@ public class TeamCornerLocation : BaseLocation
 
         terminal.SetColor("white");
         terminal.WriteLine($"{Loc.Get("status.class")}: {member.ClassName}");
+        if (member.Specialization != ClassSpecialization.None)
+        {
+            var specDef = UsurperRemake.Data.SpecializationData.GetSpec(member.Specialization);
+            terminal.SetColor("cyan");
+            terminal.WriteLine($"{Loc.Get("spec.label")}: {specDef?.Name ?? member.Specialization.ToString()} ({specDef?.Role})");
+            terminal.SetColor("white");
+        }
         terminal.WriteLine($"{Loc.Get("status.race")}: {member.Race}");
         terminal.WriteLine($"{Loc.Get("ui.level")}: {member.Level}");
 
@@ -2600,5 +2614,220 @@ public class TeamCornerLocation : BaseLocation
             terminal.WriteLine(Loc.Get("team.withdrawal_failed"));
         }
         await Task.Delay(1500);
+    }
+
+    private async Task SpecializeMember()
+    {
+        if (string.IsNullOrEmpty(currentPlayer.Team))
+        {
+            terminal.WriteLine("");
+            terminal.SetColor("red");
+            terminal.WriteLine(Loc.Get("team.not_in_team"));
+            terminal.WriteLine("");
+            await Task.Delay(2000);
+            return;
+        }
+
+        // Get NPC team members (not companions, not the player)
+        var allNPCs = NPCSpawnSystem.Instance.ActiveNPCs;
+        var teamMembers = allNPCs
+            .Where(n => n.Team == currentPlayer.Team && n.IsAlive && !n.IsDead)
+            .ToList();
+
+        if (teamMembers.Count == 0)
+        {
+            terminal.WriteLine("");
+            terminal.SetColor("yellow");
+            terminal.WriteLine(Loc.Get("spec.no_team_members"));
+            terminal.WriteLine("");
+            await terminal.PressAnyKey();
+            return;
+        }
+
+        // List team members with current spec
+        terminal.ClearScreen();
+        terminal.SetColor("bright_cyan");
+        terminal.WriteLine(Loc.Get("spec.title"));
+        terminal.WriteLine("");
+
+        for (int i = 0; i < teamMembers.Count; i++)
+        {
+            var member = teamMembers[i];
+            string specLabel = member.Specialization != ClassSpecialization.None
+                ? $"[{member.Specialization}]"
+                : Loc.Get("spec.none_label");
+
+            terminal.SetColor("bright_yellow");
+            terminal.Write($"  {i + 1}. ");
+            terminal.SetColor("white");
+            terminal.Write($"{member.DisplayName} ");
+            terminal.SetColor("gray");
+            terminal.Write($"(Lv {member.Level} {member.ClassName}) ");
+            terminal.SetColor("cyan");
+            terminal.WriteLine(specLabel);
+        }
+
+        terminal.WriteLine("");
+        terminal.SetColor("yellow");
+        string input = await terminal.GetInput(Loc.Get("spec.choose_member"));
+        if (string.IsNullOrWhiteSpace(input)) return;
+
+        if (!int.TryParse(input, out int memberIndex) || memberIndex < 1 || memberIndex > teamMembers.Count)
+        {
+            terminal.SetColor("red");
+            terminal.WriteLine(Loc.Get("spec.invalid_choice"));
+            await Task.Delay(1500);
+            return;
+        }
+
+        var selectedNPC = teamMembers[memberIndex - 1];
+        await ShowSpecOptions(selectedNPC);
+    }
+
+    private async Task ShowSpecOptions(NPC npc)
+    {
+        var specs = UsurperRemake.Data.SpecializationData.GetSpecsForClass(npc.Class);
+
+        if (specs.Count == 0)
+        {
+            terminal.WriteLine("");
+            terminal.SetColor("yellow");
+            terminal.WriteLine(Loc.Get("spec.no_specs_available", npc.ClassName));
+            terminal.WriteLine("");
+            await terminal.PressAnyKey();
+            return;
+        }
+
+        terminal.ClearScreen();
+        terminal.SetColor("bright_cyan");
+        terminal.WriteLine(Loc.Get("spec.choose_spec_title", npc.DisplayName, npc.ClassName));
+        terminal.WriteLine("");
+
+        // Show current spec
+        string currentSpecName = npc.Specialization != ClassSpecialization.None
+            ? npc.Specialization.ToString()
+            : Loc.Get("spec.unspecialized");
+        terminal.SetColor("white");
+        terminal.WriteLine(Loc.Get("spec.current_spec", currentSpecName));
+        terminal.WriteLine("");
+
+        // Option 0: Remove specialization
+        terminal.SetColor("bright_yellow");
+        terminal.Write("  0. ");
+        terminal.SetColor("gray");
+        terminal.WriteLine(Loc.Get("spec.remove_spec"));
+        terminal.WriteLine("");
+
+        // Show available specs with stat growth comparison
+        for (int i = 0; i < specs.Count; i++)
+        {
+            var spec = specs[i];
+            bool isCurrentSpec = npc.Specialization == spec.Spec;
+
+            terminal.SetColor(isCurrentSpec ? "bright_green" : "bright_yellow");
+            terminal.Write($"  {i + 1}. ");
+            terminal.SetColor(isCurrentSpec ? "bright_green" : "white");
+            terminal.Write($"{spec.Name} ");
+            terminal.SetColor("cyan");
+            terminal.Write($"({spec.Role}) ");
+            if (isCurrentSpec)
+            {
+                terminal.SetColor("bright_green");
+                terminal.Write(Loc.Get("spec.active_marker"));
+            }
+            terminal.WriteLine("");
+
+            // Description
+            terminal.SetColor("gray");
+            terminal.WriteLine($"    {Loc.Get(spec.DescriptionKey)}");
+
+            // Stat growth bonuses
+            var bonuses = new List<string>();
+            if (spec.BonusStrength > 0) bonuses.Add($"+{spec.BonusStrength} STR");
+            if (spec.BonusConstitution > 0) bonuses.Add($"+{spec.BonusConstitution} CON");
+            if (spec.BonusMaxHP > 0) bonuses.Add($"+{spec.BonusMaxHP} HP");
+            if (spec.BonusDefence > 0) bonuses.Add($"+{spec.BonusDefence} DEF");
+            if (spec.BonusIntelligence > 0) bonuses.Add($"+{spec.BonusIntelligence} INT");
+            if (spec.BonusWisdom > 0) bonuses.Add($"+{spec.BonusWisdom} WIS");
+            if (spec.BonusCharisma > 0) bonuses.Add($"+{spec.BonusCharisma} CHA");
+            if (spec.BonusMaxMana > 0) bonuses.Add($"+{spec.BonusMaxMana} Mana");
+            if (spec.BonusDexterity > 0) bonuses.Add($"+{spec.BonusDexterity} DEX");
+            if (spec.BonusAgility > 0) bonuses.Add($"+{spec.BonusAgility} AGI");
+            if (spec.BonusStamina > 0) bonuses.Add($"+{spec.BonusStamina} STA");
+
+            if (bonuses.Count > 0)
+            {
+                terminal.SetColor("bright_green");
+                terminal.WriteLine($"    {Loc.Get("spec.per_level")}: {string.Join(", ", bonuses)}");
+            }
+
+            // Healing threshold info for healers
+            if (spec.Role == UsurperRemake.Data.SpecRole.Healer)
+            {
+                terminal.SetColor("bright_magenta");
+                terminal.WriteLine($"    {Loc.Get("spec.heal_threshold", (int)(spec.HealThreshold * 100))}");
+            }
+
+            terminal.WriteLine("");
+        }
+
+        terminal.SetColor("yellow");
+        string choice = await terminal.GetInput(Loc.Get("spec.choose_option"));
+        if (string.IsNullOrWhiteSpace(choice)) return;
+
+        if (!int.TryParse(choice, out int specIndex))
+        {
+            terminal.SetColor("red");
+            terminal.WriteLine(Loc.Get("spec.invalid_choice"));
+            await Task.Delay(1500);
+            return;
+        }
+
+        ClassSpecialization newSpec;
+        if (specIndex == 0)
+        {
+            newSpec = ClassSpecialization.None;
+        }
+        else if (specIndex >= 1 && specIndex <= specs.Count)
+        {
+            newSpec = specs[specIndex - 1].Spec;
+        }
+        else
+        {
+            terminal.SetColor("red");
+            terminal.WriteLine(Loc.Get("spec.invalid_choice"));
+            await Task.Delay(1500);
+            return;
+        }
+
+        // Apply specialization
+        var oldSpec = npc.Specialization;
+        npc.Specialization = newSpec;
+
+        terminal.WriteLine("");
+        if (newSpec == ClassSpecialization.None)
+        {
+            terminal.SetColor("bright_yellow");
+            terminal.WriteLine(Loc.Get("spec.removed", npc.DisplayName));
+        }
+        else
+        {
+            var specDef = UsurperRemake.Data.SpecializationData.GetSpec(newSpec);
+            terminal.SetColor("bright_green");
+            terminal.WriteLine(Loc.Get("spec.set", npc.DisplayName, specDef?.Name ?? newSpec.ToString(), specDef?.Role.ToString() ?? ""));
+        }
+
+        terminal.SetColor("gray");
+        terminal.WriteLine(Loc.Get("spec.future_levels_note"));
+
+        // Save state
+        if (DoorMode.IsOnlineMode && OnlineStateManager.Instance != null)
+        {
+            try { await OnlineStateManager.Instance.SaveAllSharedState(); }
+            catch (Exception ex) { DebugLogger.Instance.LogError("SPEC", $"SaveAllSharedState failed after spec change: {ex.Message}"); }
+        }
+
+        terminal.WriteLine("");
+        await terminal.PressAnyKey();
     }
 }

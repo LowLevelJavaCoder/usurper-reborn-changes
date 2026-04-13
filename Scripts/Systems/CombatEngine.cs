@@ -7376,6 +7376,10 @@ public partial class CombatEngine
                 // already capped it to the player's level — honor that cap)
                 equipment.MinLevel = lootItem.MinLevel;
 
+                // Enforce power-based MinLevel floor BEFORE display — ensures the player
+                // sees the real level requirement, not a stale value that gets overridden later.
+                equipment.EnforceMinLevelFromPower();
+
                 // Apply bonus stats to equipment
                 if (lootItem.Strength != 0) equipment = equipment.WithStrength(lootItem.Strength);
                 if (lootItem.Dexterity != 0) equipment = equipment.WithDexterity(lootItem.Dexterity);
@@ -7461,10 +7465,6 @@ public partial class CombatEngine
                         }
                     }
                 }
-
-                // Enforce power-based MinLevel floor (prevents low-level players
-                // from equipping absurdly powerful gear regardless of source)
-                equipment.EnforceMinLevelFromPower();
 
                 // Register the equipment in the database so it can be looked up later
                 EquipmentDatabase.RegisterDynamic(equipment);
@@ -15271,6 +15271,18 @@ public partial class CombatEngine
         // Other classes with heals are more conservative (below 50% HP)
         double healThreshold = isHealerClass ? 0.70 : 0.50;
 
+        // Override healing behavior from NPC specialization
+        if (teammate is NPC healerNpc && healerNpc.Specialization != ClassSpecialization.None)
+        {
+            var spec = UsurperRemake.Data.SpecializationData.GetSpec(healerNpc.Specialization);
+            if (spec != null)
+            {
+                if (UsurperRemake.Data.SpecializationData.IsHealerSpec(healerNpc.Specialization))
+                    isHealerClass = true;
+                healThreshold = spec.HealThreshold;
+            }
+        }
+
         // Use heal spell if available and target needs it
         if (canHealWithSpells && injuredPercent < healThreshold)
         {
@@ -15696,6 +15708,33 @@ public partial class CombatEngine
             }
         }
 
+        // Apply specialization-based ability filtering (NPC teammates only)
+        UsurperRemake.Data.SpecDefinition? activeSpec = null;
+        if (teammate is NPC specNpc && specNpc.Specialization != ClassSpecialization.None)
+        {
+            activeSpec = UsurperRemake.Data.SpecializationData.GetSpec(specNpc.Specialization);
+            if (activeSpec != null)
+            {
+                // Remove abilities matching restricted types
+                if (activeSpec.RestrictedAbilityTypes.Length > 0)
+                {
+                    availableAbilities = availableAbilities
+                        .Where(a => !activeSpec.RestrictedAbilityTypes.Contains(a.Type))
+                        .ToList();
+                    if (availableAbilities.Count == 0) return false;
+                }
+
+                // Remove specifically disabled ability IDs
+                if (activeSpec.DisabledAbilityIds.Length > 0)
+                {
+                    availableAbilities = availableAbilities
+                        .Where(a => !activeSpec.DisabledAbilityIds.Contains(a.Id))
+                        .ToList();
+                    if (availableAbilities.Count == 0) return false;
+                }
+            }
+        }
+
         // Get or create this teammate's cooldown tracker
         if (!teammateCooldowns.TryGetValue(teammate.DisplayName, out var myCooldowns))
         {
@@ -15735,8 +15774,10 @@ public partial class CombatEngine
             || teammate.Class == CharacterClass.Barbarian;
         bool isTankCompanion = teammate.IsCompanion && teammate.CompanionId.HasValue &&
             UsurperRemake.Systems.CompanionSystem.Instance?.GetCompanion(teammate.CompanionId.Value)?.CombatRole == UsurperRemake.Systems.CombatRole.Tank;
+        // Spec-based tank detection (Protection Warrior, Juggernaut Barbarian)
+        bool isTankSpec = teammate is NPC tankNpc && UsurperRemake.Data.SpecializationData.IsTankSpec(tankNpc.Specialization);
 
-        if (isTankClass || isTankCompanion)
+        if (isTankClass || isTankCompanion || isTankSpec)
         {
             bool anyTaunted = livingMonsters.Any(m => !string.IsNullOrEmpty(m.TauntedBy) && m.TauntRoundsLeft > 0);
             if (!anyTaunted)
@@ -15749,9 +15790,13 @@ public partial class CombatEngine
             }
         }
 
-        // 50% chance to use an ability each round (was 30% — too conservative)
+        // Ability use chance: default 50%, overridden by spec
+        int abilityUsePercent = 50;
+        if (activeSpec != null)
+            abilityUsePercent = (int)(activeSpec.AbilityUseChance * 100);
+
         // Skip this gate if we already chose a priority ability above
-        if (chosenAbility == null && random.Next(100) >= 50) return false;
+        if (chosenAbility == null && random.Next(100) >= abilityUsePercent) return false;
 
         // Categorize available abilities
         var attackAbilities = affordableAbilities
@@ -15791,16 +15836,30 @@ public partial class CombatEngine
         // No situational pick — weighted random from ALL ability types
         if (chosenAbility == null && affordableAbilities.Count > 0)
         {
-            // 65% attack/debuff, 25% buff/defense, 10% heal (if categories exist)
-            int roll = random.Next(100);
             List<ClassAbilitySystem.ClassAbility> pool;
 
-            if (roll < 65 && attackAbilities.Count > 0)
-                pool = attackAbilities;
-            else if (roll < 90 && buffDefenseAbilities.Count > 0)
-                pool = buffDefenseAbilities;
+            // Spec-preferred ability weighting: 75% chance to pick from preferred types
+            if (activeSpec?.PreferredAbilityTypes.Length > 0)
+            {
+                var preferredAbilities = affordableAbilities
+                    .Where(a => activeSpec.PreferredAbilityTypes.Contains(a.Type))
+                    .ToList();
+                if (preferredAbilities.Count > 0 && random.Next(100) < 75)
+                    pool = preferredAbilities;
+                else
+                    pool = affordableAbilities;
+            }
             else
-                pool = affordableAbilities; // fallback to any ability
+            {
+                // Default weighting: 65% attack/debuff, 25% buff/defense, 10% heal
+                int roll = random.Next(100);
+                if (roll < 65 && attackAbilities.Count > 0)
+                    pool = attackAbilities;
+                else if (roll < 90 && buffDefenseAbilities.Count > 0)
+                    pool = buffDefenseAbilities;
+                else
+                    pool = affordableAbilities;
+            }
 
             // Weighted random pick: higher-level abilities are more likely but not guaranteed
             // Weight = LevelRequired + 10 (so level 1 ability has weight 11, level 20 has 30)
@@ -24281,6 +24340,10 @@ public partial class CombatEngine
     /// </summary>
     private static bool IsHealerClass(Character c)
     {
+        // Check spec-based healer role first (NPC teammates)
+        if (c is NPC specNpc && UsurperRemake.Data.SpecializationData.IsHealerSpec(specNpc.Specialization))
+            return true;
+
         return c.Class == CharacterClass.Cleric || c.Class == CharacterClass.Paladin ||
                c.Class == CharacterClass.Bard || c.Class == CharacterClass.Wavecaller ||
                c.Class == CharacterClass.Abysswarden;

@@ -5195,6 +5195,7 @@ public partial class GameEngine
                 npc.KnownCharacters = new List<string>(data.KnownCharacters);
             }
             npc.GangId = data.GangId ?? "";
+            npc.Specialization = data.Specialization;
 
             // Migrate: Assign faction to NPCs that don't have one (legacy save compatibility)
             if (!npc.NPCFaction.HasValue)

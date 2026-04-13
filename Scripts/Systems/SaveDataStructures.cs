@@ -809,6 +809,9 @@ namespace UsurperRemake.Systems
         public bool IsHostile { get; set; }
         public List<string> KnownCharacters { get; set; } = new();
         public string GangId { get; set; } = "";
+
+        // Class specialization
+        public ClassSpecialization Specialization { get; set; }
     }
 
     /// <summary>

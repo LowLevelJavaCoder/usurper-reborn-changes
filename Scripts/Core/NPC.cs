@@ -41,6 +41,9 @@ public partial class NPC : Character
     public EmotionalState? EmotionalState { get; set; }
     public GoalSystem? Goals { get; set; }
     
+    // Class specialization (NPC teammates only)
+    public ClassSpecialization Specialization { get; set; } = ClassSpecialization.None;
+
     // NPC behavior settings
     public string Archetype { get; set; } = "citizen";        // thug, merchant, guard, priest, etc.
     public override string CurrentLocation { get; set; } = "Main Street";

@@ -1966,6 +1966,63 @@ public enum CharacterClass
 }
 
 /// <summary>
+/// NPC class specializations — 2 per base class, 24 total.
+/// Players assign these to NPC teammates to change combat AI and stat growth.
+/// </summary>
+public enum ClassSpecialization
+{
+    None = 0,
+
+    // Warrior
+    Arms,           // DPS — offensive melee
+    Protection,     // Tank — defensive, taunt priority
+
+    // Paladin
+    Retribution,    // DPS — holy damage
+    Holy,           // Healer — aggressive healing
+
+    // Ranger
+    Marksmanship,   // DPS — ranged precision
+    Survival,       // Utility — traps, debuffs
+
+    // Assassin
+    Subtlety,       // DPS — burst damage
+    Toxicology,     // Debuff — poison focus
+
+    // Barbarian
+    Berserker,      // DPS — raw damage
+    Juggernaut,     // Tank — high HP, taunt
+
+    // Cleric
+    Smite,          // DPS — offensive caster
+    Restoration,    // Healer — aggressive healing
+
+    // Magician
+    Destruction,    // DPS — spell damage
+    Arcane,         // Utility — buffs, debuffs
+
+    // Sage
+    Elementalist,   // DPS — elemental damage
+    Mystic,         // Healer — healing + buffs
+
+    // Bard
+    Virtuoso,       // DPS — performance attacks
+    Minstrel,       // Healer — song healing
+
+    // Alchemist
+    Demolition,     // DPS — bomb damage
+    Apothecary,     // Healer — potion healing
+
+    // Jester
+    Chaos,          // DPS — random damage
+    Trickster,      // Debuff — confusion, weaken
+
+    // Mystic Shaman
+    Elemental,      // DPS — elemental totem damage
+    Spiritwalker    // Healer — spirit healing
+}
+
+/// <summary>
 /// Object types from Pascal ObjType enum
 /// </summary>
 public enum ObjType

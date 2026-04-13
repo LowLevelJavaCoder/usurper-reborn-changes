@@ -3176,7 +3176,8 @@ public class InnLocation : BaseLocation
         }
 
         // Show abilities from class ability system (matches toggle menu)
-        var abilityCharClass = companion.CombatRole switch
+        var abilityCharClass = companion.Id == UsurperRemake.Systems.CompanionId.Lyris ? CharacterClass.Ranger :
+        companion.CombatRole switch
         {
             CombatRole.Tank => CharacterClass.Warrior,
             CombatRole.Healer => CharacterClass.Cleric,
@@ -4415,7 +4416,8 @@ public class InnLocation : BaseLocation
     private async Task ManageCompanionAbilities(Companion companion)
     {
         // Map CombatRole to CharacterClass (same as GetCompanionsAsCharacters)
-        var charClass = companion.CombatRole switch
+        var charClass = companion.Id == UsurperRemake.Systems.CompanionId.Lyris ? CharacterClass.Ranger :
+        companion.CombatRole switch
         {
             CombatRole.Tank => CharacterClass.Warrior,
             CombatRole.Healer => CharacterClass.Cleric,
@@ -4461,7 +4463,7 @@ public class InnLocation : BaseLocation
                 terminal.SetColor("darkgray");
                 terminal.Write($" {ability.StaminaCost,2} ST  Lv{ability.LevelRequired,-3}  ");
                 terminal.SetColor(isDisabled ? "darkgray" : "gray");
-                if (IsScreenReader || ability.Description.Length <= 30)
+                if (IsScreenReader || ability.Description.Length <= 35)
                 {
                     // Screen reader: show full description (no truncation, SR doesn't care about columns)
                     // Short descriptions: show as-is
@@ -4469,10 +4471,12 @@ public class InnLocation : BaseLocation
                 }
                 else
                 {
-                    // Visual mode: truncate and wrap to next line
-                    terminal.WriteLine(ability.Description[..30] + "...");
+                    // Visual mode: wrap at word boundary
+                    int breakAt = ability.Description.LastIndexOf(' ', 35);
+                    if (breakAt <= 10) breakAt = 35; // No good break point — force at 35
+                    terminal.WriteLine(ability.Description[..breakAt]);
                     terminal.SetColor("dark_gray");
-                    terminal.WriteLine($"        {ability.Description[30..]}");
+                    terminal.WriteLine($"        {ability.Description[breakAt..].TrimStart()}");
                 }
             }
 

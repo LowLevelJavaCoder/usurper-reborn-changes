@@ -1300,7 +1300,10 @@ namespace UsurperRemake.Systems
                     // Hostility, social graph, and gang affiliation
                     IsHostile = npc.IsHostile,
                     KnownCharacters = npc.KnownCharacters?.ToList() ?? new List<string>(),
-                    GangId = npc.GangId ?? ""
+                    GangId = npc.GangId ?? "",
+
+                    // Class specialization
+                    Specialization = npc.Specialization
                 });
             }
 

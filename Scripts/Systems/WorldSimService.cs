@@ -1539,6 +1539,7 @@ namespace UsurperRemake.Systems
                 npc.RoleStabilityTicks = data.RoleStabilityTicks;
                 npc.IsHostile = data.IsHostile;
                 npc.GangId = data.GangId ?? "";
+                npc.Specialization = data.Specialization;
 
                 if (data.RecentDialogueIds?.Count > 0)
                 {
