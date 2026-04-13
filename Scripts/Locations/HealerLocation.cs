@@ -161,8 +161,8 @@ public class HealerLocation : BaseLocation
         ShowBBSNPCs();
         // Menu rows
         ShowBBSMenuRow(("H", "bright_yellow", Loc.Get("healer.heal")), ("F", "bright_yellow", Loc.Get("healer.full_heal")), ("B", "bright_yellow", Loc.Get("healer.buy_potions")), ("M", "bright_yellow", Loc.Get("healer.mana_potions")));
-        ShowBBSMenuRow(("P", "bright_yellow", Loc.Get("healer.cure_poison")), ("C", "bright_yellow", Loc.Get("healer.cure_disease")), ("D", "bright_yellow", Loc.Get("healer.decurse")));
-        ShowBBSMenuRow(("N", "bright_yellow", Loc.Get("healer.buy_antidotes")), ("A", "bright_yellow", Loc.Get("healer.addiction")), ("S", "bright_yellow", Loc.Get("healer.status")), ("R", "bright_yellow", Loc.Get("healer.return")));
+        ShowBBSMenuRow(("P", "bright_yellow", Loc.Get("healer.cure_poison")), ("C", "bright_yellow", Loc.Get("healer.cure_disease")), ("D", "bright_yellow", Loc.Get("healer.decurse")), ("N", "bright_yellow", Loc.Get("healer.buy_antidotes")));
+        ShowBBSMenuRow(("A", "bright_yellow", Loc.Get("healer.addiction")), ("S", "bright_yellow", Loc.Get("healer.status")), ("R", "bright_yellow", Loc.Get("healer.return")));
         ShowBBSFooter();
     }
 
@@ -368,7 +368,16 @@ public class HealerLocation : BaseLocation
         terminal.SetColor("darkgray");
         terminal.Write("]");
         terminal.SetColor("white");
-        terminal.WriteLine(Loc.Get("healer.menu_decurse_suffix"));
+        terminal.Write(Loc.Get("healer.menu_decurse_suffix"));
+
+        terminal.SetColor("darkgray");
+        terminal.Write("[");
+        terminal.SetColor("bright_yellow");
+        terminal.Write("N");
+        terminal.SetColor("darkgray");
+        terminal.Write("]");
+        terminal.SetColor("white");
+        terminal.WriteLine(Loc.Get("healer.menu_antidotes_suffix"));
 
         // Row 3 - Addiction & Navigation
         terminal.SetColor("darkgray");

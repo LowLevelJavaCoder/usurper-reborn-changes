@@ -95,7 +95,18 @@ namespace UsurperRemake.BBS
             set
             {
                 if (value && !_isDisconnected)
-                    UsurperRemake.Systems.DebugLogger.Instance.LogWarning("BBS", "Connection lost detected — flagging for disconnect");
+                {
+                    var st = new System.Diagnostics.StackTrace(true);
+                    var frames = new System.Text.StringBuilder();
+                    for (int i = 1; i < Math.Min(st.FrameCount, 6); i++)
+                    {
+                        var f = st.GetFrame(i);
+                        if (f != null)
+                            frames.Append($" <- {f.GetMethod()?.DeclaringType?.Name}.{f.GetMethod()?.Name}:{f.GetFileLineNumber()}");
+                    }
+                    UsurperRemake.Systems.DebugLogger.Instance.LogWarning("BBS", $"Connection lost (thread {Environment.CurrentManagedThreadId}){frames}");
+                }
+
                 _isDisconnected = value;
             }
         }
@@ -800,15 +811,27 @@ namespace UsurperRemake.BBS
                 {
                     UsurperRemake.Systems.DebugLogger.Instance.LogWarning("BBS", "Failed to initialize socket terminal");
 
-                    // Fall back to local mode
+                    // Socket handle is invalid (common on door relaunch — BBS reuses the handle
+                    // but the previous process exit closed it). Fall back to stdio mode if the
+                    // BBS is piping stdin/stdout, otherwise fall back to local console.
                     if (_sessionInfo.CommType != ConnectionType.Local)
                     {
-                        UsurperRemake.Systems.DebugLogger.Instance.LogInfo("BBS", "Falling back to local console mode");
-                        if (_verboseMode)
-                        {
-                            UsurperRemake.Systems.DebugLogger.Instance.LogDebug("BBS", "Socket initialization failed. (continuing...)");
-                        }
+                        _forceStdio = true;
                         _sessionInfo.CommType = ConnectionType.Local;
+                        UsurperRemake.Systems.DebugLogger.Instance.LogInfo("BBS",
+                            "Socket handle invalid — falling back to Standard I/O mode (stdin/stdout)");
+
+                        // Set CP437 encoding for BBS terminal output
+                        if (!_mudServerMode && !_mudRelayMode && !_worldSimMode)
+                        {
+                            try
+                            {
+                                System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
+                                Console.OutputEncoding = System.Text.Encoding.GetEncoding(437);
+                                Console.InputEncoding = System.Text.Encoding.GetEncoding(437);
+                            }
+                            catch { }
+                        }
                     }
                 }
 

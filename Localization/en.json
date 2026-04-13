@@ -18132,5 +18132,6 @@
   "chat.tell_usage": "Usage: /tell <player> <message>",
   "encounter.stranger_waves_off": "The stranger waves you off. \"We've talked enough for today. Come back tomorrow.\"",
   "inn.seth_says": "Seth Able: \"{0}\"",
-  "inn.bartender_enough_food": "The bartender shakes his head. \"You've eaten enough for today, friend.\""
+  "inn.bartender_enough_food": "The bartender shakes his head. \"You've eaten enough for today, friend.\"",
+  "healer.menu_antidotes_suffix": " Buy Antidotes  "
 }

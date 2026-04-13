@@ -3624,7 +3624,8 @@ public class InnLocation : BaseLocation
         {
             Name2 = companion.Name,
             Level = companion.Level,
-            Class = companion.CombatRole switch
+            Class = companion.Id == UsurperRemake.Systems.CompanionId.Lyris ? CharacterClass.Ranger :
+            companion.CombatRole switch
             {
                 CombatRole.Tank => CharacterClass.Warrior,
                 CombatRole.Healer => CharacterClass.Cleric,
@@ -4460,7 +4461,19 @@ public class InnLocation : BaseLocation
                 terminal.SetColor("darkgray");
                 terminal.Write($" {ability.StaminaCost,2} ST  Lv{ability.LevelRequired,-3}  ");
                 terminal.SetColor(isDisabled ? "darkgray" : "gray");
-                terminal.WriteLine(ability.Description.Length > 30 ? ability.Description[..30] + "..." : ability.Description);
+                if (IsScreenReader || ability.Description.Length <= 30)
+                {
+                    // Screen reader: show full description (no truncation, SR doesn't care about columns)
+                    // Short descriptions: show as-is
+                    terminal.WriteLine(ability.Description);
+                }
+                else
+                {
+                    // Visual mode: truncate and wrap to next line
+                    terminal.WriteLine(ability.Description[..30] + "...");
+                    terminal.SetColor("dark_gray");
+                    terminal.WriteLine($"        {ability.Description[30..]}");
+                }
             }
 
             terminal.WriteLine("");

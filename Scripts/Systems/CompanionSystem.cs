@@ -628,7 +628,10 @@ namespace UsurperRemake.Systems
                     Level = companion.Level,
                     Healing = companion.HealingPotions,
                     ManaPotions = companion.ManaPotions,
-                    Class = companion.CombatRole switch
+                    // Map companion combat role to a character class for abilities/equipment.
+                    // Lyris is special: she uses CombatRole.Damage for stat growth but is a Ranger.
+                    Class = companion.Id == CompanionId.Lyris ? CharacterClass.Ranger :
+                    companion.CombatRole switch
                     {
                         CombatRole.Tank => CharacterClass.Warrior,
                         CombatRole.Healer => CharacterClass.Cleric,

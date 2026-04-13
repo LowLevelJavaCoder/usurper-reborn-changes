@@ -1477,23 +1477,38 @@ namespace UsurperRemake.Systems
             };
             if (baseReduction <= 0) return 0;
 
-            // Check weapon for divine armor bypass
-            var weapon = player.GetEquipment(EquipmentSlot.MainHand);
-            if (weapon?.Name == null) return baseReduction;
+            // Check BOTH main hand and off-hand for divine armor bypass
+            var mainHand = player.GetEquipment(EquipmentSlot.MainHand);
+            var offHand = player.GetEquipment(EquipmentSlot.OffHand);
 
-            // Artifact weapons (from Old God drops) fully bypass divine armor
-            // Must be currently equipped — collecting the artifact isn't enough
-            if (weapon.Name.Contains("Artifact") || weapon.Name.Contains("Godforged") ||
-                 weapon.Name.Contains("Sunforged") || weapon.Name.Contains("Voidtouched"))
+            // Check if either weapon is an artifact (full bypass)
+            foreach (var weapon in new[] { mainHand, offHand })
             {
-                return 0; // Full bypass
+                if (weapon?.Name != null &&
+                    (weapon.Name.Contains("Artifact") || weapon.Name.Contains("Godforged") ||
+                     weapon.Name.Contains("Sunforged") || weapon.Name.Contains("Voidtouched")))
+                {
+                    return 0; // Full bypass
+                }
             }
 
-            // Enchanted weapons only partially bypass divine armor (50% reduction instead of 100%)
-            if (weapon.GetEnchantmentCount() > 0)
+            // Check if either weapon has any enchantment (partial bypass)
+            bool hasEnchantment = false;
+            foreach (var weapon in new[] { mainHand, offHand })
+            {
+                if (weapon == null) continue;
+                if (weapon.HasFireEnchant || weapon.HasFrostEnchant || weapon.HasLightningEnchant ||
+                    weapon.HasPoisonEnchant || weapon.HasHolyEnchant || weapon.HasShadowEnchant ||
+                    weapon.GetEnchantmentCount() > 0)
+                {
+                    hasEnchantment = true;
+                    break;
+                }
+            }
+            if (hasEnchantment)
                 return baseReduction * (1.0 - GameConfig.BossDivineArmorEnchantedBypass);
 
-            // No enchantments — full divine armor penalty
+            // No enchantments on either weapon — full divine armor penalty
             return baseReduction;
         }
 

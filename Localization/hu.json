@@ -18132,5 +18132,6 @@
   "chat.tell_usage": "Használat: /tell <játékos> <üzenet>",
   "encounter.stranger_waves_off": "Az idegen elintéz. \"Eleget beszéltünk mára. Gyere vissza holnap.\"",
   "inn.seth_says": "Seth Able: \"{0}\"",
-  "inn.bartender_enough_food": "A kocsmáros megrázza a fejét. \"Eleget ettél mára, barátom.\""
+  "inn.bartender_enough_food": "A kocsmáros megrázza a fejét. \"Eleget ettél mára, barátom.\"",
+  "healer.menu_antidotes_suffix": " Ellenméreg Vásárlás"
 }

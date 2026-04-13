@@ -26,6 +26,11 @@ namespace UsurperConsole
         [DllImport("Kernel32")]
         private static extern bool SetConsoleCtrlHandler(ConsoleCtrlHandlerDelegate handler, bool add);
 
+        // Native ExitProcess — terminates without running .NET finalizers.
+        // Prevents Socket finalizers from calling closesocket() on inherited BBS handles.
+        [DllImport("kernel32.dll", EntryPoint = "ExitProcess")]
+        private static extern void NativeExitProcess(uint uExitCode);
+
         // Windows API for enabling ANSI escape code processing in cmd.exe/PowerShell
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern IntPtr GetStdHandle(int nStdHandle);
@@ -415,10 +420,20 @@ namespace UsurperConsole
                 DoorMode.Shutdown();
                 SteamIntegration.Shutdown();
 
-                // Force process exit to ensure BBS regains control immediately.
-                // Without this, background threads (worldsim, timers, heartbeat) can keep
-                // the process alive after the game ends, leaving the BBS caller stuck.
-                Environment.Exit(0);
+                // Use native ExitProcess to terminate WITHOUT running .NET finalizers.
+                // Environment.Exit(0) runs finalizers, which causes .NET's internal Socket
+                // infrastructure to call closesocket()/Shutdown() on inherited handles.
+                // This kills the BBS's TCP connection and prevents the door from being
+                // relaunched without a full BBS reconnect. ExitProcess skips all .NET
+                // cleanup — the OS closes handles cleanly without sending TCP shutdown signals.
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                {
+                    NativeExitProcess(0);
+                }
+                else
+                {
+                    Environment.Exit(0);
+                }
             }
         }
 

@@ -23,6 +23,8 @@ namespace UsurperRemake.BBS
         private readonly BBSSessionInfo _sessionInfo;
         private bool _disposed = false;
         private bool _usingRawHandle = false; // True if using FileStream fallback
+        private bool _fallbackToConsole = false; // True if socket writes failed and we're using Console I/O
+        private bool _usingNativeIO = false; // True if using raw Win32 WriteFile/ReadFile (no .NET wrappers)
         private IntPtr _rawSocketHandle = IntPtr.Zero; // Original socket handle from DOOR32.SYS for CloseHandle on dispose
         private string _currentColor = "white";
 
@@ -48,6 +50,25 @@ namespace UsurperRemake.BBS
 
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool CloseHandle(IntPtr hObject);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool WriteFile(IntPtr hFile, byte[] lpBuffer, uint nNumberOfBytesToWrite, out uint lpNumberOfBytesWritten, IntPtr lpOverlapped);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool ReadFile(IntPtr hFile, byte[] lpBuffer, uint nNumberOfBytesToRead, out uint lpNumberOfBytesRead, IntPtr lpOverlapped);
+
+        // Winsock2 — required for socket handles (WriteFile/ReadFile don't work on sockets)
+        [DllImport("ws2_32.dll", SetLastError = true)]
+        private static extern int send(IntPtr socket, byte[] buf, int len, int flags);
+
+        [DllImport("ws2_32.dll", SetLastError = true)]
+        private static extern int recv(IntPtr socket, byte[] buf, int len, int flags);
+
+        [DllImport("ws2_32.dll", SetLastError = true)]
+        private static extern int WSAStartup(ushort wVersionRequested, byte[] lpWSAData);
+
+        [DllImport("ws2_32.dll", SetLastError = true)]
+        private static extern int WSACleanup();
 
         private const int FILE_TYPE_UNKNOWN = 0x0000;
         private const int FILE_TYPE_DISK = 0x0001;
@@ -330,7 +351,51 @@ namespace UsurperRemake.BBS
 
             try
             {
-                // Create socket from inherited handle
+                // In BBS door mode, use raw Win32 WriteFile/ReadFile on the inherited handle.
+                // .NET's Socket and FileStream wrappers both corrupt the handle state in ways
+                // that prevent the BBS from reusing the socket for subsequent door launches.
+                // Raw Win32 I/O matches how traditional C/C++ door programs work.
+                if (DoorMode.IsInDoorMode && RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                {
+                    LogVerbose($"BBS door mode: using native Winsock I/O on handle {_sessionInfo.SocketHandle}");
+
+                    // Initialize Winsock (required before send/recv can be used)
+                    var wsaData = new byte[408]; // WSADATA structure
+                    int wsaResult = WSAStartup(0x0202, wsaData); // Request Winsock 2.2
+                    if (wsaResult != 0)
+                    {
+                        LogVerbose($"WSAStartup failed with error {wsaResult} — falling back to .NET Socket");
+                    }
+                    else
+                    {
+                        LogVerbose("WSAStartup succeeded (Winsock 2.2)");
+                    }
+
+                    _rawSocketHandle = new IntPtr(_sessionInfo.SocketHandle);
+                    _usingNativeIO = true;
+
+                    // Force ANSI emulation — native I/O means direct socket to a telnet client
+                    // which always supports ANSI. The DOOR32.SYS emulation field may be wrong
+                    // (e.g., Mystic auto-detects ASCII when the terminal detection times out).
+                    _sessionInfo.Emulation = TerminalEmulation.ANSI;
+                    _sessionInfo.GraphicsEnabled = true;
+
+                    // Quick test: verify handle with zero-length send
+                    int testResult = send(_rawSocketHandle, Array.Empty<byte>(), 0, 0);
+                    if (testResult >= 0)
+                    {
+                        LogVerbose("Native handle verified — send() succeeded");
+                    }
+                    else
+                    {
+                        int err = Marshal.GetLastWin32Error();
+                        LogVerbose($"Native handle test: send() returned {testResult} (WSA error {err}) — continuing anyway");
+                    }
+
+                    return true;
+                }
+
+                // Create socket from inherited handle (non-door mode, or raw handle failed)
                 LogVerbose($"Attempting to create socket from handle {_sessionInfo.SocketHandle}...");
                 _socket = CreateSocketFromHandle(_sessionInfo.SocketHandle);
 
@@ -339,7 +404,7 @@ namespace UsurperRemake.BBS
                     LogVerbose("CreateSocketFromHandle returned null");
 
                     // Try fallback to raw handle I/O on Windows
-                    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                    if (!DoorMode.IsInDoorMode && RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
                     {
                         LogVerbose("Trying raw handle fallback for Windows...");
                         if (TryInitializeRawHandle(_sessionInfo.SocketHandle))
@@ -369,6 +434,18 @@ namespace UsurperRemake.BBS
 
                 _reader = new StreamReader(_stream, Encoding.ASCII);
                 _writer = new StreamWriter(_stream, Encoding.ASCII) { AutoFlush = true };
+
+                // CRITICAL: Suppress finalizers on all socket/stream objects.
+                // When Environment.Exit(0) runs, the .NET runtime runs finalizers.
+                // Socket's finalizer calls Shutdown(Both) which sends TCP FIN and kills
+                // the connection. The BBS reuses this socket for subsequent door launches —
+                // if we kill the connection, the next launch fails with write errors.
+                // Suppressing finalizers means the OS just closes the handle on process exit
+                // without sending any TCP shutdown signals.
+                GC.SuppressFinalize(_socket);
+                GC.SuppressFinalize(_stream);
+                GC.SuppressFinalize(_reader);
+                GC.SuppressFinalize(_writer);
 
                 LogVerbose("Socket initialization complete - verifying socket");
 
@@ -418,13 +495,19 @@ namespace UsurperRemake.BBS
                     return false;
                 }
 
-                // Send telnet negotiation only for confirmed TCP sockets (not pipes/SSH)
-                // This tells the telnet client: "I will echo your keystrokes" and
-                // "I support character-at-a-time mode" - essential for BBS door games
-                if (_socket != null && (_socket.AddressFamily == AddressFamily.InterNetwork
+                // Skip telnet negotiation in BBS door mode — the BBS has already
+                // negotiated ECHO/SGA with the client. Sending IAC WILL ECHO/SGA again
+                // can confuse the BBS and corrupt the connection on subsequent door launches.
+                // Only send negotiation for direct MUD server connections (non-door mode).
+                if (!DoorMode.IsInDoorMode && _socket != null &&
+                    (_socket.AddressFamily == AddressFamily.InterNetwork
                     || _socket.AddressFamily == AddressFamily.InterNetworkV6))
                 {
                     SendTelnetNegotiation();
+                }
+                else
+                {
+                    LogVerbose("Skipping telnet negotiation (BBS door mode — BBS handles negotiation)");
                 }
 
                 return true;
@@ -709,6 +792,32 @@ namespace UsurperRemake.BBS
                 return;
             }
 
+            // Native Winsock I/O mode (BBS door — no .NET wrappers)
+            if (_usingNativeIO && _rawSocketHandle != IntPtr.Zero)
+            {
+                try
+                {
+                    var bytes = ConvertToCp437(text);
+                    int sent = send(_rawSocketHandle, bytes, bytes.Length, 0);
+                    if (sent < 0)
+                    {
+                        int err = Marshal.GetLastWin32Error();
+                        if (!_fallbackToConsole)
+                        {
+                            _fallbackToConsole = true;
+                            Console.Error.WriteLine($"Native send() failed (WSA error {err}) — falling back to console");
+                        }
+                        Console.Write(text);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"Native write error: {ex.Message}");
+                    DoorMode.IsDisconnected = true;
+                }
+                return;
+            }
+
             // Use raw handle mode if active
             if (_usingRawHandle && _rawHandleStream != null)
             {
@@ -740,8 +849,15 @@ namespace UsurperRemake.BBS
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"Socket write error: {ex.Message}");
-                DoorMode.IsDisconnected = true;
+                if (!_fallbackToConsole)
+                {
+                    _fallbackToConsole = true;
+                    Console.Error.WriteLine($"Socket write failed — falling back to console I/O: {ex.Message}");
+                    UsurperRemake.Systems.DebugLogger.Instance.LogWarning("SOCKET",
+                        $"Socket write failed on handle {_sessionInfo.SocketHandle} — switching to console I/O fallback");
+                }
+                // Fallback: write to Console (which the BBS may be piping)
+                try { Console.Write(text); } catch { DoorMode.IsDisconnected = true; }
             }
         }
 
@@ -847,6 +963,18 @@ namespace UsurperRemake.BBS
                 return;
             }
 
+            // Native Winsock I/O mode
+            if (_usingNativeIO && _rawSocketHandle != IntPtr.Zero)
+            {
+                try
+                {
+                    var bytes = Encoding.ASCII.GetBytes(data);
+                    send(_rawSocketHandle, bytes, bytes.Length, 0);
+                }
+                catch { DoorMode.IsDisconnected = true; }
+                return;
+            }
+
             // Use raw handle mode if active
             if (_usingRawHandle && _rawHandleStream != null)
             {
@@ -898,6 +1026,30 @@ namespace UsurperRemake.BBS
 
         #endregion
 
+        /// <summary>
+        /// Drain any buffered control characters (\r, \n, IAC) from the native socket.
+        /// Called at the start of every input method to prevent trailing bytes from
+        /// telnet line mode (client sends "r\r\n" for a single keypress) from being
+        /// interpreted as the next input.
+        /// </summary>
+        private void DrainNativeInputBuffer()
+        {
+            if (!_usingNativeIO || _rawSocketHandle == IntPtr.Zero) return;
+            var buf = new byte[1];
+            // Non-blocking recv — consume any \r, \n, or IAC bytes sitting in the buffer
+            for (int i = 0; i < 10; i++) // Max 10 bytes to prevent infinite loop
+            {
+                int n = recv(_rawSocketHandle, buf, 1, 2); // MSG_PEEK = 2
+                if (n <= 0) break; // Nothing in buffer
+                if (buf[0] == '\r' || buf[0] == '\n' || buf[0] == 0xFF || buf[0] == 0)
+                {
+                    recv(_rawSocketHandle, buf, 1, 0); // Actually consume it
+                    continue;
+                }
+                break; // Real data — stop draining
+            }
+        }
+
         #region Input Methods
 
         public async Task<string> GetInputAsync(string prompt = "")
@@ -908,6 +1060,60 @@ namespace UsurperRemake.BBS
             if (_sessionInfo.CommType == ConnectionType.Local)
             {
                 return Console.ReadLine() ?? "";
+            }
+
+            // Native Winsock I/O mode (BBS door)
+            if (_usingNativeIO && _rawSocketHandle != IntPtr.Zero)
+            {
+                DrainNativeInputBuffer(); // Flush leftover \r\n from previous input
+                try
+                {
+                    var sb = new System.Text.StringBuilder();
+                    var buf = new byte[1];
+                    while (true)
+                    {
+                        int n = recv(_rawSocketHandle, buf, 1, 0);
+                        if (n > 0)
+                        {
+                            // Got a byte — fall through to process it
+                        }
+                        else if (n == 0)
+                        {
+                            DoorMode.IsDisconnected = true;
+                            break;
+                        }
+                        else
+                        {
+                            int wsaErr = Marshal.GetLastWin32Error();
+                            if (wsaErr == 10035) { await Task.Delay(50); continue; }
+                            DoorMode.IsDisconnected = true;
+                            break;
+                        }
+                        char ch = (char)buf[0];
+                        if (ch == '\r' || ch == '\n')
+                        {
+                            send(_rawSocketHandle, new byte[] { 13, 10 }, 2, 0);
+                            break;
+                        }
+                        if (ch == '\b' || ch == 127)
+                        {
+                            if (sb.Length > 0)
+                            {
+                                sb.Length--;
+                                send(_rawSocketHandle, new byte[] { 8, 32, 8 }, 3, 0);
+                            }
+                            continue;
+                        }
+                        if (buf[0] == 0xFF) continue; // Skip telnet IAC
+                        if (ch >= 32)
+                        {
+                            sb.Append(ch);
+                            send(_rawSocketHandle, buf, 1, 0); // Echo
+                        }
+                    }
+                    return sb.ToString();
+                }
+                catch { DoorMode.IsDisconnected = true; return ""; }
             }
 
             // Use raw handle mode if active
@@ -951,6 +1157,32 @@ namespace UsurperRemake.BBS
             {
                 var key = Console.ReadKey(true);
                 return key.KeyChar.ToString();
+            }
+
+            // Native Winsock I/O mode (BBS door)
+            if (_usingNativeIO && _rawSocketHandle != IntPtr.Zero)
+            {
+                DrainNativeInputBuffer(); // Flush leftover \r\n from previous input
+                try
+                {
+                    var buf = new byte[1];
+                    while (true)
+                    {
+                        int n = recv(_rawSocketHandle, buf, 1, 0);
+                        if (n > 0)
+                        {
+                            char ch = (char)buf[0];
+                            if (ch == '\r' || ch == '\n' || buf[0] == 0xFF || ch < 32) continue;
+                            return ch.ToString();
+                        }
+                        if (n == 0) { DoorMode.IsDisconnected = true; return ""; }
+                        int wsaErr = Marshal.GetLastWin32Error();
+                        if (wsaErr == 10035) { await Task.Delay(50); continue; }
+                        DoorMode.IsDisconnected = true;
+                        return "";
+                    }
+                }
+                catch { DoorMode.IsDisconnected = true; return ""; }
             }
 
             // Use raw handle mode if active
@@ -1298,23 +1530,16 @@ namespace UsurperRemake.BBS
             if (_disposed) return;
             _disposed = true;
 
+            // In BBS door mode, do NOT dispose streams or socket.
+            // Disposing NetworkStream/StreamWriter can send shutdown signals or corrupt
+            // the socket state. The BBS reuses the same socket handle for subsequent
+            // door launches — any cleanup we do here can make the handle/connection
+            // unusable for the next launch. Environment.Exit(0) in Program.cs will
+            // terminate the process and the OS will clean up all handles.
+            // Only flush buffered output so the user sees the last screen.
             try { _writer?.Flush(); } catch { }
-            try { _writer?.Dispose(); } catch { }
-            try { _reader?.Dispose(); } catch { }
-            try { _stream?.Dispose(); } catch { }
-            try { _rawHandleStream?.Dispose(); } catch { }
 
-            // Release our handle reference so the BBS knows the door has exited.
-            // IMPORTANT: We use CloseHandle (not closesocket/Socket.Close/Socket.Shutdown)
-            // because the BBS still needs the TCP connection alive — it shares the socket
-            // via handle inheritance. CloseHandle releases OUR reference without tearing
-            // down the connection. closesocket/Shutdown would send TCP FIN and disconnect
-            // the user from the BBS entirely.
-            if (_rawSocketHandle != IntPtr.Zero && Environment.OSVersion.Platform == PlatformID.Win32NT)
-            {
-                try { CloseHandle(_rawSocketHandle); } catch { }
-                _rawSocketHandle = IntPtr.Zero;
-            }
+            _rawSocketHandle = IntPtr.Zero;
             _socket = null;
         }
 

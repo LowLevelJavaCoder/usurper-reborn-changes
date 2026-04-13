@@ -343,11 +343,8 @@ public class MudServer
                         client.Close();
                         return;
                     }
-                    // Apply account-level preferences before game starts
-                    if (screenReader)
-                        GameConfig.ScreenReaderMode = true;
-                    if (!string.IsNullOrEmpty(language))
-                        GameConfig.Language = language;
+                    // Account-level preferences (screenReader, language) are loaded by PlayerSession
+                    // directly from DB after SessionContext is created (per-session AsyncLocal).
                     // Do NOT replace username with displayName — displayName is a cosmetic
                     // value from save data that can be corrupted (e.g., by alt character bugs).
                     // The session identity must always be the login key (account name).
@@ -611,10 +608,8 @@ public class MudServer
             }
 
             // Apply account-level preferences before game starts
-            if (screenReader)
-                GameConfig.ScreenReaderMode = true;
-            if (!string.IsNullOrEmpty(language))
-                GameConfig.Language = language;
+            // Account-level preferences applied in PlayerSession after SessionContext is created
+            // (see trusted auth path comment for explanation)
 
             // Do NOT replace username with displayName — displayName is cosmetic.
             // The session identity must always be the login key (account name).

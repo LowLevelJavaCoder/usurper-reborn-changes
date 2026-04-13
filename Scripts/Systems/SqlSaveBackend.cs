@@ -3468,6 +3468,25 @@ namespace UsurperRemake.Systems
     }
 
     /// <summary>
+    /// Get account-level preferences (screen reader, language) for a player.
+    /// </summary>
+    public (bool screenReader, string language) GetAccountPreferences(string username)
+    {
+        try
+        {
+            using var connection = OpenConnection();
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = "SELECT COALESCE(screen_reader, 0), COALESCE(language, 'en') FROM players WHERE LOWER(username) = LOWER(@username);";
+            cmd.Parameters.AddWithValue("@username", username);
+            using var reader = cmd.ExecuteReader();
+            if (reader.Read())
+                return (reader.GetInt32(0) != 0, reader.IsDBNull(1) ? "en" : reader.GetString(1));
+        }
+        catch { }
+        return (false, "en");
+    }
+
+    /// <summary>
     /// Resolves a player name (username or display name) to their lowercase display name.
     /// Returns null if the player doesn't exist.
     /// </summary>

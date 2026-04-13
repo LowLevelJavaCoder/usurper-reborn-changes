@@ -5761,8 +5761,7 @@ public partial class CombatEngine
             expReward -= (long)(expReward * GameConfig.FatigueExhaustedXPPenalty);
         }
 
-        // Session XP diminishing returns (online mode only)
-        expReward = ApplySessionXPDiminishing(result.Player, expReward, terminal);
+        // Session XP diminishing returns removed in v0.54.7 — wasn't working as intended.
 
         // Auto-reset XP distribution when fighting solo — prevents 0% XP trap
         bool hasXPTeammates = result.Teammates != null && result.Teammates.Any(t => t != null && !t.IsGroupedPlayer);
@@ -16919,8 +16918,7 @@ public partial class CombatEngine
             adjustedExp -= (long)(adjustedExp * GameConfig.FatigueExhaustedXPPenalty);
         }
 
-        // Session XP diminishing returns (online mode only)
-        adjustedExp = ApplySessionXPDiminishing(result.Player, adjustedExp, terminal);
+        // Session XP diminishing returns removed in v0.54.7.
 
         // Auto-reset XP distribution when fighting solo — prevents 0% XP trap
         bool hasXPTeammatesMM = result.Teammates != null && result.Teammates.Any(t => t != null && !t.IsGroupedPlayer);
@@ -25252,15 +25250,7 @@ public partial class CombatEngine
             if (groupXPMult < 1.0f)
                 playerExp = (long)(playerExp * groupXPMult);
 
-            // Session XP diminishing returns (online mode only) — grouped player path
-            long gpThreshold = GameConfig.GetSessionXPThreshold(groupedPlayer.Level);
-            if (UsurperRemake.BBS.DoorMode.IsOnlineMode && groupedPlayer.SessionXPEarned > gpThreshold)
-            {
-                long gpOverThreshold = groupedPlayer.SessionXPEarned - gpThreshold;
-                double gpDiminishFactor = Math.Max(GameConfig.SessionXPDiminishFloor, 1.0 - (gpOverThreshold / 1000.0) * GameConfig.SessionXPDiminishRate);
-                playerExp = (long)(playerExp * gpDiminishFactor);
-            }
-            groupedPlayer.SessionXPEarned += playerExp;
+            // Session XP diminishing returns removed in v0.54.7.
             groupedPlayer.SessionCombatCount++;
 
             // Apply rewards
@@ -25295,16 +25285,6 @@ public partial class CombatEngine
                     $"\u001b[33m  Gold gained: {goldPerPlayer:N0}\u001b[0m";
                 if (groupXPMult < 1.0f)
                     rewardMsg += $"\n\u001b[33m  (Group level gap penalty: {(int)(groupXPMult * 100)}% XP rate)\u001b[0m";
-
-                // Session XP diminishing message for grouped players
-                if (groupedPlayer.SessionXPEarned > gpThreshold
-                    && groupedPlayer.SessionCombatCount % GameConfig.SessionXPDiminishMessageInterval == 0)
-                {
-                    long gpMsgOver = groupedPlayer.SessionXPEarned - gpThreshold;
-                    int gpPct = (int)(Math.Max(GameConfig.SessionXPDiminishFloor, 1.0 - (gpMsgOver / 1000.0) * GameConfig.SessionXPDiminishRate) * 100);
-                    rewardMsg += $"\n\u001b[33m  {Loc.Get("combat.session_xp_diminished")}\u001b[0m";
-                    rewardMsg += $"\n\u001b[33m  {Loc.Get("combat.session_xp_reduced", gpPct.ToString())}\u001b[0m";
-                }
 
                 // Level-up notification
                 if (groupedPlayer.Level > levelBefore)

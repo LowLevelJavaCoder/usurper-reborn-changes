@@ -18132,5 +18132,6 @@
   "chat.tell_usage": "Uso: /tell <jugador> <mensaje>",
   "encounter.stranger_waves_off": "El extraño te despide. \"Hemos hablado suficiente por hoy. Vuelve mañana.\"",
   "inn.seth_says": "Seth Able: \"{0}\"",
-  "inn.bartender_enough_food": "El tabernero niega con la cabeza. \"Ya has comido suficiente por hoy, amigo.\""
+  "inn.bartender_enough_food": "El tabernero niega con la cabeza. \"Ya has comido suficiente por hoy, amigo.\"",
+  "healer.menu_antidotes_suffix": " Comprar Antidotos"
 }

@@ -59,6 +59,7 @@ public class PlayerSession : IDisposable
     /// <summary>Whether this player has screen reader mode enabled. Set from player save data on load.</summary>
     public bool ScreenReaderMode { get; set; }
 
+
     /// <summary>True if this player has admin privileges. Computed from WizardLevel.</summary>
     public bool IsAdmin => WizardLevel >= WizardLevel.Archwizard;
 
@@ -156,6 +157,16 @@ public class PlayerSession : IDisposable
 
         // Set AsyncLocal so all Instance properties resolve to this session
         SessionContext.Current = ctx;
+
+        // Load account-level preferences from DB and apply via AsyncLocal (per-session).
+        // This avoids the global fallback which bleeds between concurrent sessions.
+        try
+        {
+            var (sr, lang) = _sqlBackend.GetAccountPreferences(Username);
+            if (sr) GameConfig.ScreenReaderMode = true;
+            if (!string.IsNullOrEmpty(lang) && lang != "en") GameConfig.Language = lang;
+        }
+        catch { }
 
         try
         {

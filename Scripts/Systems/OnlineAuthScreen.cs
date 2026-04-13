@@ -141,15 +141,12 @@ namespace UsurperRemake.Systems
             terminal.SetColor("gray");
             terminal.WriteLine($"  {Loc.Get("auth.authenticating")}");
 
-            var (success, displayName, message, screenReader, language) = await backend.AuthenticatePlayer(username.Trim(), password);
+            var (success, displayName, message, _, _) = await backend.AuthenticatePlayer(username.Trim(), password);
 
             if (success)
             {
-                // Apply account-level preferences
-                if (screenReader)
-                    GameConfig.ScreenReaderMode = true;
-                if (!string.IsNullOrEmpty(language))
-                    GameConfig.Language = language;
+                // Account-level preferences (screenReader, language) are loaded by PlayerSession
+                // after SessionContext is created — avoids global fallback bleed.
                 // If player appears online from a stale/crashed session, clear it and continue
                 if (await backend.IsPlayerOnline(username.Trim()))
                 {
