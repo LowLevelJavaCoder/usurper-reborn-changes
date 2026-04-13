@@ -2,7 +2,7 @@
 
 ## NPC Class Specialization System
 
-Players report that Cleric is the only viable healer in parties -- Bard and Alchemist healing comes too late. This update adds a WoW-style dual specialization system for NPC teammates, letting players assign combat roles like Healer, Tank, DPS, Utility, or Debuff to their team members. Each of the 12 base classes gets 2 specializations (24 total), changing how the NPC behaves in combat and what stats they gain on future level-ups.
+This update adds a dual specialization system for NPC teammates, letting players assign combat roles like Healer, Tank, DPS, Utility, or Debuff to their team members. Each of the 12 base classes gets 2 specializations (24 total), changing how the NPC behaves in combat and what stats they gain on future level-ups.
 
 **Specializations:**
 
