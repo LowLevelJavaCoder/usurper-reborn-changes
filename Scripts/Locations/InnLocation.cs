@@ -3605,10 +3605,6 @@ public class InnLocation : BaseLocation
 
         terminal.WriteLine("");
         terminal.SetColor("yellow");
-        int daysTogether = companion.RecruitedDate != DateTime.MinValue
-            ? Math.Max(0, (int)(DateTime.UtcNow - companion.RecruitedDate).TotalDays)
-            : Math.Max(0, StoryProgressionSystem.Instance.CurrentGameDay - companion.RecruitedDay);
-        terminal.WriteLine(Loc.Get("inn.days_together", daysTogether));
         terminal.WriteLine(Loc.Get("inn.total_loyalty", companion.LoyaltyLevel));
 
         await terminal.PressAnyKey();

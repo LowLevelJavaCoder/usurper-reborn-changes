@@ -15280,6 +15280,10 @@ public partial class CombatEngine
                 if (UsurperRemake.Data.SpecializationData.IsHealerSpec(healerNpc.Specialization))
                     isHealerClass = true;
                 healThreshold = spec.HealThreshold;
+
+                // DPS specs that restrict Heal abilities also suppress spell healing
+                if (spec.RestrictedAbilityTypes.Contains(ClassAbilitySystem.AbilityType.Heal))
+                    canHealWithSpells = false;
             }
         }
 
@@ -22845,10 +22849,10 @@ public partial class CombatEngine
             return;
         }
 
-        // If player explicitly set 100% for themselves, respect that choice
-        if (player.TeamXPPercent[0] == 100) return;
-
         // Check if the player has a custom XP distribution set (any teammate slot > 0%)
+        // Note: player == 100% alone is NOT considered custom — it may be a stale solo-mode
+        // setting from before companions joined mid-dungeon. The player must have explicitly
+        // allocated some percentage to at least one teammate slot for it to be "custom".
         bool hasCustomDistribution = false;
         for (int s = 1; s < player.TeamXPPercent.Length; s++)
         {

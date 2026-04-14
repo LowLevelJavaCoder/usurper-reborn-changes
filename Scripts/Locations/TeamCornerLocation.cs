@@ -244,7 +244,7 @@ public class TeamCornerLocation : BaseLocation
         terminal.SetColor("cyan");
         terminal.WriteLine(Loc.Get("team.bbs_actions"));
         ShowBBSMenuRow(("C", "bright_yellow", Loc.Get("team.bbs_create")), ("J", "bright_yellow", Loc.Get("team.bbs_join")), ("Q", "bright_yellow", Loc.Get("team.bbs_quit_team")), ("A", "bright_yellow", Loc.Get("team.bbs_apply")), ("N", "bright_yellow", Loc.Get("team.bbs_recruit_npc")));
-        ShowBBSMenuRow(("2", "bright_yellow", Loc.Get("team.bbs_sack_member")), ("G", "bright_yellow", Loc.Get("team.bbs_equip_mbr")), ("M", "bright_yellow", Loc.Get("team.bbs_message")), ("!", "bright_yellow", Loc.Get("team.bbs_resurrect")));
+        ShowBBSMenuRow(("2", "bright_yellow", Loc.Get("team.bbs_sack_member")), ("G", "bright_yellow", Loc.Get("team.bbs_equip_mbr")), ("X", "bright_yellow", Loc.Get("team.bbs_specialize")), ("M", "bright_yellow", Loc.Get("team.bbs_message")), ("!", "bright_yellow", Loc.Get("team.bbs_resurrect")));
         if (DoorMode.IsOnlineMode)
         {
             ShowBBSMenuRow(("W", "bright_yellow", Loc.Get("team.bbs_recruit_ally")), ("B", "bright_yellow", Loc.Get("team.bbs_team_battle")), ("H", "bright_yellow", Loc.Get("team.bbs_hq")));

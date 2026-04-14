@@ -1980,6 +1980,7 @@ public enum ClassSpecialization
     // Paladin
     Retribution,    // DPS — holy damage
     Holy,           // Healer — aggressive healing
+    Guardian,       // Tank — divine shield tank
 
     // Ranger
     Marksmanship,   // DPS — ranged precision

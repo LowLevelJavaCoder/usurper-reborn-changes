@@ -126,6 +126,23 @@ public static class SpecializationData
             PreferredAbilityTypes = [ClassAbilitySystem.AbilityType.Heal, ClassAbilitySystem.AbilityType.Buff]
         },
 
+        [ClassSpecialization.Guardian] = new SpecDefinition
+        {
+            Spec = ClassSpecialization.Guardian,
+            ForClass = CharacterClass.Paladin,
+            Name = "Guardian",
+            DescriptionKey = "spec.paladin.guardian.desc",
+            Role = SpecRole.Tank,
+            BonusConstitution = 2,
+            BonusDefence = 2,
+            BonusMaxHP = 6,
+            BonusWisdom = 1,
+            HealThreshold = 0.50,
+            AbilityUseChance = 0.70,
+            PreferredAbilityTypes = [ClassAbilitySystem.AbilityType.Defense, ClassAbilitySystem.AbilityType.Buff],
+            RestrictedAbilityTypes = [ClassAbilitySystem.AbilityType.Utility]
+        },
+
         // ═══════════════════════════════════════════
         // RANGER: Marksmanship (DPS) / Survival (Utility)
         // ═══════════════════════════════════════════

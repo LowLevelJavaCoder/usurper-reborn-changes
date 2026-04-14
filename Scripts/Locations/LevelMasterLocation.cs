@@ -1002,6 +1002,26 @@ public class LevelMasterLocation : BaseLocation
                 player.BaseMaxHP = Math.Max(10, player.BaseMaxHP - 8);
                 break;
         }
+
+        // Reverse specialization stat growth bonuses (NPC teammates only)
+        if (player is NPC npc && npc.Specialization != ClassSpecialization.None)
+        {
+            var spec = UsurperRemake.Data.SpecializationData.GetSpec(npc.Specialization);
+            if (spec != null)
+            {
+                player.BaseStrength = Math.Max(1, player.BaseStrength - spec.BonusStrength);
+                player.BaseConstitution = Math.Max(1, player.BaseConstitution - spec.BonusConstitution);
+                player.BaseMaxHP = Math.Max(10, player.BaseMaxHP - spec.BonusMaxHP);
+                player.BaseDefence = Math.Max(1, player.BaseDefence - spec.BonusDefence);
+                player.BaseIntelligence = Math.Max(1, player.BaseIntelligence - spec.BonusIntelligence);
+                player.BaseWisdom = Math.Max(1, player.BaseWisdom - spec.BonusWisdom);
+                player.BaseCharisma = Math.Max(1, player.BaseCharisma - spec.BonusCharisma);
+                player.BaseMaxMana = Math.Max(0, player.BaseMaxMana - spec.BonusMaxMana);
+                player.BaseDexterity = Math.Max(1, player.BaseDexterity - spec.BonusDexterity);
+                player.BaseAgility = Math.Max(1, player.BaseAgility - spec.BonusAgility);
+                player.BaseStamina = Math.Max(1, player.BaseStamina - spec.BonusStamina);
+            }
+        }
     }
 
     /// <summary>
@@ -1765,6 +1785,13 @@ public class LevelMasterLocation : BaseLocation
         terminal.WriteLine(Loc.Get("level_master.help_smiles", currentMaster.Name));
         terminal.SetColor("white");
         terminal.WriteLine(Loc.Get("level_master.help_true_strength"));
+
+        // Persist NPC changes in online mode (level-ups, XP, stats)
+        if (UsurperRemake.BBS.DoorMode.IsOnlineMode && UsurperRemake.Systems.OnlineStateManager.Instance != null)
+        {
+            try { await UsurperRemake.Systems.OnlineStateManager.Instance.SaveAllSharedState(); }
+            catch (Exception ex) { UsurperRemake.Systems.DebugLogger.Instance.LogError("LEVEL", $"SaveAllSharedState failed after NPC XP share: {ex.Message}"); }
+        }
 
         await terminal.PressAnyKey();
     }

@@ -137,8 +137,9 @@ public class MudServer
                     break;
                 }
 
-                // Handle each connection in a fire-and-forget task
-                _ = Task.Run(async () =>
+                // Handle each connection in a tracked task so we can wait for
+                // emergency saves to complete on shutdown
+                var sessionTask = Task.Run(async () =>
                 {
                     try
                     {
@@ -150,6 +151,12 @@ public class MudServer
                         DebugLogger.Instance.LogError("MUD", $"Connection handler crashed: {ex}");
                     }
                 });
+                lock (_sessionTasks)
+                {
+                    _sessionTasks.Add(sessionTask);
+                    // Opportunistic cleanup of completed tasks to prevent unbounded growth
+                    _sessionTasks.RemoveAll(t => t.IsCompleted);
+                }
             }
         }
         finally
@@ -157,9 +164,35 @@ public class MudServer
             _listener.Stop();
             Console.Error.WriteLine("[MUD] Server stopped.");
 
-            // Gracefully disconnect all sessions
+            // Gracefully disconnect all sessions (closes streams, unblocks ReadLines)
             var disconnectTasks = ActiveSessions.Values.Select(s => s.DisconnectAsync("Server shutting down")).ToArray();
             await Task.WhenAll(disconnectTasks);
+
+            // CRITICAL: Wait for all session task finally blocks to complete (emergency saves).
+            // Without this, the process may exit before SaveGame() finishes writing companion
+            // and player data, causing equipment and progress loss on server restart/deploy.
+            Task[] pendingSessions;
+            lock (_sessionTasks)
+            {
+                pendingSessions = _sessionTasks.Where(t => !t.IsCompleted).ToArray();
+            }
+            if (pendingSessions.Length > 0)
+            {
+                Console.Error.WriteLine($"[MUD] Waiting for {pendingSessions.Length} session emergency saves to complete...");
+                try
+                {
+                    await Task.WhenAll(pendingSessions).WaitAsync(TimeSpan.FromSeconds(30));
+                    Console.Error.WriteLine("[MUD] All session emergency saves completed.");
+                }
+                catch (TimeoutException)
+                {
+                    Console.Error.WriteLine("[MUD] WARNING: Some session emergency saves timed out after 30s.");
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"[MUD] Session task wait error: {ex.Message}");
+                }
+            }
 
             // Wait for world simulator to finish its final save
             Console.Error.WriteLine("[MUD] Waiting for world simulator to shut down...");
@@ -167,6 +200,8 @@ public class MudServer
             Console.Error.WriteLine("[MUD] World simulator shut down.");
         }
     }
+
+    private readonly List<Task> _sessionTasks = new();
 
     /// <summary>
     /// Handle a single incoming TCP connection.

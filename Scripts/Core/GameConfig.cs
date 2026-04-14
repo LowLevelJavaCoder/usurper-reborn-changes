@@ -9,7 +9,7 @@ using System.Collections.Generic;
 public static partial class GameConfig
 {
     // Version information
-    public const string Version = "0.55.0";
+    public const string Version = "0.55.1";
     public const string VersionName = "The Specialist";
     public const string DiscordInvite = "discord.gg/EZhwgDT6Ta";
 
@@ -621,6 +621,7 @@ public static partial class GameConfig
     public const int PermadeathPopulationFloor = 45;            // Skip permadeath if alive NPCs < this (was 40)
     public const int PermadeathRaceFloor = 3;                  // Skip permadeath if alive NPCs of same race <= this
     public const float PermadeathLevelReduction = 0.015f;       // Per NPC level: chance *= (1 - level * this) (was 0.01)
+    public const int MaxNPCPopulation = 200;                    // Hard cap on total NPC count (immigration + births blocked above this)
 
     // New Player Onboarding (v0.47.3)
     public const int MenuTier2Level = 3;                       // Level at which town services unlock in menu

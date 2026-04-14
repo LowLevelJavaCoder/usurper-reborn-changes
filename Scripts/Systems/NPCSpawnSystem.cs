@@ -1066,6 +1066,7 @@ namespace UsurperRemake.Systems
                     // Reassign class
                     var oldClass = npc.Class;
                     npc.Class = targetClass;
+                    npc.Specialization = ClassSpecialization.None; // Clear invalid spec from old class
 
                     // Recalculate HP for new class
                     long baseHP = targetClass switch

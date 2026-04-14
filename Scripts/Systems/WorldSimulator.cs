@@ -922,8 +922,10 @@ public class WorldSimulator
     {
         var aliveNPCs = npcs.Where(n => n.IsAlive && !n.IsDead && !n.IsAgedDeath && !n.IsPermaDead).ToList();
 
-        // Diversity immigration runs regardless of population size
-        bool populationHigh = false;
+        // Hard cap on total NPC population
+        if (npcs.Count >= GameConfig.MaxNPCPopulation) return;
+
+        bool populationHigh = npcs.Count >= GameConfig.MaxNPCPopulation - 10; // Slow down near the cap
 
         // Calculate average level of alive NPCs for immigrant scaling
         int avgLevel = aliveNPCs.Count > 0 ? Math.Max(1, (int)aliveNPCs.Average(n => n.Level)) : 5;
@@ -1367,6 +1369,9 @@ public class WorldSimulator
     /// </summary>
     public void OrphanBecomesNPC(RoyalOrphan orphan)
     {
+        // Don't exceed population cap
+        if (npcs.Count >= GameConfig.MaxNPCPopulation) return;
+
         var npc = new NPC
         {
             ID = $"npc_{orphan.Name.ToLower().Replace(" ", "_")}_{Guid.NewGuid().ToString("N").Substring(0, 8)}",
@@ -1529,8 +1534,8 @@ public class WorldSimulator
         int childCount = FamilySystem.Instance?.AllChildren.Count(c => !c.Deleted) ?? 0;
         int totalPop = aliveCount + childCount;
 
-        // Hard cap: no new pregnancies when population is severely overpopulated
-        if (aliveCount >= 120)
+        // Hard cap: no new pregnancies when at population limit
+        if (npcs.Count >= GameConfig.MaxNPCPopulation)
         {
             return;
         }

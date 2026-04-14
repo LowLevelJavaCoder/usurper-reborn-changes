@@ -9,7 +9,7 @@ This update adds a dual specialization system for NPC teammates, letting players
 | Class | Spec 1 (Offensive) | Spec 2 (Defensive/Support) |
 |-------|-------------------|---------------------------|
 | Warrior | Arms (DPS) | Protection (Tank) |
-| Paladin | Retribution (DPS) | Holy (Healer) |
+| Paladin | Retribution (DPS) | Holy (Healer) / Guardian (Tank) |
 | Ranger | Marksmanship (DPS) | Survival (Utility) |
 | Assassin | Subtlety (DPS) | Toxicology (Debuff) |
 | Barbarian | Berserker (DPS) | Juggernaut (Tank) |
@@ -42,7 +42,7 @@ This update adds a dual specialization system for NPC teammates, letting players
 
 **New healers available:** Holy Paladin, Mystic Sage, Minstrel Bard, Apothecary Alchemist, Spiritwalker Shaman -- all heal allies at 75-80% HP, dramatically improving party healing options beyond Cleric.
 
-**New tanks available:** Protection Warrior and Juggernaut Barbarian both prioritize taunt abilities and gain massive HP/DEF bonuses per level.
+**New tanks available:** Protection Warrior, Juggernaut Barbarian, and Guardian Paladin all prioritize taunt abilities and gain massive HP/DEF bonuses per level.
 
 ---
 

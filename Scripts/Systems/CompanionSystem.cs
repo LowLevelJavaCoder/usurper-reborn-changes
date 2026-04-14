@@ -1530,10 +1530,16 @@ namespace UsurperRemake.Systems
         /// </summary>
         public CompanionSystemData Serialize()
         {
-            // Log companion levels being saved for debugging
+            // Log companion levels and equipment being saved for debugging
             foreach (var c in companions.Values.Where(c => c.IsRecruited))
             {
                 DebugLogger.Instance.LogDebug("COMPANION", $"Serializing {c.Name}: Level={c.Level}, XP={c.Experience}");
+                if (c.EquippedItems.Count > 0)
+                {
+                    var slots = string.Join(",", c.EquippedItems.Select(kv => $"{kv.Key}={kv.Value}"));
+                    DebugLogger.Instance.LogInfo("COMPANION_EQUIP",
+                        $"Serialize SAVING {c.Name} equipment: {slots}");
+                }
             }
 
             return new CompanionSystemData
@@ -1629,6 +1635,17 @@ namespace UsurperRemake.Systems
         /// </summary>
         public void Deserialize(CompanionSystemData data)
         {
+            // Log state BEFORE reset for bug diagnosis
+            foreach (var comp in companions.Values)
+            {
+                if (comp.IsRecruited && comp.EquippedItems.Count > 0)
+                {
+                    var slots = string.Join(",", comp.EquippedItems.Select(kv => $"{kv.Key}={kv.Value}"));
+                    DebugLogger.Instance.LogInfo("COMPANION_EQUIP",
+                        $"Deserialize BEFORE reset: {comp.Name} had equipment: {slots}");
+                }
+            }
+
             // Always reset first to prevent state bleeding from previous saves
             ResetAllCompanions();
 
@@ -1725,6 +1742,12 @@ namespace UsurperRemake.Systems
                             if (remap != null && remap.TryGetValue(equipId, out int newId))
                                 equipId = newId;
                             companion.EquippedItems[(EquipmentSlot)kvp.Key] = equipId;
+                        }
+                        if (save.IsRecruited && companion.EquippedItems.Count > 0)
+                        {
+                            var slots = string.Join(",", companion.EquippedItems.Select(kv => $"{kv.Key}={kv.Value}"));
+                            DebugLogger.Instance.LogInfo("COMPANION_EQUIP",
+                                $"Deserialize RESTORED from save: {companion.Name} equipment: {slots}");
                         }
                     }
 

@@ -204,6 +204,9 @@ namespace UsurperRemake.Systems
         {
             // Idempotency: skip if already converted (prevents duplicate NPCs across save/load)
             if (child.Deleted) return;
+
+            // Don't exceed population cap
+            if ((NPCSpawnSystem.Instance?.ActiveNPCs.Count ?? 0) >= GameConfig.MaxNPCPopulation) return;
             var existingAdult = NPCSpawnSystem.Instance?.ActiveNPCs
                 ?.FirstOrDefault(n => n.Name2 == child.Name && n.BirthDate == child.BirthDate);
             if (existingAdult != null) { child.Deleted = true; return; }
