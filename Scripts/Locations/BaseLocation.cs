@@ -8144,26 +8144,42 @@ public abstract class BaseLocation
             return;
         }
 
-        // Deduct gold from buyer (seller collects from My Listings)
-        currentPlayer.Gold -= listing.Price;
-
-        // Create item from JSON and add to inventory
+        // v0.57.1 — deserialize FIRST, before deducting gold or marking the buyer's side of the
+        // transaction complete. If the JSON is corrupt, refund by unmarking the auction and
+        // returning early, so the buyer doesn't pay for an item they never receive.
+        Item? purchasedItem = null;
         try
         {
-            var purchasedItem = System.Text.Json.JsonSerializer.Deserialize<Item>(listing.ItemJson);
-            if (purchasedItem != null)
-            {
-                currentPlayer.Inventory.Add(purchasedItem);
-                terminal.SetColor("bright_green");
-                terminal.WriteLine(Loc.Get("base.auction_purchased", listing.ItemName, listing.Price.ToString("N0")));
-            }
+            purchasedItem = System.Text.Json.JsonSerializer.Deserialize<Item>(listing.ItemJson);
         }
         catch (Exception ex)
         {
-            DebugLogger.Instance.LogError("LOCATION", $"[ShowAuctionItemDetails] Auction purchase failed: {ex.Message}");
+            DebugLogger.Instance.LogError("LOCATION", $"[ShowAuctionItemDetails] Auction item JSON corrupt: {ex.Message}");
+        }
+
+        if (purchasedItem == null)
+        {
+            // Refund path — un-sell the listing so the item isn't orphaned, buyer keeps gold.
+            await backend.RefundAuctionListing(listing.Id);
             terminal.SetColor("yellow");
             terminal.WriteLine(Loc.Get("base.auction_purchased_error"));
+            await Task.Delay(1500);
+            return;
         }
+
+        // Deduct gold from buyer (seller collects from My Listings)
+        currentPlayer.Gold -= listing.Price;
+        currentPlayer.Inventory.Add(purchasedItem);
+        terminal.SetColor("bright_green");
+        terminal.WriteLine(Loc.Get("base.auction_purchased", listing.ItemName, listing.Price.ToString("N0")));
+
+        // Force-save so the freshly-added item persists even if the buyer disconnects immediately.
+        try
+        {
+            SaveSystem.Instance.ResetAutoSaveThrottle();
+            await SaveSystem.Instance.AutoSave(currentPlayer);
+        }
+        catch (Exception ex) { DebugLogger.Instance.LogError("LOCATION", $"[ShowAuctionItemDetails] Post-purchase save failed: {ex.Message}"); }
 
         await backend.SendMessage("Auction House", listing.Seller, "auction",
             $"Your {listing.ItemName} sold for {listing.Price:N0} gold! Visit the Auction House to collect.");

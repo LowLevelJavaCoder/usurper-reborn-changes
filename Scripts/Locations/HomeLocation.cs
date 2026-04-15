@@ -4443,20 +4443,37 @@ toResurrect.IsDead = false;
 
             var choice = (await terminal.ReadLineAsync()).ToUpper().Trim();
 
+            bool edited = false;
             switch (choice)
             {
                 case "E":
                     await EquipItemToCharacter(target);
+                    edited = true;
                     break;
                 case "U":
                     await UnequipItemFromCharacter(target);
+                    edited = true;
                     break;
                 case "T":
                     await TakeAllEquipment(target);
+                    edited = true;
                     break;
                 case "Q":
                 case "":
                     return;
+            }
+
+            // v0.57.1 — save per-edit (not just on menu exit) so a mid-loop disconnect/crash doesn't
+            // lose spouse/lover equipment changes. TeamCornerLocation already follows this pattern.
+            if (edited)
+            {
+                CombatEngine.SyncNPCTeammateToActiveNPCs(target);
+                await SaveSystem.Instance.AutoSave(currentPlayer);
+                if (DoorMode.IsOnlineMode && OnlineStateManager.Instance != null)
+                {
+                    try { await OnlineStateManager.Instance.SaveAllSharedState(); }
+                    catch (Exception ex) { DebugLogger.Instance.LogError("HOME", $"SaveAllSharedState failed after equipment change: {ex.Message}"); }
+                }
             }
         }
     }

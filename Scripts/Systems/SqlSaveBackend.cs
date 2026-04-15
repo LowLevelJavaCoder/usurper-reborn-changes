@@ -4045,6 +4045,27 @@ namespace UsurperRemake.Systems
         catch (Exception ex) { DebugLogger.Instance.LogError("SQL", $"Failed to buy auction: {ex.Message}"); return false; }
     }
 
+    /// <summary>
+    /// v0.57.1 — un-sell a listing when the buyer's side of the transaction fails after
+    /// BuyAuctionListing already marked it sold (e.g., corrupt item JSON). Returns the listing
+    /// to active status so the buyer can try again / another buyer can purchase / the seller
+    /// eventually collects on expiry.
+    /// </summary>
+    public async Task<bool> RefundAuctionListing(int listingId)
+    {
+        try
+        {
+            using var connection = OpenConnection();
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = @"UPDATE auction_listings SET status = 'active', buyer = NULL
+                                WHERE id = @id AND status = 'sold';";
+            cmd.Parameters.AddWithValue("@id", listingId);
+            var affected = await cmd.ExecuteNonQueryAsync();
+            return affected > 0;
+        }
+        catch (Exception ex) { DebugLogger.Instance.LogError("SQL", $"Failed to refund auction: {ex.Message}"); return false; }
+    }
+
     public async Task<bool> CancelAuctionListing(int listingId, string seller)
     {
         try

@@ -674,7 +674,22 @@ public partial class CombatEngine
                 if (teammate.IsAlive)
                 {
                     teammate.InitializeCombatStamina(); // Initialize teammate stamina
-                    // v0.56.0 — reset tank ability buffs on teammates (NPC tanks) too
+                    // v0.57.1 — full transient-buff reset for teammates (previously only the v0.56.0
+                    // tank buffs were cleared here, so legacy Temp*/MagicACBonus/DodgeNextAttack/
+                    // StatusLifestealPercent/DeathsEmbraceActive/CalmWatersRounds leaked between fights).
+                    // Mirrors the per-player init block above.
+                    teammate.TempAttackBonus = 0;
+                    teammate.TempAttackBonusDuration = 0;
+                    teammate.TempDefenseBonus = 0;
+                    teammate.TempDefenseBonusDuration = 0;
+                    teammate.MagicACBonus = 0;
+                    teammate.DodgeNextAttack = false;
+                    teammate.HasBloodlust = false;
+                    teammate.HasStatusImmunity = false;
+                    teammate.StatusImmunityDuration = 0;
+                    teammate.DeathsEmbraceActive = false;
+                    teammate.StatusLifestealPercent = 0;
+                    teammate.CalmWatersRounds = 0;
                     teammate.TempDamageReductionPercent = 0;
                     teammate.TempDamageReductionDuration = 0;
                     teammate.TempThornReflectPercent = 0;
@@ -3936,6 +3951,14 @@ public partial class CombatEngine
             }
             await Task.Delay(GetCombatDelay(600));
             return;
+        }
+
+        // v0.57.1 — tick Weaken duration. Previously this never decremented, so the status-bar
+        // WEK(n) indicator was cosmetic and the buff effectively never expired. Now it ticks once
+        // per monster-action cycle and falls off.
+        if (monster.WeakenRounds > 0)
+        {
+            monster.WeakenRounds--;
         }
 
         // Tick corrosion duration
@@ -7645,6 +7668,12 @@ public partial class CombatEngine
                 // Register the equipment in the database so it can be looked up later
                 EquipmentDatabase.RegisterDynamic(equipment);
 
+                // Track whether this equip is targeting a companion so slot-cancellation fallbacks
+                // route the item to the REAL player's inventory, not the companion's (v0.57.1 fix
+                // for "disappearing epic loot" — Lumina bug report).
+                var actualPlayer = currentPlayer ?? player;
+                bool isCompanionEquip = player != actualPlayer;
+
                 // For one-handed weapons, ask which slot to use
                 EquipmentSlot? targetSlot = null;
                 if (Character.RequiresSlotSelection(equipment))
@@ -7652,8 +7681,8 @@ public partial class CombatEngine
                     targetSlot = await PromptForWeaponSlot(player);
                     if (targetSlot == null)
                     {
-                        // Player cancelled - add to inventory instead
-                        player.Inventory.Add(lootItem);
+                        // Player cancelled - add to ACTUAL player inventory (not companion's)
+                        actualPlayer.Inventory.Add(lootItem);
                         terminal.SetColor("cyan");
                         terminal.WriteLine(Loc.Get("combat.loot_added_inventory", lootItem.Name));
                         break;
@@ -7671,8 +7700,8 @@ public partial class CombatEngine
                         targetSlot = await PromptForRingSlot(player);
                         if (targetSlot == null)
                         {
-                            // Player chose inventory
-                            player.Inventory.Add(lootItem);
+                            // Player chose inventory - route to ACTUAL player (not companion)
+                            actualPlayer.Inventory.Add(lootItem);
                             terminal.SetColor("cyan");
                             terminal.WriteLine(Loc.Get("combat.loot_added_inventory", lootItem.Name));
                             break;
@@ -7681,8 +7710,6 @@ public partial class CombatEngine
                 }
 
                 // Track companion inventory before equip so displaced items can be moved to the real player
-                var actualPlayer = currentPlayer ?? player;
-                bool isCompanionEquip = player != actualPlayer;
                 int inventoryBefore = isCompanionEquip ? player.Inventory.Count : 0;
 
                 // Try to equip the item
@@ -7788,19 +7815,16 @@ public partial class CombatEngine
                                 terminal.WriteLine(Loc.Get("combat.loot_ally_picks_up", teammateName, lootItem.Name, upgradePercent));
                                 itemTaken = true;
 
-                                // Persist companion equipment immediately — without this,
-                                // companion loot pickup is lost on disconnect/logout
-                                _ = Task.Run(async () =>
+                                // v0.57.1 — await the save so companion loot pickup isn't lost if the
+                                // player disconnects before a fire-and-forget Task would complete.
+                                try
                                 {
-                                    try
-                                    {
-                                        SaveSystem.Instance.ResetAutoSaveThrottle();
-                                        await SaveSystem.Instance.AutoSave(player);
-                                        if (UsurperRemake.BBS.DoorMode.IsOnlineMode && OnlineStateManager.Instance != null)
-                                            await OnlineStateManager.Instance.SaveAllSharedState();
-                                    }
-                                    catch (Exception ex) { DebugLogger.Instance.LogError("COMBAT", $"Failed to save after companion loot pickup: {ex.Message}"); }
-                                });
+                                    SaveSystem.Instance.ResetAutoSaveThrottle();
+                                    await SaveSystem.Instance.AutoSave(player);
+                                    if (UsurperRemake.BBS.DoorMode.IsOnlineMode && OnlineStateManager.Instance != null)
+                                        await OnlineStateManager.Instance.SaveAllSharedState();
+                                }
+                                catch (Exception ex) { DebugLogger.Instance.LogError("COMBAT", $"Failed to save after companion loot pickup: {ex.Message}"); }
                             }
                         }
                     }
@@ -8226,18 +8250,15 @@ public partial class CombatEngine
                                 terminal.WriteLine(Loc.Get("combat.loot_ally_picks_up", teammateName, lootItem.Name, upgradePercent));
                                 itemTaken = true;
 
-                                // Persist companion equipment immediately
-                                _ = Task.Run(async () =>
+                                // v0.57.1 — await the save (same fix as the other companion-pickup branch)
+                                try
                                 {
-                                    try
-                                    {
-                                        SaveSystem.Instance.ResetAutoSaveThrottle();
-                                        await SaveSystem.Instance.AutoSave(player);
-                                        if (UsurperRemake.BBS.DoorMode.IsOnlineMode && OnlineStateManager.Instance != null)
-                                            await OnlineStateManager.Instance.SaveAllSharedState();
-                                    }
-                                    catch (Exception ex) { DebugLogger.Instance.LogError("COMBAT", $"Failed to save after companion loot pickup: {ex.Message}"); }
-                                });
+                                    SaveSystem.Instance.ResetAutoSaveThrottle();
+                                    await SaveSystem.Instance.AutoSave(player);
+                                    if (UsurperRemake.BBS.DoorMode.IsOnlineMode && OnlineStateManager.Instance != null)
+                                        await OnlineStateManager.Instance.SaveAllSharedState();
+                                }
+                                catch (Exception ex) { DebugLogger.Instance.LogError("COMBAT", $"Failed to save after companion loot pickup: {ex.Message}"); }
                             }
                         }
                     }
@@ -19137,10 +19158,11 @@ public partial class CombatEngine
             case "weaken":
                 if (monster != null && monster.IsAlive)
                 {
+                    // v0.57.1 — previously mutated monster.Strength/Defence directly (permanent, never
+                    // restored). Now just sets WeakenRounds; GetAttackPower/GetDefensePower apply the
+                    // -30%/-20% transiently while the counter is active.
                     int weakenAtkReduction2 = Math.Max(1, (int)(monster.Strength * 0.30));
                     int weakenDefReduction2 = Math.Max(1, (int)(monster.Defence * 0.20));
-                    monster.Strength = Math.Max(0, monster.Strength - weakenAtkReduction2);
-                    monster.Defence = Math.Max(0, monster.Defence - weakenDefReduction2);
                     monster.WeakenRounds = Math.Max(monster.WeakenRounds, abilityResult.Duration > 0 ? abilityResult.Duration : 4);
                     terminal.SetColor("yellow");
                     terminal.WriteLine(Loc.Get("combat.resolve_crumbles", monster.Name, weakenAtkReduction2, weakenDefReduction2));

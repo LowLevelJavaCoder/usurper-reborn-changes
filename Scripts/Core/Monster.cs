@@ -315,7 +315,7 @@ public class Monster
     public long GetAttackPower()
     {
         long attack = Strength + WeapPow + Punch;
-        
+
         // Add bonus for boss monsters (mini-boss stats are already boosted 1.5x during generation)
         if (IsBoss)
         {
@@ -327,17 +327,25 @@ public class Monster
         {
             attack += 5;
         }
-        
+
+        // v0.57.1 — Weaken debuff reduces effective attack by 30% for the duration.
+        // Previously the "weaken" handler mutated base Strength directly (permanent, never restored).
+        // Now it's a transient read on WeakenRounds > 0 so the debuff self-expires with the counter.
+        if (WeakenRounds > 0)
+        {
+            attack = (long)(attack * 0.70f);
+        }
+
         return Math.Max(1, attack);
     }
-    
+
     /// <summary>
     /// Calculate monster's total defense power (Pascal compatible)
     /// </summary>
     public long GetDefensePower()
     {
         long defense = Defence + ArmPow;
-        
+
         // Add bonus for boss monsters
         if (IsBoss)
         {
@@ -346,6 +354,12 @@ public class Monster
         else if (IsMiniBoss)
         {
             defense = (long)(defense * 1.1f);  // Mini-bosses get 10% defense bonus
+        }
+
+        // v0.57.1 — Weaken debuff reduces effective defense by 20% for the duration.
+        if (WeakenRounds > 0)
+        {
+            defense = (long)(defense * 0.80f);
         }
 
         return Math.Max(0, defense);
