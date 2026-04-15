@@ -529,7 +529,15 @@ public static class SpellSystem
         // chance from inexperience and failing to beat the DC cause failure. This follows
         // D&D 5e rules where nat 1/20 only apply to attack rolls, not ability checks.
         // v0.56.0: Healing spells never fizzle — dying because a heal fizzled is strictly bad UX.
-        bool isHealSpell = spellInfo.SpellType == "Heal";
+        // Also protect hybrid attack+heal spells where players rely on the healing component
+        // (e.g. Deluge of Sanctity is SpellType=Attack but heals self 100 HP).
+        bool isHealSpell = spellInfo.SpellType == "Heal"
+                        || spellInfo.Name == "Deluge of Sanctity"  // hybrid AoE damage + self-heal
+                        || spellInfo.Name == "Steal Life"           // Sage lifesteal — half-damage heal intent
+                        || spellInfo.Name == "Prison Siphon"        // Abysswarden lifesteal — reliable heal intent
+                        || spellInfo.Name == "Devour Essence"        // Abysswarden lifesteal
+                        || spellInfo.Name == "Consume the Fallen"    // Voidreaver %MaxHP heal
+                        || spellInfo.Name == "Cycle Rewind";         // Cyclebreaker restore
         bool spellFailed = !isHealSpell && (
                            (rollResult.IsCriticalFailure && rollResult.NaturalRoll == 0) || // Flat fumble from inexperience
                            (!rollResult.Success && !rollResult.IsCriticalSuccess));           // Didn't beat DC (nat 1 with high mod can still succeed)

@@ -1260,7 +1260,7 @@ public static class ClassAbilitySystem
         {
             Id = "mending_meditation",
             Name = "Mending Meditation",
-            Description = "Channel restorative energy into a wounded ally. Scales with WIS+INT.",
+            Description = "Channel restorative energy into a wounded ally. Scales with CON+WIS.",
             LevelRequired = 10,
             StaminaCost = 20,
             Cooldown = 3,
@@ -2391,6 +2391,22 @@ public static class ClassAbilitySystem
     }
 
     /// <summary>
+    /// Get the effective stamina cost of an ability, applying tier scaling.
+    /// v0.56.1: Level 50+ abilities cost +25% stamina, level 75+ cost +40%.
+    /// Higher-tier abilities feel weightier; forces resource management in long runs.
+    /// </summary>
+    public static int GetEffectiveStaminaCost(ClassAbility ability)
+    {
+        if (ability == null) return 0;
+        int baseCost = ability.StaminaCost;
+        if (ability.LevelRequired >= 75)
+            return (int)(baseCost * 1.40);
+        if (ability.LevelRequired >= 50)
+            return (int)(baseCost * 1.25);
+        return baseCost;
+    }
+
+    /// <summary>
     /// Check if character can use an ability (has stamina, not on cooldown)
     /// </summary>
     public static bool CanUseAbility(Character character, string abilityId, Dictionary<string, int> cooldowns)
@@ -2407,7 +2423,8 @@ public static class ClassAbilitySystem
         if (character.Level < ability.LevelRequired) return false;
 
         // Check combat stamina (CurrentCombatStamina is used during combat)
-        if (character.CurrentCombatStamina < ability.StaminaCost) return false;
+        // v0.56.1: use tier-scaled effective cost
+        if (character.CurrentCombatStamina < GetEffectiveStaminaCost(ability)) return false;
 
         // Check cooldown
         if (cooldowns.TryGetValue(abilityId, out int remainingCooldown) && remainingCooldown > 0)
@@ -2685,7 +2702,7 @@ public static class ClassAbilitySystem
                             terminal.SetColor("bright_yellow");
                             terminal.Write($"  [{i + 1}] ");
                             terminal.SetColor("yellow");
-                            string costDisplay = ability.ManaCost > 0 ? $"({ability.ManaCost} MP)" : $"({ability.StaminaCost} ST)";
+                            string costDisplay = ability.ManaCost > 0 ? $"({ability.ManaCost} MP)" : $"({GetEffectiveStaminaCost(ability)} ST)";
                             terminal.Write($"{ability.Name,-24} {costDisplay}");
                             if (!string.IsNullOrEmpty(ability.Description))
                             {
@@ -2729,7 +2746,7 @@ public static class ClassAbilitySystem
                     terminal.SetColor("darkgray");
                     terminal.Write("] ");
                     terminal.SetColor("green");
-                    terminal.Write($"{unequipped[i].Name,-24} ({unequipped[i].StaminaCost} ST) Lv{unequipped[i].LevelRequired}");
+                    terminal.Write($"{unequipped[i].Name,-24} ({GetEffectiveStaminaCost(unequipped[i])} ST) Lv{unequipped[i].LevelRequired}");
                     if (!string.IsNullOrEmpty(unequipped[i].Description))
                     {
                         terminal.SetColor("gray");
@@ -2749,7 +2766,7 @@ public static class ClassAbilitySystem
                 foreach (var ability in locked)
                 {
                     terminal.SetColor("darkgray");
-                    string lCostDisplay = ability.ManaCost > 0 ? $"({ability.ManaCost} MP)" : $"({ability.StaminaCost} ST)";
+                    string lCostDisplay = ability.ManaCost > 0 ? $"({ability.ManaCost} MP)" : $"({GetEffectiveStaminaCost(ability)} ST)";
                     terminal.Write($"      {ability.Name,-24} {lCostDisplay} {Loc.Get("ability.requires_lv", ability.LevelRequired)}");
                     if (!string.IsNullOrEmpty(ability.Description))
                         terminal.Write($"  {ability.Description}");
@@ -2843,7 +2860,7 @@ public static class ClassAbilitySystem
                     terminal.SetColor("darkgray");
                     terminal.Write("] ");
                     terminal.SetColor("green");
-                    string uCostDisplay = unequipped[i].ManaCost > 0 ? $"({unequipped[i].ManaCost} MP)" : $"({unequipped[i].StaminaCost} ST)";
+                    string uCostDisplay = unequipped[i].ManaCost > 0 ? $"({unequipped[i].ManaCost} MP)" : $"({GetEffectiveStaminaCost(unequipped[i])} ST)";
                     terminal.WriteLine($"{unequipped[i].Name,-24} {uCostDisplay}");
                 }
                 terminal.SetColor("darkgray");

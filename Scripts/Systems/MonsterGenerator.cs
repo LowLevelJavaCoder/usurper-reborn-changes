@@ -80,6 +80,8 @@ public static class MonsterGenerator
         }
 
         // NG+ cycle monster buff (v0.52.0) — monsters get stronger each cycle
+        // v0.56.1: also scale WeapPow and ArmPow (were missed in the original implementation
+        // so NG+ monsters dealt less weapon damage and had less armor than intended)
         int cycle = StoryProgressionSystem.Instance?.CurrentCycle ?? 1;
         if (cycle >= 2)
         {
@@ -89,6 +91,8 @@ public static class MonsterGenerator
             monster.Strength = (long)(monster.Strength * monsterMult);
             monster.Defence = (int)(monster.Defence * monsterMult);
             monster.Punch = (long)(monster.Punch * monsterMult);
+            monster.WeapPow = (long)(monster.WeapPow * monsterMult);
+            monster.ArmPow = (long)(monster.ArmPow * monsterMult);
         }
 
         return monster;
@@ -183,10 +187,17 @@ public static class MonsterGenerator
     /// </summary>
     private static MonsterStats CalculateMonsterStats(int level, float powerMultiplier, bool isBoss, bool isMiniBoss = false)
     {
-        // Boss multiplier for increased difficulty (2.0x HP/stats)
-        // Mini-boss multiplier for moderate difficulty (1.5x HP/stats)
-        float bossMultiplier = isBoss ? 2.0f : (isMiniBoss ? 1.5f : 1.0f);
-        float totalMultiplier = powerMultiplier * bossMultiplier;
+        // v0.56.1 — separate HP/damage/defense multipliers so we can buff HP aggressively
+        // without turning bosses into one-shot machines.
+        // Bosses: 2.8x HP, 1.25x damage, 1.2x defense (was 2.0x everything — died to one crit).
+        // Champions: 2.2x HP, 1.3x damage, 1.2x defense (was 1.5x everything — felt like trash).
+        float hpMultiplier = isBoss ? 2.8f : (isMiniBoss ? 2.2f : 1.0f);
+        float damageMultiplier = isBoss ? 1.25f : (isMiniBoss ? 1.3f : 1.0f);
+        float defenseMultiplier = isBoss ? 1.2f : (isMiniBoss ? 1.2f : 1.0f);
+
+        float hpTotal = powerMultiplier * hpMultiplier;
+        float damageTotal = powerMultiplier * damageMultiplier;
+        float defenseTotal = powerMultiplier * defenseMultiplier;
 
         // Soft cap: full formula up to floor 50, then diminishing growth beyond
         // This prevents monster offense from exponentially outpacing player stats at high floors
@@ -195,29 +206,29 @@ public static class MonsterGenerator
         // REBALANCED HP (v0.47.5: +45% so fights last 4-8 hits; v0.54.0: soft-capped past floor 50)
         // Formula: 50*level + level^1.2 * 15, using effectiveLevel for offensive stats
         long baseHP = (long)((50 * effectiveLevel) + Math.Pow(effectiveLevel, 1.2) * 15);
-        long hp = (long)(baseHP * totalMultiplier);
+        long hp = (long)(baseHP * hpTotal);
 
         // REBALANCED STRENGTH: uses effectiveLevel to prevent one-shots at high floors
         long baseStrength = (long)((2 * effectiveLevel) + Math.Pow(effectiveLevel, 1.05) * 1.5);
-        long strength = (long)(baseStrength * totalMultiplier);
+        long strength = (long)(baseStrength * damageTotal);
 
         // Monster defence — uses raw level (monsters should be tanky, not one-shotting)
         // Formula: level + level^1.02 * 0.5
         long baseDefence = (long)((level) + Math.Pow(level, 1.02) * 0.5);
-        long defence = (long)(baseDefence * totalMultiplier);
+        long defence = (long)(baseDefence * defenseTotal);
 
         // REBALANCED PUNCH: uses effectiveLevel
         long basePunch = (long)((effectiveLevel) + Math.Pow(effectiveLevel, 1.02) * 0.5);
-        long punch = (long)(basePunch * totalMultiplier);
+        long punch = (long)(basePunch * damageTotal);
 
         // REBALANCED WEAPON POWER: uses effectiveLevel
         long baseWeaponPower = (long)((1.5 * effectiveLevel) + Math.Pow(effectiveLevel, 1.05) * 1);
-        long weaponPower = (long)(baseWeaponPower * totalMultiplier);
+        long weaponPower = (long)(baseWeaponPower * damageTotal);
 
         // Monster armor power (v0.41.4: raised from 0.4f to 0.7f so monsters have real armor)
         // Formula: level * 0.5 + level^1.02 * 0.3
         long baseArmorPower = (long)((0.5 * level) + Math.Pow(level, 1.02) * 0.3);
-        long armorPower = (long)(baseArmorPower * totalMultiplier * 0.7f);
+        long armorPower = (long)(baseArmorPower * defenseTotal * 0.7f);
 
         // Apply server-wide SysOp HP multiplier
         hp = (long)(hp * GameConfig.MonsterHPMultiplier);
@@ -471,6 +482,7 @@ public static class MonsterGenerator
                 }
 
                 // NG+ cycle monster buff (v0.52.0) — same scaling as GenerateMonster()
+                // v0.56.1: include WeapPow and ArmPow to match the single-monster path
                 int cycle = StoryProgressionSystem.Instance?.CurrentCycle ?? 1;
                 if (cycle >= 2)
                 {
@@ -480,6 +492,8 @@ public static class MonsterGenerator
                     monster.Strength = (long)(monster.Strength * monsterMult);
                     monster.Defence = (int)(monster.Defence * monsterMult);
                     monster.Punch = (long)(monster.Punch * monsterMult);
+                    monster.WeapPow = (long)(monster.WeapPow * monsterMult);
+                    monster.ArmPow = (long)(monster.ArmPow * monsterMult);
                 }
 
                 monsters.Add(monster);

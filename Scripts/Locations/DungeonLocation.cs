@@ -8544,7 +8544,9 @@ public class DungeonLocation : BaseLocation
 
     private async Task MerchantTradeMenu(Character player)
     {
-        int potionPrice = 40 + (currentDungeonLevel * 5);
+        // v0.56.1: dungeon merchant now uses GameConfig potion constants with a small dungeon-deep discount
+        // (floor 1: ~85g, floor 50: ~535g vs shop's 550g, floor 100: ~1035g vs shop's 1050g)
+        int potionPrice = (GameConfig.HealingPotionBaseCost - 15) + (currentDungeonLevel * GameConfig.HealingPotionLevelMultiplier);
         int megaPotionPrice = currentDungeonLevel * 100;
         int antidotePrice = 75;
 

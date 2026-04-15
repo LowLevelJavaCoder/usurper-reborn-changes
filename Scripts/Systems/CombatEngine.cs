@@ -206,6 +206,19 @@ public partial class CombatEngine
         attacker.StatusImmunityDuration = 0;
         attacker.DeathsEmbraceActive = false;
         attacker.StatusLifestealPercent = 0;
+        // v0.56.0 tank ability buffs (PvP reset)
+        attacker.TempDamageReductionPercent = 0;
+        attacker.TempDamageReductionDuration = 0;
+        attacker.TempThornReflectPercent = 0;
+        attacker.TempThornReflectDuration = 0;
+        attacker.TempPercentRegenPerRound = 0;
+        attacker.TempPercentRegenDuration = 0;
+        defender.TempDamageReductionPercent = 0;
+        defender.TempDamageReductionDuration = 0;
+        defender.TempThornReflectPercent = 0;
+        defender.TempThornReflectDuration = 0;
+        defender.TempPercentRegenPerRound = 0;
+        defender.TempPercentRegenDuration = 0;
         attacker.RemoveStatus(StatusEffect.Protected);
         attacker.RemoveStatus(StatusEffect.Blessed);
         attacker.RemoveStatus(StatusEffect.Haste);
@@ -451,6 +464,13 @@ public partial class CombatEngine
         player.StatusImmunityDuration = 0;
         player.DeathsEmbraceActive = false;
         player.StatusLifestealPercent = 0;
+        // v0.56.0 tank ability buffs — reset per battle so they don't leak between fights
+        player.TempDamageReductionPercent = 0;
+        player.TempDamageReductionDuration = 0;
+        player.TempThornReflectPercent = 0;
+        player.TempThornReflectDuration = 0;
+        player.TempPercentRegenPerRound = 0;
+        player.TempPercentRegenDuration = 0;
         // Clear spell status effects that shouldn't persist between fights
         player.RemoveStatus(StatusEffect.Protected);
         player.RemoveStatus(StatusEffect.Blessed);
@@ -654,6 +674,13 @@ public partial class CombatEngine
                 if (teammate.IsAlive)
                 {
                     teammate.InitializeCombatStamina(); // Initialize teammate stamina
+                    // v0.56.0 — reset tank ability buffs on teammates (NPC tanks) too
+                    teammate.TempDamageReductionPercent = 0;
+                    teammate.TempDamageReductionDuration = 0;
+                    teammate.TempThornReflectPercent = 0;
+                    teammate.TempThornReflectDuration = 0;
+                    teammate.TempPercentRegenPerRound = 0;
+                    teammate.TempPercentRegenDuration = 0;
                     terminal.WriteLine(Loc.Get("combat.teammate_entry", teammate.DisplayName, teammate.Level));
                 }
             }
@@ -4359,10 +4386,33 @@ public partial class CombatEngine
             terminal.WriteLine(Loc.Get("combat.shield_absorbs", blockedAmount));
         }
 
+        // v0.56.1 Old God solo buff/debuff: when fighting alone (no teammates), the Old God
+        // does +15% damage but the player takes -20% damage. Preserves the 1v1 Aurelion
+        // tension the feedback specifically loved without making it impossible.
+        bool isOldGodFight = monster.FamilyName == "OldGod";
+        bool isSoloAgainstOldGod = isOldGodFight
+            && (currentTeammates == null || !currentTeammates.Any(t => t != null && t.IsAlive && !t.IsGroupedPlayer));
+        if (isSoloAgainstOldGod)
+        {
+            // Old God hits harder solo...
+            actualDamage = (long)(actualDamage * (1.0 + GameConfig.OldGodSoloDamageBonus));
+            // ...but player also takes less damage to compensate
+            actualDamage = (long)(actualDamage * (1.0 - GameConfig.OldGodSoloPlayerDamageReduction));
+        }
+
         // Cap monster damage per hit to prevent one-shots
         // Non-bosses: 75% of max HP; Bosses: 85% of max HP
+        // v0.56.1: for the first 3 rounds of a boss fight, tighten cap to 15% MaxHP.
+        // Prevents a crit from deleting the player in round 1 before they can react;
+        // later rounds let the boss ramp up to real threat levels.
         {
-            double capPercent = monster.IsBoss ? 0.85 : 0.75;
+            double capPercent;
+            if (monster.IsBoss && result.CurrentRound <= GameConfig.BossFirstRoundsDamageCapRounds)
+                capPercent = GameConfig.BossFirstRoundsDamageCapPercent;
+            else if (monster.IsBoss)
+                capPercent = 0.85;
+            else
+                capPercent = 0.75;
             long maxDamage = Math.Max(1, (long)(player.MaxHP * capPercent));
             if (actualDamage > maxDamage)
                 actualDamage = maxDamage;
@@ -4453,6 +4503,9 @@ public partial class CombatEngine
             {
                 monster.HP = Math.Max(0, monster.HP - reflect);
                 terminal.WriteLine(Loc.Get("combat.divine_mandate_reflect", monster.Name, reflect), "bright_magenta");
+                // If reflect kills the monster, credit the kill so XP/gold/quests register
+                if (monster.HP <= 0 && !result.DefeatedMonsters.Contains(monster))
+                    result.DefeatedMonsters.Add(monster);
             }
         }
 
@@ -4594,6 +4647,12 @@ public partial class CombatEngine
             terminal.WriteLine(abilityResult.Message);
         }
 
+        // v0.56.1 Old God solo adjustment applies to ability damage too (not just basic attacks).
+        // Computed once here and reused across all 3 ability-damage branches (direct, life-steal, non-lifesteal multiplier).
+        bool isOldGodFightAbility = monster.FamilyName == "OldGod";
+        bool isSoloAgainstOldGodAbility = isOldGodFightAbility
+            && (currentTeammates == null || !currentTeammates.Any(t => t != null && t.IsAlive && !t.IsGroupedPlayer));
+
         // Apply direct damage
         if (abilityResult.DirectDamage > 0)
         {
@@ -4620,12 +4679,50 @@ public partial class CombatEngine
                 if (drugEffects.MagicResistBonus > 0)
                     actualDamage = Math.Max(1, (long)(actualDamage * (1.0 - drugEffects.MagicResistBonus / 100.0)));
 
+                // v0.56.1 Old God solo: +15% boss damage, -20% player damage (same as basic attacks)
+                if (isSoloAgainstOldGodAbility)
+                {
+                    actualDamage = (long)(actualDamage * (1.0 + GameConfig.OldGodSoloDamageBonus));
+                    actualDamage = (long)(actualDamage * (1.0 - GameConfig.OldGodSoloPlayerDamageReduction));
+                }
+
+                // v0.56.1 Shield Wall Formation: % incoming damage reduction applies to boss abilities too
+                if (player.TempDamageReductionPercent > 0 && player.TempDamageReductionDuration > 0 && actualDamage > 1)
+                {
+                    long reduced = (long)(actualDamage * (player.TempDamageReductionPercent / 100.0));
+                    if (reduced > 0)
+                    {
+                        actualDamage = Math.Max(1, actualDamage - reduced);
+                        terminal.WriteLine(Loc.Get("combat.shield_wall_formation_absorbs", reduced), "bright_cyan");
+                    }
+                }
+
                 // Cap ability damage per hit (same caps as normal attacks)
-                double capPercent = monster.IsBoss ? 0.85 : 0.75;
+                // v0.56.1: first-3-rounds boss cap applies here too
+                double capPercent;
+                if (monster.IsBoss && result.CurrentRound <= GameConfig.BossFirstRoundsDamageCapRounds)
+                    capPercent = GameConfig.BossFirstRoundsDamageCapPercent;
+                else if (monster.IsBoss)
+                    capPercent = 0.85;
+                else
+                    capPercent = 0.75;
                 long maxDmg = Math.Max(1, (long)(player.MaxHP * capPercent));
                 if (actualDamage > maxDmg) actualDamage = maxDmg;
 
                 player.HP -= actualDamage;
+
+                // v0.56.1 Divine Mandate thorn reflect: reflect % back at attacker for ability damage too
+                if (player.TempThornReflectPercent > 0 && player.TempThornReflectDuration > 0 && monster.IsAlive && actualDamage > 0)
+                {
+                    long reflect = (long)(actualDamage * (player.TempThornReflectPercent / 100.0));
+                    if (reflect > 0)
+                    {
+                        monster.HP = Math.Max(0, monster.HP - reflect);
+                        terminal.WriteLine(Loc.Get("combat.divine_mandate_reflect", monster.Name, reflect), "bright_magenta");
+                        if (monster.HP <= 0 && !result.DefeatedMonsters.Contains(monster))
+                            result.DefeatedMonsters.Add(monster);
+                    }
+                }
 
                 // Voidreaver Death's Embrace: revive on lethal damage from abilities
                 if (player.HP <= 0 && player.DeathsEmbraceActive)
@@ -4695,8 +4792,26 @@ public partial class CombatEngine
                 long damage = (long)(monster.GetAttackPower() * abilityResult.DamageMultiplier);
                 damage = Math.Max(1, damage - player.Defence);
 
-                // Cap ability damage per hit
-                double capPercent = monster.IsBoss ? 0.85 : 0.75;
+                // v0.56.1 Old God solo: +15% boss damage, -20% player damage (life-steal ability path)
+                if (isSoloAgainstOldGodAbility)
+                {
+                    damage = (long)(damage * (1.0 + GameConfig.OldGodSoloDamageBonus));
+                    damage = (long)(damage * (1.0 - GameConfig.OldGodSoloPlayerDamageReduction));
+                }
+
+                // v0.56.1 tank damage reduction applies to boss life-steal abilities too
+                if (player.TempDamageReductionPercent > 0 && player.TempDamageReductionDuration > 0 && damage > 1)
+                {
+                    long reduced = (long)(damage * (player.TempDamageReductionPercent / 100.0));
+                    if (reduced > 0) damage = Math.Max(1, damage - reduced);
+                }
+
+                // Cap ability damage per hit — first-3-rounds cap for bosses
+                double capPercent;
+                if (monster.IsBoss && result.CurrentRound <= GameConfig.BossFirstRoundsDamageCapRounds)
+                    capPercent = GameConfig.BossFirstRoundsDamageCapPercent;
+                else if (monster.IsBoss) capPercent = 0.85;
+                else capPercent = 0.75;
                 long maxDmg = Math.Max(1, (long)(player.MaxHP * capPercent));
                 if (damage > maxDmg) damage = maxDmg;
 
@@ -4730,13 +4845,49 @@ public partial class CombatEngine
                     terminal.WriteLine($"[{rawDamage} damage vs {abilityDef} defense]");
                 }
 
-                // Cap ability damage per hit
-                double capPercent = monster.IsBoss ? 0.85 : 0.75;
+                // v0.56.1 Old God solo: +15% boss damage, -20% player damage (non-lifesteal multiplier path)
+                if (isSoloAgainstOldGodAbility)
+                {
+                    damage = (long)(damage * (1.0 + GameConfig.OldGodSoloDamageBonus));
+                    damage = (long)(damage * (1.0 - GameConfig.OldGodSoloPlayerDamageReduction));
+                }
+
+                // v0.56.1 tank damage reduction applies to boss multiplier-abilities too
+                if (player.TempDamageReductionPercent > 0 && player.TempDamageReductionDuration > 0 && damage > 1)
+                {
+                    long reduced = (long)(damage * (player.TempDamageReductionPercent / 100.0));
+                    if (reduced > 0)
+                    {
+                        damage = Math.Max(1, damage - reduced);
+                        terminal.WriteLine(Loc.Get("combat.shield_wall_formation_absorbs", reduced), "bright_cyan");
+                    }
+                }
+
+                // Cap ability damage per hit — first-3-rounds cap for bosses
+                double capPercent;
+                if (monster.IsBoss && result.CurrentRound <= GameConfig.BossFirstRoundsDamageCapRounds)
+                    capPercent = GameConfig.BossFirstRoundsDamageCapPercent;
+                else if (monster.IsBoss) capPercent = 0.85;
+                else capPercent = 0.75;
                 long maxDmg = Math.Max(1, (long)(player.MaxHP * capPercent));
                 if (damage > maxDmg) damage = maxDmg;
 
                 player.HP -= damage;
                 terminal.WriteLine(Loc.Get("combat.you_take_damage", damage), "red");
+
+                // v0.56.1 thorn reflect on ability multiplier damage
+                if (player.TempThornReflectPercent > 0 && player.TempThornReflectDuration > 0 && monster.IsAlive && damage > 0)
+                {
+                    long reflect = (long)(damage * (player.TempThornReflectPercent / 100.0));
+                    if (reflect > 0)
+                    {
+                        monster.HP = Math.Max(0, monster.HP - reflect);
+                        terminal.WriteLine(Loc.Get("combat.divine_mandate_reflect", monster.Name, reflect), "bright_magenta");
+                        if (monster.HP <= 0 && !result.DefeatedMonsters.Contains(monster))
+                            result.DefeatedMonsters.Add(monster);
+                    }
+                }
+
                 result.CombatLog.Add($"{monster.Name} uses {abilityName} for {damage} damage");
             }
         }
@@ -6216,6 +6367,10 @@ public partial class CombatEngine
         var teammates = result.Teammates?.Where(t => t.IsAlive).ToList();
         if (teammates == null || teammates.Count == 0) return;
 
+        // v0.56.0: healer spec bonus applies to party song heals (Minstrel Bard)
+        if (abilityResult.Healing > 0)
+            abilityResult.Healing = ApplyHealerSpecBonus(bard, abilityResult.Healing);
+
         terminal.SetColor("bright_magenta");
         terminal.WriteLine(isPlayer
             ? Loc.Get("combat.song_resonates")
@@ -7090,25 +7245,24 @@ public partial class CombatEngine
         {
             Item? loot = null;
 
-            // Mini-bosses (Champions) have 60% chance to drop equipment (v0.41.4: was 100%)
+            // Mini-bosses (Champions) — v0.56.1: guaranteed 2 items to justify new tuning
+            // (was 60% chance for 1 item; champions now take real effort to kill).
             if (monster.IsMiniBoss)
             {
-                if (random.NextDouble() < 0.60)
+                for (int dropIdx = 0; dropIdx < 2; dropIdx++)
                 {
                     loot = LootGenerator.GenerateMiniBossLoot(monster.Level, result.Player.Class);
-                    if (loot != null)
-                    {
-                        // Cap MinLevel to player's level — if you killed it, you earned it
-                        if (loot.MinLevel > result.Player.Level)
-                            loot.MinLevel = result.Player.Level;
-                        terminal.WriteLine("");
-                        terminal.SetColor("bright_yellow");
-                        terminal.WriteLine(Loc.Get("combat.loot_champion_drop"));
-                        // Round-robin: pick primary recipient
-                        var recipient = allPlayers[_lootRoundRobinIndex % allPlayers.Count];
-                        _lootRoundRobinIndex++;
-                        await DisplayEquipmentDrop(loot, monster, recipient);
-                    }
+                    if (loot == null) continue;
+                    // Cap MinLevel to player's level — if you killed it, you earned it
+                    if (loot.MinLevel > result.Player.Level)
+                        loot.MinLevel = result.Player.Level;
+                    terminal.WriteLine("");
+                    terminal.SetColor("bright_yellow");
+                    terminal.WriteLine(Loc.Get("combat.loot_champion_drop"));
+                    // Round-robin: pick primary recipient
+                    var recipient = allPlayers[_lootRoundRobinIndex % allPlayers.Count];
+                    _lootRoundRobinIndex++;
+                    await DisplayEquipmentDrop(loot, monster, recipient);
                 }
                 continue; // Skip normal drop logic for mini-bosses
             }
@@ -11352,10 +11506,11 @@ public partial class CombatEngine
                 return;
             }
 
-            // Check stamina
-            if (!player.HasEnoughStamina(ability.StaminaCost))
+            // Check stamina (v0.56.1 tier-scaled cost)
+            int effectiveStamCost = ClassAbilitySystem.GetEffectiveStaminaCost(ability);
+            if (!player.HasEnoughStamina(effectiveStamCost))
             {
-                terminal.WriteLine(Loc.Get("combat.not_enough_stamina", ability.StaminaCost, player.CurrentCombatStamina), "red");
+                terminal.WriteLine(Loc.Get("combat.not_enough_stamina", effectiveStamCost, player.CurrentCombatStamina), "red");
                 await Task.Delay(GetCombatDelay(1000));
                 return;
             }
@@ -11376,8 +11531,8 @@ public partial class CombatEngine
                 return;
             }
 
-            // Spend stamina
-            player.SpendStamina(ability.StaminaCost);
+            // Spend stamina (tier-scaled)
+            player.SpendStamina(effectiveStamCost);
 
             // Deduct mana cost if the ability has one (Mystic Shaman abilities)
             if (ability.ManaCost > 0)
@@ -13846,7 +14001,7 @@ public partial class CombatEngine
         foreach (var ability in availableAbilities)
         {
             bool canUse = ClassAbilitySystem.CanUseAbility(player, ability.Id, abilityCooldowns);
-            bool hasStamina = player.HasEnoughStamina(ability.StaminaCost);
+            bool hasStamina = player.HasEnoughStamina(ClassAbilitySystem.GetEffectiveStaminaCost(ability));
             bool onCooldown = abilityCooldowns.TryGetValue(ability.Id, out int cooldownLeft) && cooldownLeft > 0;
 
             string statusText = "";
@@ -14014,6 +14169,8 @@ public partial class CombatEngine
             // Multi-target heal (e.g. Mass Cure) — heal caster AND all living teammates
             else if (spellInfo.IsMultiTarget && spellInfo.SpellType == "Heal" && spellResult.Healing > 0)
             {
+                // v0.56.0 healer spec bonus applies to spell heals too
+                spellResult.Healing = ApplyHealerSpecBonus(player, spellResult.Healing);
                 // Heal the caster
                 long oldPlayerHP = player.HP;
                 player.HP = Math.Min(player.MaxHP, player.HP + spellResult.Healing);
@@ -14082,6 +14239,8 @@ public partial class CombatEngine
                     // Heal ally
                     if (spellResult.Healing > 0)
                     {
+                        // v0.56.0 healer spec bonus applies to ally-targeted spell heals
+                        spellResult.Healing = ApplyHealerSpecBonus(player, spellResult.Healing);
                         long oldHP = allyTarget.HP;
                         allyTarget.HP = Math.Min(allyTarget.MaxHP, allyTarget.HP + spellResult.Healing);
                         long actualHeal = allyTarget.HP - oldHP;
@@ -14136,6 +14295,8 @@ public partial class CombatEngine
             // Apply self-healing from attack spells (e.g. Deluge of Sanctity)
             if (spellResult.Healing > 0)
             {
+                // v0.56.0 healer spec bonus
+                spellResult.Healing = ApplyHealerSpecBonus(player, spellResult.Healing);
                 long oldHP = player.HP;
                 player.HP = Math.Min(player.MaxHP, player.HP + spellResult.Healing);
                 long actualHeal = player.HP - oldHP;
@@ -14187,6 +14348,8 @@ public partial class CombatEngine
                 // Apply self-healing from attack spells (e.g. Prison Siphon, Devour Essence)
                 if (spellResult.Healing > 0)
                 {
+                    // v0.56.0 healer spec bonus
+                    spellResult.Healing = ApplyHealerSpecBonus(player, spellResult.Healing);
                     long oldHP = player.HP;
                     player.HP = Math.Min(player.MaxHP, player.HP + spellResult.Healing);
                     long actualHeal = player.HP - oldHP;
@@ -15039,6 +15202,8 @@ public partial class CombatEngine
 
             if (spellResult.Success && spellResult.Healing > 0)
             {
+                // v0.56.0 healer spec bonus on ally heal-spell
+                spellResult.Healing = ApplyHealerSpecBonus(player, spellResult.Healing);
                 long oldHP = targetAlly.HP;
                 targetAlly.HP = Math.Min(targetAlly.MaxHP, targetAlly.HP + spellResult.Healing);
                 long actualHeal = targetAlly.HP - oldHP;
@@ -15822,7 +15987,7 @@ public partial class CombatEngine
 
         // Filter to abilities the teammate can afford, off cooldown, AND has required weapon
         var affordableAbilities = availableAbilities
-            .Where(a => teammate.CurrentCombatStamina >= a.StaminaCost
+            .Where(a => teammate.CurrentCombatStamina >= ClassAbilitySystem.GetEffectiveStaminaCost(a)
                      && (!myCooldowns.TryGetValue(a.Id, out int cd) || cd <= 0)
                      && ClassAbilitySystem.CanUseAbility(teammate, a.Id, myCooldowns))
             .ToList();
@@ -15981,7 +16146,7 @@ public partial class CombatEngine
         if (!abilityResult.Success) return false;
 
         // Deduct stamina AFTER confirming success (was before, wasting stamina on failures)
-        teammate.SpendStamina(chosenAbility.StaminaCost);
+        teammate.SpendStamina(ClassAbilitySystem.GetEffectiveStaminaCost(chosenAbility));
 
         // Track cooldown
         if (chosenAbility.Cooldown > 0)
@@ -16508,8 +16673,15 @@ public partial class CombatEngine
         if (companion.IsDefending)
             actualDamage = Math.Max(1, actualDamage / 2);
 
-        // Cap damage per hit — same as player path (75% non-boss, 85% boss)
-        double capPercent = monster.IsBoss ? 0.85 : 0.75;
+        // Cap damage per hit — same as player path (75% non-boss, 85% boss, 15% first-3-rounds boss)
+        // v0.56.1: companions get the same first-3-rounds boss protection as the player
+        double capPercent;
+        if (monster.IsBoss && result.CurrentRound <= GameConfig.BossFirstRoundsDamageCapRounds)
+            capPercent = GameConfig.BossFirstRoundsDamageCapPercent;
+        else if (monster.IsBoss)
+            capPercent = 0.85;
+        else
+            capPercent = 0.75;
         long maxDmg = Math.Max(1, (long)(companion.MaxHP * capPercent));
         if (actualDamage > maxDmg) actualDamage = maxDmg;
 
@@ -16555,6 +16727,8 @@ public partial class CombatEngine
             if (reflect > 0)
             {
                 monster.HP = Math.Max(0, monster.HP - reflect);
+                if (monster.HP <= 0 && !result.DefeatedMonsters.Contains(monster))
+                    result.DefeatedMonsters.Add(monster);
                 terminal.WriteLine(Loc.Get("combat.divine_mandate_reflect", monster.Name, reflect), "bright_magenta");
             }
         }
@@ -18556,7 +18730,7 @@ public partial class CombatEngine
         foreach (var ability in availableAbilities)
         {
             bool canUse = ClassAbilitySystem.CanUseAbility(player, ability.Id, abilityCooldowns);
-            bool hasStamina = player.HasEnoughStamina(ability.StaminaCost);
+            bool hasStamina = player.HasEnoughStamina(ClassAbilitySystem.GetEffectiveStaminaCost(ability));
             bool onCooldown = abilityCooldowns.TryGetValue(ability.Id, out int cooldownLeft) && cooldownLeft > 0;
 
             string statusText = "";
@@ -18615,10 +18789,11 @@ public partial class CombatEngine
             return;
         }
 
-        // Check stamina cost
-        if (!player.HasEnoughStamina(selectedAbility.StaminaCost))
+        // Check stamina cost (v0.56.1 tier-scaled)
+        int effectiveStamCostMM = ClassAbilitySystem.GetEffectiveStaminaCost(selectedAbility);
+        if (!player.HasEnoughStamina(effectiveStamCostMM))
         {
-            terminal.WriteLine(Loc.Get("combat.not_enough_stamina", selectedAbility.StaminaCost, player.CurrentCombatStamina), "red");
+            terminal.WriteLine(Loc.Get("combat.not_enough_stamina", effectiveStamCostMM, player.CurrentCombatStamina), "red");
             await Task.Delay(GetCombatDelay(1500));
             return;
         }
@@ -18631,10 +18806,10 @@ public partial class CombatEngine
             return;
         }
 
-        // Deduct stamina cost
-        player.SpendStamina(selectedAbility.StaminaCost);
+        // Deduct stamina cost (tier-scaled)
+        player.SpendStamina(effectiveStamCostMM);
         terminal.SetColor("cyan");
-        terminal.WriteLine(Loc.Get("combat.stamina_spent", selectedAbility.StaminaCost, player.CurrentCombatStamina, player.MaxCombatStamina));
+        terminal.WriteLine(Loc.Get("combat.stamina_spent", effectiveStamCostMM, player.CurrentCombatStamina, player.MaxCombatStamina));
 
         // Deduct mana cost if the ability has one (Mystic Shaman abilities)
         if (selectedAbility.ManaCost > 0)
@@ -18723,8 +18898,8 @@ public partial class CombatEngine
             }
             else if (abilityResult.SpecialEffect == "backstab")
             {
-                // Guaranteed critical hit from stealth
-                actualDamage = (long)(actualDamage * 2.0);
+                // Guaranteed critical hit from stealth (v0.56.0 — 1.75x, no double-crit)
+                actualDamage = (long)(actualDamage * 1.75);
                 terminal.WriteLine(Loc.Get("combat.ability_backstab_crit"), "bright_yellow");
                 abilityAlreadyCrit = true; // Don't double-crit — the 1.75x IS the crit
             }
@@ -21204,14 +21379,14 @@ public partial class CombatEngine
         var match = abilities.FirstOrDefault(a =>
             a.SpecialEffect == targetEffect
             && ClassAbilitySystem.CanUseAbility(attacker, a.Id, abilityCooldowns)
-            && attacker.HasEnoughStamina(a.StaminaCost));
+            && attacker.HasEnoughStamina(ClassAbilitySystem.GetEffectiveStaminaCost(a)));
         if (match != null) return match.Id;
 
         // Fall back to exact ID match
         match = abilities.FirstOrDefault(a =>
             a.Id == targetEffect
             && ClassAbilitySystem.CanUseAbility(attacker, a.Id, abilityCooldowns)
-            && attacker.HasEnoughStamina(a.StaminaCost));
+            && attacker.HasEnoughStamina(ClassAbilitySystem.GetEffectiveStaminaCost(a)));
         return match?.Id;
     }
 
@@ -21414,7 +21589,7 @@ public partial class CombatEngine
             foreach (var ability in availableAbilities)
             {
                 bool canUse = ClassAbilitySystem.CanUseAbility(attacker, ability.Id, abilityCooldowns);
-                bool hasStamina = attacker.HasEnoughStamina(ability.StaminaCost);
+                bool hasStamina = attacker.HasEnoughStamina(ClassAbilitySystem.GetEffectiveStaminaCost(ability));
                 bool onCooldown = abilityCooldowns.TryGetValue(ability.Id, out int cooldownLeft) && cooldownLeft > 0;
 
                 string statusText = "";
@@ -21473,9 +21648,9 @@ public partial class CombatEngine
             return;
         }
 
-        if (!attacker.HasEnoughStamina(selectedAbility.StaminaCost))
+        if (!attacker.HasEnoughStamina(ClassAbilitySystem.GetEffectiveStaminaCost(selectedAbility)))
         {
-            terminal.WriteLine(Loc.Get("combat.not_enough_stamina", selectedAbility.StaminaCost, attacker.CurrentCombatStamina), "red");
+            terminal.WriteLine(Loc.Get("combat.not_enough_stamina", ClassAbilitySystem.GetEffectiveStaminaCost(selectedAbility), attacker.CurrentCombatStamina), "red");
             await Task.Delay(GetCombatDelay(1000));
             return;
         }
@@ -21488,10 +21663,11 @@ public partial class CombatEngine
             return;
         }
 
-        // Deduct stamina and execute
-        attacker.SpendStamina(selectedAbility.StaminaCost);
+        // Deduct stamina and execute (v0.56.1 tier-scaled)
+        int effectiveCostShaman = ClassAbilitySystem.GetEffectiveStaminaCost(selectedAbility);
+        attacker.SpendStamina(effectiveCostShaman);
         terminal.SetColor("cyan");
-        terminal.WriteLine(Loc.Get("combat.stamina_spent", selectedAbility.StaminaCost, attacker.CurrentCombatStamina, attacker.MaxCombatStamina));
+        terminal.WriteLine(Loc.Get("combat.stamina_spent", effectiveCostShaman, attacker.CurrentCombatStamina, attacker.MaxCombatStamina));
 
         // Deduct mana cost if the ability has one (Mystic Shaman abilities)
         if (selectedAbility.ManaCost > 0)
@@ -21527,7 +21703,7 @@ public partial class CombatEngine
             }
             else if (abilityResult.SpecialEffect == "backstab")
             {
-                actualDamage = (long)(actualDamage * 1.5);
+                actualDamage = (long)(actualDamage * 1.75);
                 terminal.WriteLine(Loc.Get("combat.critical_from_shadows"), "bright_yellow");
             }
             else if (abilityResult.SpecialEffect == "biaxin")
@@ -21668,7 +21844,7 @@ public partial class CombatEngine
                 // Pick highest-damage ability
                 var chosen = abilities.OrderByDescending(a => a.BaseDamage).FirstOrDefault();
                 if (chosen == null) return;
-                computer.SpendStamina(chosen.StaminaCost);
+                computer.SpendStamina(ClassAbilitySystem.GetEffectiveStaminaCost(chosen));
                 var abilityResult = ClassAbilitySystem.UseAbility(computer, chosen.Id, random);
 
                 if (abilityResult.Damage > 0)
@@ -24042,13 +24218,14 @@ public partial class CombatEngine
         if (ability == null) return;
 
         // Check and deduct stamina
-        if (!player.HasEnoughStamina(ability.StaminaCost))
+        int effectiveCostDirect = ClassAbilitySystem.GetEffectiveStaminaCost(ability);
+        if (!player.HasEnoughStamina(effectiveCostDirect))
         {
-            terminal.WriteLine(Loc.Get("combat.not_enough_stamina", ability.StaminaCost, player.CurrentCombatStamina), "red");
+            terminal.WriteLine(Loc.Get("combat.not_enough_stamina", effectiveCostDirect, player.CurrentCombatStamina), "red");
             await Task.Delay(GetCombatDelay(1000));
             return;
         }
-        player.SpendStamina(ability.StaminaCost);
+        player.SpendStamina(effectiveCostDirect);
 
         // Use the ability
         var abilityResult = ClassAbilitySystem.UseAbility(player, abilityId, random);
@@ -24580,25 +24757,26 @@ public partial class CombatEngine
         terminal.SetColor("bright_yellow");
         terminal.WriteLine(Loc.Get(isPlayer ? "combat.taunt_aoe" : "combat.taunt_aoe_npc", actorName));
 
-        // Apply the tank buff(s)
+        // Apply the tank buff(s) — take the stronger % but always refresh duration,
+        // so a mid-buff recast extends the timer instead of being wasted.
         if (damageReductionPercent > 0)
         {
             player.TempDamageReductionPercent = Math.Max(player.TempDamageReductionPercent, damageReductionPercent);
-            player.TempDamageReductionDuration = Math.Max(player.TempDamageReductionDuration, duration);
+            player.TempDamageReductionDuration = duration;
             terminal.SetColor("bright_cyan");
             terminal.WriteLine(Loc.Get("combat.shield_wall_formation_buff", actorName, damageReductionPercent));
         }
         if (thornReflectPercent > 0)
         {
             player.TempThornReflectPercent = Math.Max(player.TempThornReflectPercent, thornReflectPercent);
-            player.TempThornReflectDuration = Math.Max(player.TempThornReflectDuration, duration);
+            player.TempThornReflectDuration = duration;
             terminal.SetColor("bright_magenta");
             terminal.WriteLine(Loc.Get("combat.divine_mandate_buff", actorName, thornReflectPercent));
         }
         if (percentRegenPerRound > 0)
         {
             player.TempPercentRegenPerRound = Math.Max(player.TempPercentRegenPerRound, percentRegenPerRound);
-            player.TempPercentRegenDuration = Math.Max(player.TempPercentRegenDuration, duration);
+            player.TempPercentRegenDuration = duration;
             terminal.SetColor("bright_green");
             terminal.WriteLine(Loc.Get("combat.rage_challenge_buff", actorName, percentRegenPerRound));
         }

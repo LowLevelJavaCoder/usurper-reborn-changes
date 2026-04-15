@@ -369,7 +369,9 @@ public class Character
             ArmorWeightClass.Medium => GameConfig.MediumArmorStaminaRegen,
             _ => GameConfig.HeavyArmorStaminaRegen
         };
-        int regen = 5 + (int)(Stamina / 10) + armorRegenBonus;
+        // v0.56.1: Reduced stamina regen so abilities feel like a real resource.
+        // Was `5 + Stamina/10 + armor`; now `3 + Stamina/15 + armor`.
+        int regen = 3 + (int)(Stamina / 15) + armorRegenBonus;
         long oldStamina = CurrentCombatStamina;
         CurrentCombatStamina = Math.Min(CurrentCombatStamina + regen, MaxCombatStamina);
         return (int)(CurrentCombatStamina - oldStamina);

@@ -145,8 +145,9 @@ public class MonsterTests
     #region XP Reward Bonus Tests
 
     [Fact]
-    public void GetExperienceReward_Boss_Gets3xMultiplier()
+    public void GetExperienceReward_Boss_Gets4_2xMultiplier()
     {
+        // v0.56.1: Boss XP multiplier raised from 3x to 4.2x for difficulty bump
         var normalMonster = CreateTestMonster(level: 50);
         var bossMonster = CreateTestMonster(level: 50);
         bossMonster.IsBoss = true;
@@ -154,16 +155,16 @@ public class MonsterTests
         var normalXP = normalMonster.GetExperienceReward();
         var bossXP = bossMonster.GetExperienceReward();
 
-        // Boss XP should be approximately 3x normal (allowing for small rounding differences)
-        bossXP.Should().BeGreaterThanOrEqualTo(normalXP * 2,
-            "Boss XP should be at least 2x normal (targeting 3x)");
-        bossXP.Should().BeLessThanOrEqualTo(normalXP * 4,
-            "Boss XP should be at most 4x normal (targeting 3x)");
+        bossXP.Should().BeGreaterThanOrEqualTo((long)(normalXP * 3.5),
+            "Boss XP should be at least 3.5x normal (targeting 4.2x)");
+        bossXP.Should().BeLessThanOrEqualTo((long)(normalXP * 5),
+            "Boss XP should be at most 5x normal (targeting 4.2x)");
     }
 
     [Fact]
-    public void GetExperienceReward_MiniBoss_Gets1_5xMultiplier()
+    public void GetExperienceReward_MiniBoss_Gets1_8xMultiplier()
     {
+        // v0.56.1: Mini-boss XP multiplier raised from 1.5x to 1.8x for difficulty bump
         var normalMonster = CreateTestMonster(level: 50);
         var miniBossMonster = CreateTestMonster(level: 50);
         miniBossMonster.IsMiniBoss = true;
@@ -171,11 +172,10 @@ public class MonsterTests
         var normalXP = normalMonster.GetExperienceReward();
         var miniBossXP = miniBossMonster.GetExperienceReward();
 
-        // Mini-boss XP should be approximately 1.5x normal
-        miniBossXP.Should().BeGreaterThanOrEqualTo((long)(normalXP * 1.3),
-            "Mini-boss XP should be at least 1.3x normal (targeting 1.5x)");
-        miniBossXP.Should().BeLessThanOrEqualTo((long)(normalXP * 1.7),
-            "Mini-boss XP should be at most 1.7x normal (targeting 1.5x)");
+        miniBossXP.Should().BeGreaterThanOrEqualTo((long)(normalXP * 1.6),
+            "Mini-boss XP should be at least 1.6x normal (targeting 1.8x)");
+        miniBossXP.Should().BeLessThanOrEqualTo((long)(normalXP * 2.0),
+            "Mini-boss XP should be at most 2.0x normal (targeting 1.8x)");
     }
 
     [Fact]

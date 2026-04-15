@@ -529,11 +529,11 @@ public class Monster
 
         if (IsBoss)
         {
-            baseExp *= 3;  // Floor bosses give 3x XP
+            baseExp = (long)(baseExp * 4.2);  // Floor bosses give 4.2x XP (v0.56.1: 3x -> 4.2x for +40% to match difficulty bump)
         }
         else if (IsMiniBoss)
         {
-            baseExp = (long)(baseExp * 1.5);  // Mini-bosses give 1.5x XP
+            baseExp = (long)(baseExp * 1.8);  // Champions give 1.8x XP (v0.56.1: 1.5x -> 1.8x for +20% to match tougher fights)
         }
 
         if (IsUnique)
@@ -563,11 +563,11 @@ public class Monster
 
         if (IsBoss)
         {
-            baseGold *= 3;  // Floor bosses give 3x gold
+            baseGold = (long)(baseGold * 4.2);  // Floor bosses give 4.2x gold (v0.56.1: 3x -> 4.2x)
         }
         else if (IsMiniBoss)
         {
-            baseGold = (long)(baseGold * 1.5);  // Mini-bosses give 1.5x gold
+            baseGold = (long)(baseGold * 1.8);  // Champions give 1.8x gold (v0.56.1: 1.5x -> 1.8x)
         }
 
         if (IsUnique)

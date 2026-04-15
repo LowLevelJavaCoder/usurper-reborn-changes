@@ -9,7 +9,7 @@ using System.Collections.Generic;
 public static partial class GameConfig
 {
     // Version information
-    public const string Version = "0.56.0";
+    public const string Version = "0.56.1";
     public const string VersionName = "Class Balance";
     public const string DiscordInvite = "discord.gg/EZhwgDT6Ta";
 
@@ -518,13 +518,15 @@ public static partial class GameConfig
     // Magic shop constants
     public const string DefaultMagicShopOwner = "Ravanella"; // Default gnome owner
     public const int DefaultIdentificationCost = 1500;
-    public const int HealingPotionBaseCost = 50;       // Base potion cost (before level scaling)
-    public const int HealingPotionLevelMultiplier = 5; // Additional cost per player level
+    // v0.56.1: doubled to make potions a real gold sink at high levels.
+    // Was 50+(5*level) healing / 75+(5*level) mana; now 100+(10*level) / 150+(10*level).
+    public const int HealingPotionBaseCost = 100;      // Base potion cost (before level scaling)
+    public const int HealingPotionLevelMultiplier = 10; // Additional cost per player level
     public const int MaxHealingPotions = 50; // Maximum potions player can carry
 
     // Mana potion constants
-    public const int ManaPotionBaseCost = 75;          // Base mana potion cost (before level scaling)
-    public const int ManaPotionLevelMultiplier = 5;    // Additional cost per player level
+    public const int ManaPotionBaseCost = 150;         // Base mana potion cost (before level scaling)
+    public const int ManaPotionLevelMultiplier = 10;    // Additional cost per player level
 
     // Reforging constants (endgame gold sink)
     public const int ReforgeCostMultiplier = 50;       // Cost = level * level * this
@@ -901,6 +903,14 @@ public static partial class GameConfig
 
     // Healer specialization heal bonus (v0.56.0) — applies to ability + spell heals cast by NPC healers
     public const float HealerSpecHealBonus = 0.20f;   // +20% healing output for Holy/Restoration/Mystic/Minstrel/Apothecary/Spiritwalker specs
+
+    // v0.56.1 Difficulty Tuning
+    public const float OldGodDivineScalingHPPerArtifact = 0.10f;      // +10% HP per collected artifact (cap +40% after 4 artifacts)
+    public const float OldGodDivineScalingDamagePerArtifact = 0.05f;   // +5% damage per collected artifact (cap +20% after 4 artifacts)
+    public const float OldGodSoloDamageBonus = 0.15f;                  // Solo Old God fight: god does +15% damage
+    public const float OldGodSoloPlayerDamageReduction = 0.20f;         // Solo Old God fight: player takes -20% damage
+    public const float BossFirstRoundsDamageCapPercent = 0.15f;        // First 3 rounds of boss fight: cap hit at 15% MaxHP
+    public const int BossFirstRoundsDamageCapRounds = 3;
     // Magician Arcane Mastery
     public const float MagicianArcaneSpellBonus = 1.15f;     // Magician: +15% spell damage (Arcane Mastery passive)
     // Cleric Divine Grace

@@ -864,9 +864,19 @@ namespace UsurperRemake.Systems
         /// </summary>
         private Monster CreateBossMonster(OldGodBossData boss)
         {
-            // Split boss Strength into Monster Strength + WeapPow for CombatEngine's damage formula
-            long monsterStrength = boss.Strength / 2;
-            long monsterWeapPow = boss.Strength / 2;
+            // v0.56.1 Divine Scaling: remaining Old Gods scale up with every artifact the
+            // player has collected. Prevents trivialization once geared — feedback explicitly
+            // said Veloura onward became easy with a tank+healer plus artifacts.
+            int artifactCount = ArtifactSystem.Instance.GetCollectedCount();
+            float hpScale = 1.0f + Math.Min(0.40f, artifactCount * GameConfig.OldGodDivineScalingHPPerArtifact);
+            float dmgScale = 1.0f + Math.Min(0.20f, artifactCount * GameConfig.OldGodDivineScalingDamagePerArtifact);
+
+            long scaledHP = (long)(boss.HP * hpScale);
+            long scaledStrength = (long)(boss.Strength * dmgScale);
+
+            // Split scaled Strength into Monster Strength + WeapPow for CombatEngine's damage formula
+            long monsterStrength = scaledStrength / 2;
+            long monsterWeapPow = scaledStrength / 2;
 
             // Split boss Defence into Monster Defence + ArmPow
             int monsterDefence = (int)(boss.Defence / 2);
@@ -876,8 +886,8 @@ namespace UsurperRemake.Systems
             {
                 Name = boss.Name,
                 Level = boss.Level,
-                HP = boss.HP,
-                MaxHP = boss.HP,
+                HP = scaledHP,
+                MaxHP = scaledHP,
                 Strength = monsterStrength,
                 WeapPow = monsterWeapPow,
                 Defence = monsterDefence,
@@ -1244,8 +1254,15 @@ namespace UsurperRemake.Systems
             }
 
             // Create Noctura as a monster for combat using the same pattern as CreateBossMonster
-            long monsterStrength = betrayalData.Strength / 2;
-            long monsterWeapPow = betrayalData.Strength / 2;
+            // v0.56.1: Apply Divine Scaling — Noctura is an Old God and should scale with artifacts too
+            int nocturaArtifactCount = ArtifactSystem.Instance.GetCollectedCount();
+            float nocturaHpScale = 1.0f + Math.Min(0.40f, nocturaArtifactCount * GameConfig.OldGodDivineScalingHPPerArtifact);
+            float nocturaDmgScale = 1.0f + Math.Min(0.20f, nocturaArtifactCount * GameConfig.OldGodDivineScalingDamagePerArtifact);
+            long nocturaScaledHP = (long)(betrayalData.HP * nocturaHpScale);
+            long nocturaScaledStrength = (long)(betrayalData.Strength * nocturaDmgScale);
+
+            long monsterStrength = nocturaScaledStrength / 2;
+            long monsterWeapPow = nocturaScaledStrength / 2;
             int monsterDefence = (int)(betrayalData.Defence / 2);
             long monsterArmPow = betrayalData.Defence / 2;
 
@@ -1253,8 +1270,8 @@ namespace UsurperRemake.Systems
             {
                 Name = betrayalData.Name,
                 Level = betrayalData.Level,
-                HP = betrayalData.HP,
-                MaxHP = betrayalData.MaxHP,
+                HP = nocturaScaledHP,
+                MaxHP = nocturaScaledHP,
                 Strength = monsterStrength,
                 WeapPow = monsterWeapPow,
                 Defence = monsterDefence,

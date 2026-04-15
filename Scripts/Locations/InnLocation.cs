@@ -4457,7 +4457,7 @@ public class InnLocation : BaseLocation
                 terminal.SetColor(isDisabled ? "gray" : "white");
                 terminal.Write($"{ability.Name,-24}");
                 terminal.SetColor("darkgray");
-                terminal.Write($" {ability.StaminaCost,2} ST  Lv{ability.LevelRequired,-3}  ");
+                terminal.Write($" {ClassAbilitySystem.GetEffectiveStaminaCost(ability),2} ST  Lv{ability.LevelRequired,-3}  ");
                 terminal.SetColor(isDisabled ? "darkgray" : "gray");
                 if (IsScreenReader || ability.Description.Length <= 35)
                 {

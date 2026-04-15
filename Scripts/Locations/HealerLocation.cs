@@ -28,17 +28,15 @@ public class HealerLocation : BaseLocation
     private const int PoisonBaseCost = 200;
 
     // Healing costs
-    private const int HealingPotionBaseCost = 50;  // Base cost per potion
-    private const int HealingPotionPerLevel = 5;   // Additional cost per player level
     private const int FullHealCostPerHP = 2;       // Cost per HP restored
 
     /// <summary>
     /// Calculate healing potion cost scaled by player level.
-    /// Level 1: 55g, Level 25: 175g, Level 50: 300g, Level 100: 550g
+    /// Uses GameConfig.HealingPotion* constants so Healer stays in sync with shops and dungeon merchants.
     /// </summary>
     private static int GetHealingPotionCost(int playerLevel)
     {
-        return HealingPotionBaseCost + playerLevel * HealingPotionPerLevel;
+        return GameConfig.HealingPotionBaseCost + playerLevel * GameConfig.HealingPotionLevelMultiplier;
     }
 
     /// <summary>
