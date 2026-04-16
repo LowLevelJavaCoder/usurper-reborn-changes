@@ -4545,10 +4545,10 @@ public abstract class BaseLocation
             terminal.SetColor("bright_yellow");
             terminal.WriteLine($"  {Loc.Get("base.murder_arrested")}");
             terminal.WriteLine($"  {Loc.Get("base.murder_executed_chance")}");
-            terminal.SetColor("bright_red");
-            terminal.WriteLine($"    {Loc.Get("base.murder_char_deleted")}");
+            /* No more permadeath
             terminal.SetColor("bright_yellow");
             terminal.WriteLine($"  {Loc.Get("base.murder_lose_all")}");
+            */
             terminal.WriteLine($"  {Loc.Get("base.murder_prison_3_days")}");
             terminal.SetColor("red");
             terminal.WriteLine("");
@@ -4659,14 +4659,6 @@ public abstract class BaseLocation
 
         await Task.Delay(2000);
     }
-
-    internal async Task MurderGuardEncounter(Character player)
-    {
-        /* 
-        Start a monster encounter
-        */
-    }
-
     /// <summary>
     /// Apply severe consequences for non-bounty NPC murder:
     /// 50% chance of execution (character deletion) or prison (3 days) + strip all belongings.
@@ -4721,7 +4713,7 @@ public abstract class BaseLocation
             {
                 //Values to be Tweaked
                 guards[i] = Monster.CreateMonster(
-                    nr: player.Level,
+                    nr: player.Level + 10,
             name: "Town Guard",
             hps: (int)(player.HP * 2),
             strength: (int)(player.Level * 10),
