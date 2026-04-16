@@ -4699,7 +4699,7 @@ public abstract class BaseLocation
         terminal.Write("S", "bright_yellow");
         terminal.Write($"]{Loc.Get("street_encounter.guard.opt_surrender")}  [", "white");
         terminal.Write("F", "bright_yellow");
-        terminal.Write($"]{Loc.Get("street_encounter.hostile.opt_fight")}  [", "white");
+        terminal.Write($"]{Loc.Get("street_encounter.hostile.opt_fight")}", "white");
 
         string choice = (await terminal.GetKeyInput()).ToUpperInvariant();
 
@@ -4882,8 +4882,8 @@ public abstract class BaseLocation
                 p.Gold = 0;
                 // p.BankGold = 0; // Bank seized too Not because the NPC who died only lost ther current gold, not their bank gold
 
-                // Prison for 1 real days — maximum security, no escape
-                p.DaysInPrison = 1;
+                // Prison for 2 real days — maximum security, no escape
+                p.DaysInPrison = 2;
                 p.IsMurderConvict = true;
                 p.PrisonEscapes = 0;
                 p.CellDoorOpen = false;

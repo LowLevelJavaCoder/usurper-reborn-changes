@@ -17454,7 +17454,7 @@
   "base.life_spared": "VIDA PERDONADA",
   "base.magistrate_mercy": "El magistrado muestra una pizca de misericordia.",
   "base.sentenced_prison_1": "Por el crimen de asesinato, eres sentenciado a",
-  "base.sentenced_prison_2": "3 dias en prision de maxima seguridad.",
+  "base.sentenced_prison_2": "2 dias en prision de maxima seguridad.",
   "base.possessions_confiscated": "Todas tus posesiones son confiscadas.",
   "base.gold_confiscated": "  Oro confiscado: {0:N0}",
   "base.equipment_confiscated": "Todo el equipo confiscado.",

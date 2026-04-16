@@ -17454,7 +17454,7 @@
   "base.life_spared": "KEGYELMET KAPOTT",
   "base.magistrate_mercy": "A bíró egy cseppnyi kegyelmet mutat.",
   "base.sentenced_prison_1": "A gyilkosság bűnéért ezennel",
-  "base.sentenced_prison_2": "3 nap maximális biztonsági börtönre ítéltetsz.",
+  "base.sentenced_prison_2": "2 nap maximális biztonsági börtönre ítéltetsz.",
   "base.possessions_confiscated": "Minden tulajdonod elkobozzuk.",
   "base.gold_confiscated": "  Elkobzott arany: {0:N0}",
   "base.equipment_confiscated": "Minden felszerelés elkobozva.",

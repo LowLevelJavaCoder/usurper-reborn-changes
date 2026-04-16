@@ -17454,7 +17454,7 @@
   "base.life_spared": "LIFE SPARED",
   "base.magistrate_mercy": "The magistrate shows a shred of mercy.",
   "base.sentenced_prison_1": "For the crime of murder, you are sentenced to",
-  "base.sentenced_prison_2": "3 days in maximum security prison.",
+  "base.sentenced_prison_2": "2 days in maximum security prison.",
   "base.possessions_confiscated": "All your possessions are hereby confiscated.",
   "base.gold_confiscated": "  Gold confiscated: {0:N0}",
   "base.equipment_confiscated": "All equipment confiscated.",

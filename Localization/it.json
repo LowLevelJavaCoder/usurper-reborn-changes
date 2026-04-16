@@ -17454,7 +17454,7 @@
   "base.life_spared": "VITA RISPARMIATA",
   "base.magistrate_mercy": "Il magistrato mostra un briciolo di clemenza.",
   "base.sentenced_prison_1": "Per il crimine di omicidio, sei condannato a",
-  "base.sentenced_prison_2": "3 giorni in prigione di massima sicurezza.",
+  "base.sentenced_prison_2": "2 giorni in prigione di massima sicurezza.",
   "base.possessions_confiscated": "Tutti i tuoi averi sono confiscati.",
   "base.gold_confiscated": "  Oro confiscato: {0:N0}",
   "base.equipment_confiscated": "Tutto l'equipaggiamento confiscato.",
