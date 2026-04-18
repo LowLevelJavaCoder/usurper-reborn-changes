@@ -6281,6 +6281,13 @@ public partial class GameEngine
         terminal.SetColor("bright_green");
         terminal.WriteLine("bbs.a-net.online:1337 / ssh -p 1338");
 
+        terminal.SetColor("bright_white");
+        terminal.Write("  Nite Eyes BBS                  ");
+        terminal.SetColor("gray");
+        terminal.Write("Mystic      ");
+        terminal.SetColor("bright_green");
+        terminal.WriteLine("bbs.lizardmaster.com");
+
         // --- End BBS Entries ---
 
         terminal.WriteLine("");
