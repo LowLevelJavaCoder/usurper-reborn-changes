@@ -4545,11 +4545,7 @@ public abstract class BaseLocation
             terminal.SetColor("bright_yellow");
             terminal.WriteLine($"  {Loc.Get("base.murder_arrested")}");
             terminal.WriteLine($"  {Loc.Get("base.murder_executed_chance")}");
-            /* No more permadeath
-            terminal.SetColor("bright_yellow");
-            terminal.WriteLine($"  {Loc.Get("base.murder_lose_all")}");
-            */
-            terminal.WriteLine($"  {Loc.Get("base.murder_prison_3_days")}");
+            terminal.WriteLine($"  {Loc.Get("base.murder_prison_2_days")}");
             terminal.SetColor("red");
             terminal.WriteLine("");
             terminal.WriteLine($"  {Loc.Get("base.murder_cannot_undo")}");
@@ -4628,7 +4624,7 @@ public abstract class BaseLocation
             {
                 if (currentPlayer is Player p)
                 {
-                    p.Darkness += 1000; // Crims are usualy low darkness but murder puts a stain on the soul much deeper than anything else
+                    UsurperRemake.Systems.AlignmentSystem.Instance.ChangeAlignment(p, GameConfig.MurderDarknessGain, isGood: false, reason: "murder"); // Crimes are usualy low darkness but murder puts a stain on the soul much deeper than anything else
                 }
                 await ApplyMurderConsequences(currentPlayer, npc);
             }
@@ -4661,7 +4657,7 @@ public abstract class BaseLocation
     }
     /// <summary>
     /// Apply severe consequences for non-bounty NPC murder:
-    /// 50% chance of execution (character deletion) or prison (3 days) + strip all belongings.
+    /// 50% chance of execution or prison (2 days).
     /// Called from BaseLocation.AttackNPC and MagicShopLocation.CastDeathSpell.
     /// </summary>
     internal async Task ApplyMurderConsequences(Character player, NPC victim)
@@ -4708,29 +4704,24 @@ public abstract class BaseLocation
         else
         {
             var guards = new Monster[5];
-
+            int level = currentPlayer.Level + 5;
             for (int i = 0; i < 5; i++)
             {
-                //Values to be Tweaked
-                guards[i] = Monster.CreateMonster(
-                    nr: player.Level + 10,
-            name: "Town Guard",
-            hps: (int)(player.HP * 2),
-            strength: (int)(player.Level * 10),
-            defence: (int)(player.Level * 10),
-            phrase: "",
-            grabweap: false,
-            grabarm: false,
-            weapon: "Town Guard Sword",
-            armor: "Armour of A Town Guard",
-            poisoned: false,
-            disease: false,
-            punch: (int)(player.Level * 1.5),
-            armpow: (int)(player.Level * 5),
-            weappow: (int)(player.Level * 5)
-                );
-                guards[i].IsProperName = true; // NPC — no "The" prefix
-                guards[i].CanSpeak = false; // Murderers Get the Silent Treatment
+                long guardHP = (long)(100 * level + Math.Pow(level, 1.4) * 25);
+                var guard = new Monster
+                {
+                    Name = "Murder Guard",
+                    Level = level,
+                    HP = guardHP,
+                    MaxHP = guardHP,
+                    Strength = 18 + level * 3,
+                    Defence = 15 + level * 2,
+                    WeapPow = 15 + level,
+                    ArmPow = 10 + level * 2 / 3,
+                    WeaponName = "Halberd",
+                    ArmorName = "Half-Plate"
+                };
+                guards[i] = guard;
             }
 
             var combatEngine = new CombatEngine(terminal);
@@ -4738,7 +4729,7 @@ public abstract class BaseLocation
 
             if (result.Victory)
             {
-                player.Darkness += 300;
+                AlignmentSystem.Instance.ChangeAlignment(player, 100, isGood: false, reason: "murder");
                 terminal.SetColor("red");
                 terminal.WriteLine(Loc.Get("street_encounter.guard.darkness_guards"));
 
@@ -4760,7 +4751,7 @@ public abstract class BaseLocation
             }
         }
 
-        // 50% execution, 50% prison + strip
+        // 50% execution, 50% prison
         bool isExecuted = Random.Shared.Next(100) < 50;
 
         if (isExecuted && captured)
@@ -4782,15 +4773,7 @@ public abstract class BaseLocation
             terminal.WriteLine("");
             await Task.Delay(3000);
 
-            /*
-                        terminal.SetColor("bright_red");
-                        terminal.WriteLine("  ╔══════════════════════════════════════╗");
-                        terminal.WriteLine($"  ║     {Loc.Get("base.char_deleted_1")}         ║");
-                        terminal.WriteLine($"  ║     {Loc.Get("base.char_deleted_2")}             ║");
-                        terminal.WriteLine("  ╚══════════════════════════════════════╝");
-                        terminal.WriteLine("");
-                        await Task.Delay(2000);
-                        */
+
 
             // Broadcast the execution
             if (DoorMode.IsOnlineMode)
@@ -4799,7 +4782,7 @@ public abstract class BaseLocation
                     $"⚖ {player.Name2} was executed by the Crown for the murder of {victim.Name2 ?? victim.Name}. Justice is served.");
             }
 
-            // Delete the character
+            // Kill the character
             if (player is Player p)
             {
                 if (DoorMode.IsOnlineMode)
@@ -4820,23 +4803,22 @@ public abstract class BaseLocation
                     // Kill Player
                     p.Die();
                 }
-                /* No Longer Disconnect
-                                // Force disconnect
-                                terminal.SetColor("gray");
-                                terminal.WriteLine($"  {Loc.Get("base.press_key_exit")}");
-                                await terminal.PressAnyKey();
 
-                                // In MUD mode, throw to disconnect session; in single-player, exit
-                                if (DoorMode.IsOnlineMode)
-                                    throw new Exception("CHARACTER_EXECUTED");
-                                else
-                                    Environment.Exit(0);
-                                    */
+                // Force disconnect
+                terminal.SetColor("gray");
+                terminal.WriteLine($"  {Loc.Get("base.press_key_exit")}");
+                await terminal.PressAnyKey();
+
+                // In MUD mode, throw to disconnect session; in single-player, exit
+                if (DoorMode.IsOnlineMode)
+                    throw new Exception("CHARACTER_EXECUTED");
+                else
+                    Environment.Exit(0);
             }
         }
         else if (captured)
         {
-            // Prison + strip all belongings
+            // Prison
             terminal.SetColor("bright_yellow");
             terminal.WriteLine("  ══════════════════════════════════════════");
             terminal.WriteLine($"              {Loc.Get("base.life_spared")}");
@@ -4856,23 +4838,9 @@ public abstract class BaseLocation
 
             if (player is Player p)
             {
-                /* Dont Strip Equipment because NPC who died lost equipment, 1 day of prison is enough of a punishment for murder
-                // Strip ALL equipment — unequip properly then clear the dictionary
-                // (UnequipSlot sets ID to 0 which corrupts saves; must clear entirely)
-                foreach (EquipmentSlot slot in Enum.GetValues(typeof(EquipmentSlot)))
-                {
-                    if (slot == EquipmentSlot.None) continue;
-                    p.UnequipSlot(slot);
-                }
-                p.EquippedItems.Clear(); // Remove all slot entries (prevents ID 0 in save)
-*/
-                // Clear inventory Take All Items
-                p.Inventory.Clear();
-
                 // Take all gold
-                long goldTaken = p.Gold;
-                p.Gold = 0;
-                // p.BankGold = 0; // Bank seized too Not because the NPC who died only lost ther current gold, not their bank gold
+                long goldTaken = p.Gold / 2;
+                p.Gold = p.Gold / 2;
 
                 // Prison for 2 real days — maximum security, no escape
                 p.DaysInPrison = 2;
@@ -4897,7 +4865,7 @@ public abstract class BaseLocation
             if (DoorMode.IsOnlineMode)
             {
                 NewsSystem.Instance?.Newsy(
-                    $"⚖ {player.Name2} was imprisoned for 3 days for the murder of {victim.Name2 ?? victim.Name}. All possessions confiscated.");
+                    $"⚖ {player.Name2} was imprisoned for 2 days for the murder of {victim.Name2 ?? victim.Name}.");
             }
 
             terminal.SetColor("gray");

@@ -17432,7 +17432,7 @@
   "base.murder_executed_chance": "Hay un 50% de probabilidad de que seas EJECUTADO",
   "base.murder_char_deleted": "(tu personaje sera eliminado permanentemente)",
   "base.murder_lose_all": "Si eres perdonado, pierdes TODO tu equipo y oro",
-  "base.murder_prison_3_days": "Cumpliras 3 dias en prision de maxima seguridad",
+  "base.murder_prison_2_days": "Cumpliras 2 dias en prision de maxima seguridad",
   "base.murder_cannot_undo": "Esta accion NO se puede deshacer.",
   "base.murder_confirm_yn": "Aun deseas cometer asesinato? (S/N):",
   "base.murder_walk_away": "Recuperas el sentido y te alejas.",
