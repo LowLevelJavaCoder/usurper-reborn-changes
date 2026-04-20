@@ -159,8 +159,18 @@ public class ArenaLocation : BaseLocation
         var backend = SaveSystem.Instance.Backend as SqlSaveBackend;
         if (backend == null) return;
 
+        // v0.57.7 (Lumina report: "i can fight myself in a PVP arena"):
+        // myUsername must match the save-key format used in PlayerSummary.Username
+        // (the DB row key — e.g., "jane_42" or "jane_42__alt"). Deriving it from
+        // the character's display name was wrong: if display name ("Lumina") differs
+        // from account username ("jane_42"), the self-exclusion filter at line 192
+        // below never matched and the player appeared in her own opponent list.
+        // Prefer SessionContext.Current?.CharacterKey (exact DB key) in MUD mode;
+        // fall back to the display-name-derived key only in single-player where
+        // there's one player anyway and the filter is moot.
         string myName = currentPlayer.Name2 ?? currentPlayer.Name1;
-        string myUsername = myName.ToLower();
+        string myUsername = (UsurperRemake.Server.SessionContext.Current?.CharacterKey
+                             ?? myName).ToLower();
         int attacksToday = backend.GetPvPAttacksToday(myUsername);
 
         if (attacksToday >= GameConfig.MaxPvPAttacksPerDay)
@@ -329,9 +339,13 @@ public class ArenaLocation : BaseLocation
     /// </summary>
     private async Task ProcessPvPResult(CombatResult result, PlayerSummary target, SqlSaveBackend backend, long defenderGold)
     {
+        // v0.57.7: same fix as the opponent-selection block above. `myUsername` must be
+        // the DB save-key (from SessionContext in MUD mode), not the display name, or
+        // DeductGoldFromPlayer / ClaimBounties / PvP tracking writes target the wrong
+        // row. Defender key comes straight from the PlayerSummary row, not DisplayName.
         string myName = currentPlayer.Name2 ?? currentPlayer.Name1;
-        string myUsername = myName.ToLower();
-        string defenderUsername = target.DisplayName.ToLower();
+        string myUsername = (UsurperRemake.Server.SessionContext.Current?.CharacterKey ?? myName).ToLower();
+        string defenderUsername = target.Username.ToLower();
         bool attackerWon = result.Outcome == CombatOutcome.Victory;
         bool attackerFled = result.Outcome == CombatOutcome.PlayerEscaped;
         string winnerUsername = attackerWon ? myUsername : defenderUsername;

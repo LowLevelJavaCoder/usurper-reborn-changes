@@ -447,7 +447,7 @@ public class DungeonLocation : BaseLocation
             ("  • Monster drops can include potions.", "white"),
             ("  • If you have Herbs, press [J] to use one (buffs vary by herb type).", "white"),
             ("", "white"),
-            ("You carry potions automatically. Check your count with [=] (Status).", "darkgray"),
+            ("You carry potions automatically. Check your count with [%] (Status).", "darkgray"),
         });
 
         // ── Screen 5: Healing Teammates ───────────────────────────────────────
@@ -2779,13 +2779,13 @@ public class DungeonLocation : BaseLocation
                 WriteSRMenuOption("R", Loc.Get("dungeon.make_camp"));
             WriteSRMenuOption("M", Loc.Get("dungeon.map"));
             WriteSRMenuOption("G", Loc.Get("dungeon.guide"));
-            WriteSRMenuOption("I", Loc.Get("dungeon.inventory"));
+            WriteSRMenuOption("*", Loc.Get("dungeon.inventory"));
             WriteSRMenuOption("P", Loc.Get("dungeon.potions"));
             if (currentPlayer.TotalHerbCount > 0)
                 WriteSRMenuOption("J", Loc.Get("dungeon.herbs", currentPlayer.TotalHerbCount.ToString()));
             if (teammates.Count > 0)
                 WriteSRMenuOption("Y", Loc.Get("dungeon.party"));
-            WriteSRMenuOption("=", Loc.Get("dungeon.status"));
+            WriteSRMenuOption("%", Loc.Get("dungeon.status"));
             WriteSRMenuOption("Q", Loc.Get("dungeon.leave_dungeon"));
             terminal.WriteLine("");
             return;
@@ -2891,7 +2891,7 @@ public class DungeonLocation : BaseLocation
         terminal.SetColor("darkgray");
         terminal.Write("[");
         terminal.SetColor("bright_yellow");
-        terminal.Write("I");
+        terminal.Write("*");
         terminal.SetColor("darkgray");
         terminal.Write("] ");
         terminal.SetColor("white");
@@ -2933,7 +2933,7 @@ public class DungeonLocation : BaseLocation
         terminal.SetColor("darkgray");
         terminal.Write("[");
         terminal.SetColor("bright_yellow");
-        terminal.Write("=");
+        terminal.Write("%");
         terminal.SetColor("darkgray");
         terminal.Write("] ");
         terminal.SetColor("white");
@@ -11884,6 +11884,13 @@ public class DungeonLocation : BaseLocation
         terminal.WriteLine(Loc.Get("dungeon.explored_cleared_count", explored, total, cleared, total), "gray");
         if (currentFloor.BossDefeated)
             terminal.WriteLine(Loc.Get("dungeon.boss_defeated"), "bright_green");
+        // v0.57.7 (Lumina): BFS below skips the starting room, so a player standing IN a
+        // designated safe haven used to be pointed at the NEXT-nearest one as if they had
+        // to travel. Surface the "you're already in one" state up-front so the guide's
+        // Safe Haven entry (if it still lists one) can't look contradictory.
+        bool currentRoomIsSafeHaven = current != null && current.IsSafeRoom;
+        if (currentRoomIsSafeHaven)
+            terminal.WriteLine(Loc.Get("dungeon.nav_safe_haven_here"), "bright_green");
         terminal.WriteLine("");
 
         // Build BFS parent map from current room through explored rooms
@@ -15957,7 +15964,7 @@ public class DungeonLocation : BaseLocation
         hpPct = Math.Clamp(hpPct, 0, 20);
         string hpBar = new string('#', hpPct) + new string('.', 20 - hpPct);
         sb.AppendLine($"\u001b[37m  HP: \u001b[31m[{hpBar}]\u001b[37m {follower.HP}/{follower.MaxHP}  \u001b[33mGold: {follower.Gold:N0}  \u001b[32mPotions: {follower.Healing}/{follower.MaxPotions}\u001b[0m");
-        sb.AppendLine($"\u001b[90m  Following \u001b[97m{leaderName}\u001b[90m | [I]nv [P]ot [=]Stats [Q]Leave | /party /help /say\u001b[0m");
+        sb.AppendLine($"\u001b[90m  Following \u001b[97m{leaderName}\u001b[90m | [*] Inv  [P]ot  [%] Status  [Q] Leave | /party /help /say\u001b[0m");
         sb.AppendLine();
 
         followerTerm.WriteRawAnsi(sb.ToString());
@@ -16325,8 +16332,8 @@ public class DungeonLocation : BaseLocation
                     continue;
                 }
 
-                // I = Inventory (with equip/unequip)
-                if (trimmed.Equals("I", StringComparison.OrdinalIgnoreCase))
+                // * / I = Inventory (* is the global shortcut, I kept as legacy alias)
+                if (trimmed == "*" || trimmed.Equals("I", StringComparison.OrdinalIgnoreCase))
                 {
                     await ShowFollowerInventory(player, term);
                     RePushRoomToFollower(player, leaderDungeon, group);
@@ -16341,8 +16348,8 @@ public class DungeonLocation : BaseLocation
                     continue;
                 }
 
-                // = = Character status
-                if (trimmed == "=")
+                // % / = = Character status (% is the global shortcut, = kept as legacy alias)
+                if (trimmed == "%" || trimmed == "=")
                 {
                     await ShowFollowerStatus(player, term);
                     RePushRoomToFollower(player, leaderDungeon, group);
@@ -16353,7 +16360,7 @@ public class DungeonLocation : BaseLocation
                 if (trimmed.Length > 0)
                 {
                     term.SetColor("gray");
-                    term.WriteLine($"  Unknown command '{trimmed}'. Use I/P/=/Q or /help");
+                    term.WriteLine($"  Unknown command '{trimmed}'. Use */P/%/Q or /help");
                 }
             }
         }

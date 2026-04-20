@@ -149,6 +149,22 @@ public class SaveRoundTripTests
     }
 
     [Fact]
+    public void PlayerData_RoundTrip_PreservesLastPartnerBondingUtc()
+    {
+        // v0.57.7: Rage reported infinite-XP exploit via "romantic dinner" at
+        // Home. Fix: wall-clock 20h cooldown stored in LastPartnerBondingUtc.
+        // Must survive save/load or the cooldown resets on every session.
+        var stamp = new DateTime(2026, 4, 19, 12, 30, 0, DateTimeKind.Utc);
+        var original = new PlayerData { LastPartnerBondingUtc = stamp };
+
+        var json = JsonSerializer.Serialize(original, _jsonOptions);
+        var restored = JsonSerializer.Deserialize<PlayerData>(json, _jsonOptions);
+
+        restored.Should().NotBeNull();
+        restored!.LastPartnerBondingUtc.Should().Be(stamp, "LastPartnerBondingUtc must survive save/load — otherwise the XP cooldown resets every session");
+    }
+
+    [Fact]
     public void PlayerData_RoundTrip_PreservesDailyCounters_KingdomAndPrison()
     {
         var original = new PlayerData

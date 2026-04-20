@@ -2189,6 +2189,19 @@ public class HomeLocation : BaseLocation
 
         terminal.WriteLine();
 
+        // v0.57.7: "Romantic dinner" was infinite XP — Rage reported they could
+        // loop the action and farm Level*50 XP per press indefinitely. Cases 2
+        // (walk, +5% MaxHP) and 3 (cuddle, +10% MaxMana) had the same shape,
+        // just smaller rewards.
+        // Fix: shared 20-hour wall-clock cooldown on the mechanical rewards
+        // (XP / HP / Mana). Flavor text still fires every time so the player
+        // can RP the interaction at will — only the one-per-day reward is
+        // gated. Bedroom / deep conversation / discuss-relationship (cases
+        // 4-6) are delegated to other systems and aren't rate-limited here.
+        bool bondingRewardAvailable =
+            currentPlayer.LastPartnerBondingUtc == DateTime.MinValue
+            || (DateTime.UtcNow - currentPlayer.LastPartnerBondingUtc) >= TimeSpan.FromHours(20);
+
         switch (choice)
         {
             case 1: // Romantic dinner
@@ -2198,13 +2211,19 @@ public class HomeLocation : BaseLocation
                 terminal.WriteLine(Loc.Get("home.partner_dinner_candlelight"));
                 terminal.WriteLine(Loc.Get("home.partner_dinner_gaze", partner.Name));
 
-                // XP bonus for married couples
-                if (relationType == "spouse")
+                // XP bonus for married couples — gated on the daily bonding cooldown
+                if (relationType == "spouse" && bondingRewardAvailable)
                 {
                     long xpBonus = currentPlayer.Level * 50;
                     currentPlayer.Experience += xpBonus;
                     terminal.SetColor("bright_green");
                     terminal.WriteLine(Loc.Get("home.partner_bond_xp", xpBonus));
+                    currentPlayer.LastPartnerBondingUtc = DateTime.UtcNow;
+                }
+                else if (relationType == "spouse")
+                {
+                    terminal.SetColor("gray");
+                    terminal.WriteLine(Loc.Get("home.partner_bond_already_today"));
                 }
                 break;
 
@@ -2215,10 +2234,19 @@ public class HomeLocation : BaseLocation
                 terminal.WriteLine(Loc.Get("home.partner_walk_evening"));
                 terminal.WriteLine(Loc.Get("home.partner_walk_head", partner.Name));
 
-                // Small HP recovery from relaxation
-                currentPlayer.HP = Math.Min(currentPlayer.HP + currentPlayer.MaxHP / 20, currentPlayer.MaxHP);
-                terminal.SetColor("bright_green");
-                terminal.WriteLine(Loc.Get("home.partner_walk_restores"));
+                // Small HP recovery from relaxation — gated on the daily bonding cooldown
+                if (bondingRewardAvailable)
+                {
+                    currentPlayer.HP = Math.Min(currentPlayer.HP + currentPlayer.MaxHP / 20, currentPlayer.MaxHP);
+                    terminal.SetColor("bright_green");
+                    terminal.WriteLine(Loc.Get("home.partner_walk_restores"));
+                    currentPlayer.LastPartnerBondingUtc = DateTime.UtcNow;
+                }
+                else
+                {
+                    terminal.SetColor("gray");
+                    terminal.WriteLine(Loc.Get("home.partner_bond_already_today"));
+                }
                 break;
 
             case 3: // Cuddle by fire
@@ -2228,10 +2256,19 @@ public class HomeLocation : BaseLocation
                 terminal.WriteLine(Loc.Get("home.partner_cuddle_nestle", partner.Name));
                 terminal.WriteLine(Loc.Get("home.partner_cuddle_peace"));
 
-                // Mana recovery from emotional connection
-                currentPlayer.Mana = Math.Min(currentPlayer.Mana + currentPlayer.MaxMana / 10, currentPlayer.MaxMana);
-                terminal.SetColor("bright_blue");
-                terminal.WriteLine(Loc.Get("home.partner_cuddle_renewed"));
+                // Mana recovery from emotional connection — gated on the daily bonding cooldown
+                if (bondingRewardAvailable)
+                {
+                    currentPlayer.Mana = Math.Min(currentPlayer.Mana + currentPlayer.MaxMana / 10, currentPlayer.MaxMana);
+                    terminal.SetColor("bright_blue");
+                    terminal.WriteLine(Loc.Get("home.partner_cuddle_renewed"));
+                    currentPlayer.LastPartnerBondingUtc = DateTime.UtcNow;
+                }
+                else
+                {
+                    terminal.SetColor("gray");
+                    terminal.WriteLine(Loc.Get("home.partner_bond_already_today"));
+                }
                 break;
 
             case 4: // Deep conversation
@@ -4672,6 +4709,14 @@ toResurrect.IsDead = false;
                 }
             }
 
+            // v0.57.7 (Hesperos report): `target` is a WRAPPER Character built fresh by
+            // CompanionSystem.GetCompanionsAsCharacters() — edits to wrapper.EquippedItems
+            // don't mutate the underlying Companion unless we explicitly sync. Without this
+            // call Lyris reverted to her EquipStartingGear set on next wrapper regeneration.
+            // Safe no-op for non-companion targets (spouse/lover/child/team NPC).
+            if (target.IsCompanion)
+                CompanionSystem.Instance?.SyncCompanionEquipment(target);
+
             terminal.WriteLine("");
             terminal.SetColor("bright_green");
             terminal.WriteLine(Loc.Get("home.equipped_item", target.DisplayName, selectedItem.Name));
@@ -4773,6 +4818,9 @@ toResurrect.IsDead = false;
         if (unequipped != null)
         {
             target.RecalculateStats();
+            // v0.57.7 — sync wrapper unequip back to Companion (see EquipItemToCharacter comment)
+            if (target.IsCompanion)
+                CompanionSystem.Instance?.SyncCompanionEquipment(target);
             var legacyItem = ConvertEquipmentToItem(unequipped);
             currentPlayer.Inventory.Add(legacyItem);
 
@@ -4837,6 +4885,9 @@ toResurrect.IsDead = false;
         }
 
         target.RecalculateStats();
+        // v0.57.7 — sync wrapper take-all back to Companion (see EquipItemToCharacter comment)
+        if (itemsTaken > 0 && target.IsCompanion)
+            CompanionSystem.Instance?.SyncCompanionEquipment(target);
 
         terminal.WriteLine("");
         if (itemsTaken > 0)

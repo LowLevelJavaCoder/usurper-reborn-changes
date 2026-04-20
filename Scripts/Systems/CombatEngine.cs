@@ -7865,69 +7865,77 @@ public partial class CombatEngine
                 // Player passed — try NPC/companion auto-pickup first (instant), then offer to other players
                 bool itemTaken = false;
 
-                // Try companion/NPC auto-pickup first (no waiting)
+                // Try companion/NPC auto-pickup first. v0.57.7 (Lumina report "Aldric auto
+                // equipped trash again. I choose Pass to throw it out and he grabbed it"):
+                // teammate auto-equip now surfaces a stat-compare prompt to the player
+                // BEFORE taking the item, instead of silently snatching whatever the
+                // weighted-power heuristic decided was an upgrade.
                 if (lootItem.IsIdentified && currentTeammates != null && currentTeammates.Count > 0)
                 {
                     var pickup = TryTeammatePickupItem(lootItem);
                     if (pickup.HasValue)
                     {
-                        var (teammate, upgradePercent) = pickup.Value;
-                        var teammateEquip = ConvertLootItemToEquipment(lootItem);
-                        if (teammateEquip != null)
+                        var (teammate, upgradePercent, slot) = pickup.Value;
+                        bool playerApproved = await ConfirmTeammateAutoEquip(teammate, lootItem, upgradePercent, slot);
+                        if (playerApproved)
                         {
-                            EquipmentDatabase.RegisterDynamic(teammateEquip);
-                            int invBefore = teammate.Inventory?.Count ?? 0;
-                            if (teammate.EquipItem(teammateEquip, out _))
+                            var teammateEquip = ConvertLootItemToEquipment(lootItem);
+                            if (teammateEquip != null)
                             {
-                                teammate.RecalculateStats();
-                                // Move displaced items from companion inventory to player inventory.
-                                // v0.57.1 — honor the player's inventory cap; previously this unconditionally
-                                // piled companion-displaced gear into the player's bag, letting carry grow
-                                // past MaxInventoryItems.
-                                if (teammate.Inventory != null && teammate.Inventory.Count > invBefore)
+                                EquipmentDatabase.RegisterDynamic(teammateEquip);
+                                int invBefore = teammate.Inventory?.Count ?? 0;
+                                if (teammate.EquipItem(teammateEquip, out _))
                                 {
-                                    var displaced = teammate.Inventory.Skip(invBefore).ToList();
-                                    foreach (var d in displaced)
+                                    teammate.RecalculateStats();
+                                    // Move displaced items from companion inventory to player inventory.
+                                    // v0.57.1 — honor the player's inventory cap; previously this unconditionally
+                                    // piled companion-displaced gear into the player's bag, letting carry grow
+                                    // past MaxInventoryItems.
+                                    if (teammate.Inventory != null && teammate.Inventory.Count > invBefore)
                                     {
-                                        teammate.Inventory.Remove(d);
-                                        if (player.IsInventoryFull)
+                                        var displaced = teammate.Inventory.Skip(invBefore).ToList();
+                                        foreach (var d in displaced)
                                         {
-                                            terminal.SetColor("red");
-                                            terminal.WriteLine(Loc.Get("combat.loot_displaced_dropped", d.Name));
+                                            teammate.Inventory.Remove(d);
+                                            if (player.IsInventoryFull)
+                                            {
+                                                terminal.SetColor("red");
+                                                terminal.WriteLine(Loc.Get("combat.loot_displaced_dropped", d.Name));
+                                            }
+                                            else
+                                            {
+                                                player.Inventory?.Add(d);
+                                            }
                                         }
-                                        else
+                                        if (displaced.Count > 0 && !player.IsInventoryFull)
                                         {
-                                            player.Inventory?.Add(d);
+                                            terminal.SetColor("cyan");
+                                            terminal.WriteLine(Loc.Get("combat.loot_displaced_to_inventory", displaced[0].Name));
                                         }
                                     }
-                                    if (displaced.Count > 0 && !player.IsInventoryFull)
-                                    {
-                                        terminal.SetColor("cyan");
-                                        terminal.WriteLine(Loc.Get("combat.loot_displaced_to_inventory", displaced[0].Name));
-                                    }
-                                }
-                                CompanionSystem.Instance?.SyncCompanionEquipment(teammate);
-                                string teammateName = teammate.Name2 ?? teammate.Name1 ?? "Your ally";
-                                terminal.SetColor("bright_green");
-                                terminal.WriteLine(Loc.Get("combat.loot_ally_picks_up", teammateName, lootItem.Name, upgradePercent));
-                                itemTaken = true;
+                                    CompanionSystem.Instance?.SyncCompanionEquipment(teammate);
+                                    string teammateName = teammate.Name2 ?? teammate.Name1 ?? "Your ally";
+                                    terminal.SetColor("bright_green");
+                                    terminal.WriteLine(Loc.Get("combat.loot_ally_picks_up", teammateName, lootItem.Name, upgradePercent));
+                                    itemTaken = true;
 
-                                // v0.57.1 — await the save so companion loot pickup isn't lost if the
-                                // player disconnects before a fire-and-forget Task would complete.
-                                try
-                                {
-                                    SaveSystem.Instance.ResetAutoSaveThrottle();
-                                    await SaveSystem.Instance.AutoSave(player);
-                                    if (UsurperRemake.BBS.DoorMode.IsOnlineMode && OnlineStateManager.Instance != null)
-                                        await OnlineStateManager.Instance.SaveAllSharedState();
+                                    // v0.57.1 — await the save so companion loot pickup isn't lost if the
+                                    // player disconnects before a fire-and-forget Task would complete.
+                                    try
+                                    {
+                                        SaveSystem.Instance.ResetAutoSaveThrottle();
+                                        await SaveSystem.Instance.AutoSave(player);
+                                        if (UsurperRemake.BBS.DoorMode.IsOnlineMode && OnlineStateManager.Instance != null)
+                                            await OnlineStateManager.Instance.SaveAllSharedState();
+                                    }
+                                    catch (Exception ex) { DebugLogger.Instance.LogError("COMBAT", $"Failed to save after companion loot pickup: {ex.Message}"); }
                                 }
-                                catch (Exception ex) { DebugLogger.Instance.LogError("COMBAT", $"Failed to save after companion loot pickup: {ex.Message}"); }
                             }
                         }
                     }
                 }
 
-                // If no NPC wanted it, offer to other grouped players
+                // If no NPC wanted it (or the player declined), offer to other grouped players
                 if (!itemTaken && lootItem.IsIdentified && currentTeammates != null)
                 {
                     var otherPlayers = currentTeammates.Where(t => t.IsGroupedPlayer && t.IsAlive && t.RemoteTerminal != null).ToList();
@@ -8311,60 +8319,68 @@ public partial class CombatEngine
 
                 bool itemTaken = false;
 
-                // Try companion/NPC auto-pickup first (instant, no waiting)
+                // Try companion/NPC auto-pickup first. v0.57.7 — teammate auto-equip
+                // now surfaces a stat-compare prompt to the LEADER (not the follower who
+                // passed) before taking the item. This is the grouped-player variant of
+                // the same fix on the single-monster path; the leader is the one who
+                // sees the party's companions and has the most context to judge.
                 if (lootItem.IsIdentified && currentTeammates != null && currentTeammates.Count > 0)
                 {
                     var pickup = TryTeammatePickupItem(lootItem);
                     if (pickup.HasValue)
                     {
-                        var (teammate, upgradePercent) = pickup.Value;
-                        var teammateEquip = ConvertLootItemToEquipment(lootItem);
-                        if (teammateEquip != null)
+                        var (teammate, upgradePercent, slot) = pickup.Value;
+                        bool playerApproved = await ConfirmTeammateAutoEquip(teammate, lootItem, upgradePercent, slot);
+                        if (playerApproved)
                         {
-                            EquipmentDatabase.RegisterDynamic(teammateEquip);
-                            int invBefore = teammate.Inventory?.Count ?? 0;
-                            if (teammate.EquipItem(teammateEquip, out _))
+                            var teammateEquip = ConvertLootItemToEquipment(lootItem);
+                            if (teammateEquip != null)
                             {
-                                teammate.RecalculateStats();
-                                // Move displaced items from companion inventory to player inventory
-                                // (v0.57.1 cap-honoring variant — mirrors the main-player branch above)
-                                if (teammate.Inventory != null && teammate.Inventory.Count > invBefore)
+                                EquipmentDatabase.RegisterDynamic(teammateEquip);
+                                int invBefore = teammate.Inventory?.Count ?? 0;
+                                if (teammate.EquipItem(teammateEquip, out _))
                                 {
-                                    var displaced = teammate.Inventory.Skip(invBefore).ToList();
-                                    foreach (var d in displaced)
+                                    teammate.RecalculateStats();
+                                    // Move displaced items from companion inventory to player inventory
+                                    // (v0.57.1 cap-honoring variant — mirrors the main-player branch above)
+                                    if (teammate.Inventory != null && teammate.Inventory.Count > invBefore)
                                     {
-                                        teammate.Inventory.Remove(d);
-                                        if (player.IsInventoryFull)
+                                        var displaced = teammate.Inventory.Skip(invBefore).ToList();
+                                        foreach (var d in displaced)
                                         {
-                                            terminal.SetColor("red");
-                                            terminal.WriteLine(Loc.Get("combat.loot_displaced_dropped", d.Name));
+                                            teammate.Inventory.Remove(d);
+                                            if (player.IsInventoryFull)
+                                            {
+                                                terminal.SetColor("red");
+                                                terminal.WriteLine(Loc.Get("combat.loot_displaced_dropped", d.Name));
+                                            }
+                                            else
+                                            {
+                                                player.Inventory?.Add(d);
+                                            }
                                         }
-                                        else
+                                        if (displaced.Count > 0 && !player.IsInventoryFull)
                                         {
-                                            player.Inventory?.Add(d);
+                                            terminal.SetColor("cyan");
+                                            terminal.WriteLine(Loc.Get("combat.loot_displaced_to_inventory", displaced[0].Name));
                                         }
                                     }
-                                    if (displaced.Count > 0 && !player.IsInventoryFull)
-                                    {
-                                        terminal.SetColor("cyan");
-                                        terminal.WriteLine(Loc.Get("combat.loot_displaced_to_inventory", displaced[0].Name));
-                                    }
-                                }
-                                CompanionSystem.Instance?.SyncCompanionEquipment(teammate);
-                                string teammateName = teammate.Name2 ?? teammate.Name1 ?? "Your ally";
-                                terminal.SetColor("bright_green");
-                                terminal.WriteLine(Loc.Get("combat.loot_ally_picks_up", teammateName, lootItem.Name, upgradePercent));
-                                itemTaken = true;
+                                    CompanionSystem.Instance?.SyncCompanionEquipment(teammate);
+                                    string teammateName = teammate.Name2 ?? teammate.Name1 ?? "Your ally";
+                                    terminal.SetColor("bright_green");
+                                    terminal.WriteLine(Loc.Get("combat.loot_ally_picks_up", teammateName, lootItem.Name, upgradePercent));
+                                    itemTaken = true;
 
-                                // v0.57.1 — await the save (same fix as the other companion-pickup branch)
-                                try
-                                {
-                                    SaveSystem.Instance.ResetAutoSaveThrottle();
-                                    await SaveSystem.Instance.AutoSave(player);
-                                    if (UsurperRemake.BBS.DoorMode.IsOnlineMode && OnlineStateManager.Instance != null)
-                                        await OnlineStateManager.Instance.SaveAllSharedState();
+                                    // v0.57.1 — await the save (same fix as the other companion-pickup branch)
+                                    try
+                                    {
+                                        SaveSystem.Instance.ResetAutoSaveThrottle();
+                                        await SaveSystem.Instance.AutoSave(player);
+                                        if (UsurperRemake.BBS.DoorMode.IsOnlineMode && OnlineStateManager.Instance != null)
+                                            await OnlineStateManager.Instance.SaveAllSharedState();
+                                    }
+                                    catch (Exception ex) { DebugLogger.Instance.LogError("COMBAT", $"Failed to save after companion loot pickup: {ex.Message}"); }
                                 }
-                                catch (Exception ex) { DebugLogger.Instance.LogError("COMBAT", $"Failed to save after companion loot pickup: {ex.Message}"); }
                             }
                         }
                     }
@@ -8659,7 +8675,7 @@ public partial class CombatEngine
     /// Check if any alive teammate would benefit from a dropped loot item.
     /// Returns the best candidate and the upgrade percentage, or null if no upgrade found.
     /// </summary>
-    private (Character teammate, int upgradePercent)? TryTeammatePickupItem(Item lootItem)
+    private (Character teammate, int upgradePercent, EquipmentSlot slot)? TryTeammatePickupItem(Item lootItem)
     {
         if (currentTeammates == null || currentTeammates.Count == 0) return null;
 
@@ -8719,6 +8735,7 @@ public partial class CombatEngine
 
         Character? bestCandidate = null;
         int bestUpgradePercent = 0;
+        EquipmentSlot bestSlot = targetSlot;
 
         foreach (var teammate in currentTeammates)
         {
@@ -8842,13 +8859,110 @@ public partial class CombatEngine
             {
                 bestUpgradePercent = upgradePercent;
                 bestCandidate = teammate;
+                bestSlot = actualSlot;
             }
         }
 
         if (bestCandidate != null && bestUpgradePercent > 0)
-            return (bestCandidate, bestUpgradePercent);
+            return (bestCandidate, bestUpgradePercent, bestSlot);
 
         return null;
+    }
+
+    /// <summary>
+    /// Format a compact stat summary for an Equipment item — used when asking the player
+    /// to confirm a teammate auto-equip so they can see exactly what's being replaced.
+    /// </summary>
+    private static string BuildEquipmentStatSummary(Equipment item)
+    {
+        if (item == null) return "";
+        var stats = new List<string>();
+        if (item.WeaponPower > 0) stats.Add($"{Loc.Get("ui.stat_wp")}:{item.WeaponPower}");
+        if (item.ArmorClass > 0) stats.Add($"{Loc.Get("ui.stat_ac")}:{item.ArmorClass}");
+        if (item.ShieldBonus > 0) stats.Add($"{Loc.Get("ui.stat_block")}:{item.ShieldBonus}");
+        if (item.DefenceBonus != 0) stats.Add($"{Loc.Get("ui.stat_def")}:{item.DefenceBonus:+#;-#}");
+        if (item.StrengthBonus != 0) stats.Add($"{Loc.Get("ui.stat_str")}:{item.StrengthBonus:+#;-#}");
+        if (item.DexterityBonus != 0) stats.Add($"{Loc.Get("ui.stat_dex")}:{item.DexterityBonus:+#;-#}");
+        if (item.AgilityBonus != 0) stats.Add($"{Loc.Get("ui.stat_agi")}:{item.AgilityBonus:+#;-#}");
+        if (item.ConstitutionBonus != 0) stats.Add($"{Loc.Get("ui.stat_con")}:{item.ConstitutionBonus:+#;-#}");
+        if (item.IntelligenceBonus != 0) stats.Add($"{Loc.Get("ui.stat_int")}:{item.IntelligenceBonus:+#;-#}");
+        if (item.WisdomBonus != 0) stats.Add($"{Loc.Get("ui.stat_wis")}:{item.WisdomBonus:+#;-#}");
+        if (item.CharismaBonus != 0) stats.Add($"{Loc.Get("ui.stat_cha")}:{item.CharismaBonus:+#;-#}");
+        if (item.CriticalChanceBonus > 0) stats.Add($"{Loc.Get("ui.stat_crit")}:{item.CriticalChanceBonus}%");
+        if (item.LifeSteal > 0) stats.Add($"{Loc.Get("ui.stat_leech")}:{item.LifeSteal}%");
+        if (item.ManaSteal > 0) stats.Add($"Siphon:{item.ManaSteal}%");
+        if (item.MagicResistance > 0) stats.Add($"{Loc.Get("ui.stat_mr")}:{item.MagicResistance}%");
+        return stats.Count > 0 ? $"[{string.Join(" ", stats)}]" : "";
+    }
+
+    /// <summary>
+    /// Ask the player to approve a teammate auto-equipping a piece of loot (v0.57.7, Lumina report).
+    /// Shows the teammate's current item in the target slot next to the candidate item so the player
+    /// can judge for themselves whether this is really an upgrade. Returns true if the player approves.
+    /// </summary>
+    private async Task<bool> ConfirmTeammateAutoEquip(Character teammate, Item lootItem, int upgradePercent, EquipmentSlot slot)
+    {
+        string tname = teammate.DisplayName ?? teammate.Name2 ?? teammate.Name1 ?? "Your ally";
+        var currentEquip = teammate.GetEquipment(slot);
+        // Convert the candidate item to an Equipment *projection* so BuildEquipmentStatSummary
+        // can render it the same way the currently-equipped item is rendered. This is a
+        // preview only — the real Equipment used for the actual equip still goes through
+        // ConvertLootItemToEquipment at the equip call site below after the player approves.
+        var candidateEquip = ConvertLootItemToEquipment(lootItem);
+
+        terminal.WriteLine("");
+        terminal.SetColor("bright_cyan");
+        terminal.WriteLine(Loc.Get("combat.loot_ally_upgrade_prompt", tname, lootItem.Name, upgradePercent));
+
+        terminal.SetColor("gray");
+        terminal.Write($"  {Loc.Get("combat.loot_ally_current_label")}: ");
+        if (currentEquip != null)
+        {
+            terminal.SetColor("white");
+            terminal.Write(currentEquip.Name);
+            string cs = BuildEquipmentStatSummary(currentEquip);
+            if (!string.IsNullOrEmpty(cs))
+            {
+                terminal.SetColor("darkgray");
+                terminal.Write(" " + cs);
+            }
+        }
+        else
+        {
+            terminal.SetColor("darkgray");
+            terminal.Write(Loc.Get("combat.loot_ally_empty_slot"));
+        }
+        terminal.WriteLine("");
+
+        terminal.SetColor("gray");
+        terminal.Write($"  {Loc.Get("combat.loot_ally_new_label")}: ");
+        terminal.SetColor("white");
+        terminal.Write(lootItem.Name);
+        if (candidateEquip != null)
+        {
+            string ns = BuildEquipmentStatSummary(candidateEquip);
+            if (!string.IsNullOrEmpty(ns))
+            {
+                terminal.SetColor("darkgray");
+                terminal.Write(" " + ns);
+            }
+        }
+        terminal.WriteLine("");
+
+        terminal.WriteLine("");
+        terminal.SetColor("yellow");
+        terminal.Write(Loc.Get("combat.loot_ally_confirm_prompt", tname));
+
+        string ch = (await terminal.GetKeyInput()).Trim().ToUpper();
+        // Accept affirmative first-letter across supported languages: English Y, Spanish S (Sí),
+        // French O (Oui), Italian S (Sì), Hungarian I (Igen). Falls through to N otherwise.
+        bool approved = ch == "Y" || ch == "S" || ch == "O" || ch == "I";
+
+        terminal.SetColor("gray");
+        terminal.WriteLine(approved
+            ? Loc.Get("combat.loot_ally_approved", tname)
+            : Loc.Get("combat.loot_ally_declined"));
+        return approved;
     }
 
     /// <summary>
@@ -16227,6 +16341,23 @@ public partial class CombatEngine
                 affordableAbilities = defensiveFiltered;
         }
 
+        // v0.57.7 (Lumina report): don't let a teammate waste a turn re-applying status
+        // immunity over an already-active one. Iron Will, Arcane Immunity, and Mind Blank
+        // all set HasStatusImmunity. Arcane Immunity lasts 999 rounds (whole fight); Iron
+        // Will lasts 3. Re-applying a shorter-duration variant OVERWRITES the longer one
+        // — the player cast Arcane Immunity on Aldric, then Aldric used Iron Will the
+        // next round, cutting the duration from 999 down to 3.
+        if (teammate.HasStatusImmunity && teammate.StatusImmunityDuration > 0)
+        {
+            var immunityFiltered = affordableAbilities
+                .Where(a => a.SpecialEffect != "resist_all"
+                         && a.SpecialEffect != "immunity"
+                         && a.SpecialEffect != "mindblank")
+                .ToList();
+            if (immunityFiltered.Count > 0)
+                affordableAbilities = immunityFiltered;
+        }
+
         // AI: Pick an ability with situational awareness + randomized variety
         ClassAbilitySystem.ClassAbility? chosenAbility = null;
 
@@ -16780,7 +16911,16 @@ public partial class CombatEngine
                     }
                     if (abilityResult.InflictStatus != StatusEffect.None && abilityResult.StatusChance > 0)
                     {
-                        if (companion.CalmWatersRounds > 0 && random.Next(100) < (int)(GameConfig.CalmWatersResistChance * 100))
+                        // v0.57.7 (Lumina): this branch only checked Calm Waters before; the
+                        // player-equivalent check at ~line 4801 also inspects HasStatusImmunity
+                        // first, but we never mirrored it here, so Arcane Immunity cast on a
+                        // companion did nothing against monster-inflicted fear/stun/etc. Match
+                        // the player-path order — immunity, then Calm Waters, then the roll.
+                        if (companion.HasStatusImmunity && companion.StatusImmunityDuration > 0)
+                        {
+                            terminal.WriteLine(Loc.Get("combat.companion_iron_will_resists", companion.DisplayName, abilityResult.InflictStatus), "bright_white");
+                        }
+                        else if (companion.CalmWatersRounds > 0 && random.Next(100) < (int)(GameConfig.CalmWatersResistChance * 100))
                         {
                             terminal.WriteLine(Loc.Get("combat.companion_calm_waters_deflects", companion.DisplayName, abilityResult.InflictStatus), "bright_cyan");
                         }
@@ -21260,6 +21400,15 @@ public partial class CombatEngine
                     tm.TempDefenseBonusDuration--;
                     if (tm.TempDefenseBonusDuration <= 0)
                         tm.TempDefenseBonus = 0;
+                }
+                // v0.57.7 (Lumina): teammate status-immunity duration wasn't being ticked,
+                // only the player's was. Iron Will's 3-round immunity would persist the whole
+                // fight on NPC teammates. Mirror the player-side tick below.
+                if (tm.HasStatusImmunity)
+                {
+                    tm.StatusImmunityDuration--;
+                    if (tm.StatusImmunityDuration <= 0)
+                        tm.HasStatusImmunity = false;
                 }
             }
         }

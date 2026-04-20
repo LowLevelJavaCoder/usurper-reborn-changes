@@ -4926,7 +4926,7 @@ public abstract class BaseLocation
                 long guardHP = (long)(100 * level + Math.Pow(level, 1.4) * 25);
                 var guard = new Monster
                 {
-                    Name = "Murder Guard",
+                    Name = "Royal Guard",
                     Level = level,
                     HP = guardHP,
                     MaxHP = guardHP,
@@ -4943,7 +4943,15 @@ public abstract class BaseLocation
             var combatEngine = new CombatEngine(terminal);
             var result = await combatEngine.PlayerVsMonsters(player, guards.ToList());
 
-            if (result.Victory)
+            // v0.57.6: PR #82 checked result.Victory, but that flag is only set
+            // by the berserker-mode combat path. Normal PlayerVsMonsters victory
+            // only populates result.Outcome, so result.Victory stayed false even
+            // after the player killed all 5 guards — they'd fall through to
+            // "arrested" and still go to prison. Player report: "I killed all
+            // the guards, but still got sent to prison." Fixed by checking
+            // Outcome, the actual canonical signal.
+            bool playerWon = result.Outcome == CombatOutcome.Victory;
+            if (playerWon)
             {
                 AlignmentSystem.Instance.ChangeAlignment(player, 100, isGood: false, reason: "murder");
                 terminal.SetColor("red");
@@ -5059,7 +5067,14 @@ public abstract class BaseLocation
 
             if (player is Player p)
             {
-                // Take all gold
+                // v0.57.6: PR #82 changed this from strip-everything to a softer
+                // half-gold fine — equipment, inventory, and bank gold are all
+                // preserved. The old loc strings referring to "all equipment
+                // confiscated" / "bank seized" were still in the code after
+                // the merge, misleading players into thinking they lost gear
+                // they still had (player report: "was my Sword of Thunder
+                // taken?"). Dropped the two false lines and rewrote the
+                // remaining strings to match the actual magistrate's fine.
                 long goldTaken = p.Gold / 2;
                 p.Gold = p.Gold / 2;
 
@@ -5073,8 +5088,6 @@ public abstract class BaseLocation
 
                 terminal.SetColor("gray");
                 terminal.WriteLine(Loc.Get("base.gold_confiscated", goldTaken));
-                terminal.WriteLine($"  {Loc.Get("base.equipment_confiscated")}");
-                terminal.WriteLine($"  {Loc.Get("base.bank_seized")}");
                 terminal.WriteLine("");
                 terminal.SetColor("bright_red");
                 terminal.WriteLine($"  {Loc.Get("base.dragged_to_prison")}");

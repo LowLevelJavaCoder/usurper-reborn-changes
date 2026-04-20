@@ -900,6 +900,7 @@ namespace UsurperRemake.Systems
                 DesecrationsToday = player.DesecrationsToday,
                 ConfessionsToday = player.ConfessionsToday,
                 MurdersToday = player.MurdersToday,
+                LastPartnerBondingUtc = player.LastPartnerBondingUtc,
                 LoanAmount = player.LoanAmount,
                 LoanDaysRemaining = player.LoanDaysRemaining,
                 LoanInterestAccrued = player.LoanInterestAccrued,

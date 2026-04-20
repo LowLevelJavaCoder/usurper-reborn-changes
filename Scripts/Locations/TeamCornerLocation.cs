@@ -1944,6 +1944,14 @@ public class TeamCornerLocation : BaseLocation
                 }
             }
 
+            // v0.57.7 (Hesperos report): `target` is a WRAPPER Character built fresh by
+            // CompanionSystem.GetCompanionsAsCharacters() — edits to wrapper.EquippedItems
+            // don't mutate the underlying Companion unless we explicitly sync. Without this
+            // call Lyris reverted to her EquipStartingGear set on next wrapper regeneration.
+            // Safe no-op for non-companion targets (team NPC).
+            if (target.IsCompanion)
+                CompanionSystem.Instance?.SyncCompanionEquipment(target);
+
             terminal.WriteLine("");
             terminal.SetColor("bright_green");
             terminal.WriteLine(Loc.Get("team.equipped_success", target.DisplayName, selectedItem.Name));
@@ -2045,6 +2053,9 @@ public class TeamCornerLocation : BaseLocation
         if (unequipped != null)
         {
             target.RecalculateStats();
+            // v0.57.7 — sync wrapper unequip back to Companion (Hesperos report)
+            if (target.IsCompanion)
+                CompanionSystem.Instance?.SyncCompanionEquipment(target);
             var legacyItem = ConvertEquipmentToItem(unequipped);
             currentPlayer.Inventory.Add(legacyItem);
 
@@ -2109,6 +2120,9 @@ public class TeamCornerLocation : BaseLocation
         }
 
         target.RecalculateStats();
+        // v0.57.7 — sync wrapper take-all back to Companion (Hesperos report)
+        if (itemsTaken > 0 && target.IsCompanion)
+            CompanionSystem.Instance?.SyncCompanionEquipment(target);
 
         terminal.WriteLine("");
         if (itemsTaken > 0)
