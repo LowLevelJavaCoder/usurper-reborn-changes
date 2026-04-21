@@ -11,13 +11,20 @@ using UsurperRemake.Systems;
 
 /// <summary>
 /// Bug reporting system that collects diagnostic info and submits reports.
-/// - BBS users: saves locally + posts to Discord webhook
-/// - Local/Steam users: saves locally + posts to Discord + opens browser to GitHub Issues
+/// - All users: saves locally + POSTs to the server-side bug-report proxy at
+///   usurper-reborn.net/api/bug-report, which forwards to the real Discord webhook
+///   server-side. The real webhook URL is never shipped to clients.
 /// </summary>
 public static class BugReportSystem
 {
     private const string GitHubIssuesUrl = "https://github.com/binary-knight/usurper-reborn/issues/new";
-    private const string DiscordWebhookUrl = "https://discord.com/api/webhooks/1470253721979060255/XcJU1bpTaX3HSPdvuCBEaMyJffwASodZSPwi_R5wEmcoF94aKDORoPdiLZEeSRyhgVLR";
+
+    // Bug reports go through a server-side proxy (usurper-reborn.net) that forwards
+    // to the real Discord webhook. The proxy URL is safe to expose in distributed
+    // binaries; the real webhook URL lives only in /opt/usurper/web/.env on the
+    // game server. Previously the real webhook was hardcoded here, which let
+    // anyone decompiling a Steam/BBS binary scrape it and spam the channel.
+    private const string BugReportProxyUrl = "https://usurper-reborn.net/api/bug-report";
 
     private static readonly HttpClient _httpClient = CreateTlsClient();
 
@@ -221,22 +228,22 @@ public static class BugReportSystem
             var payload = JsonSerializer.Serialize(new { content });
 
             var httpContent = new StringContent(payload, Encoding.UTF8, "application/json");
-            var response = await _httpClient.PostAsync(DiscordWebhookUrl, httpContent);
+            var response = await _httpClient.PostAsync(BugReportProxyUrl, httpContent);
 
             if (response.IsSuccessStatusCode)
             {
-                DebugLogger.Instance?.LogInfo("BUG_REPORT", "Bug report sent to Discord successfully");
+                DebugLogger.Instance?.LogInfo("BUG_REPORT", "Bug report forwarded via proxy successfully");
                 return true;
             }
             else
             {
-                DebugLogger.Instance?.LogWarning("BUG_REPORT", $"Discord webhook returned {response.StatusCode}");
+                DebugLogger.Instance?.LogWarning("BUG_REPORT", $"Bug report proxy returned {response.StatusCode}");
                 return false;
             }
         }
         catch (Exception ex)
         {
-            DebugLogger.Instance?.LogWarning("BUG_REPORT", $"Failed to send to Discord: {ex.Message}");
+            DebugLogger.Instance?.LogWarning("BUG_REPORT", $"Failed to send bug report: {ex.Message}");
             return false;
         }
     }

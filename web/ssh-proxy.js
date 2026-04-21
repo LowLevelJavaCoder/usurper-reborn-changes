@@ -348,6 +348,108 @@ function sendJson(res, status, data, extraHeaders) {
   res.end(JSON.stringify(data));
 }
 
+// --- Bug Report Proxy ---
+// Real webhook URL lives only in this env var (loaded from /opt/usurper/web/.env).
+// Game clients POST to /api/bug-report, we forward to Discord server-side so the
+// URL is never baked into Steam / BBS distributions.
+const BUG_REPORT_WEBHOOK_URL = process.env.BUG_REPORT_WEBHOOK_URL || '';
+const BUG_REPORT_MAX_CONTENT_CHARS = 4000;        // Discord msg cap is ~2000; leave headroom
+const BUG_REPORT_WINDOW_MS = 60 * 60 * 1000;      // 1 hour sliding window
+const BUG_REPORT_MAX_PER_WINDOW = 5;              // 5 reports / hour / IP
+const bugReportLimits = new Map();                // ip -> { count, windowStart }
+
+function bugReportRateLimitOk(ip) {
+  const now = Date.now();
+  const entry = bugReportLimits.get(ip);
+  if (!entry || now - entry.windowStart > BUG_REPORT_WINDOW_MS) {
+    bugReportLimits.set(ip, { count: 1, windowStart: now });
+    return true;
+  }
+  if (entry.count >= BUG_REPORT_MAX_PER_WINDOW) return false;
+  entry.count++;
+  return true;
+}
+
+// Prune stale bug-report buckets every 10 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of bugReportLimits) {
+    if (now - entry.windowStart > BUG_REPORT_WINDOW_MS) bugReportLimits.delete(ip);
+  }
+}, 600000);
+
+async function handleBugReport(req, res) {
+  const ip = req.headers['x-real-ip'] || req.socket.remoteAddress || 'unknown';
+
+  if (!BUG_REPORT_WEBHOOK_URL) {
+    console.error('[bug-report] BUG_REPORT_WEBHOOK_URL not configured; dropping report from ' + ip);
+    sendJson(res, 503, { error: 'Bug report forwarding not configured' });
+    return;
+  }
+
+  if (!bugReportRateLimitOk(ip)) {
+    console.warn(`[bug-report] Rate limited ${ip} (5/hr cap hit)`);
+    sendJson(res, 429, { error: 'Too many reports. Try again later.' });
+    return;
+  }
+
+  let body;
+  try {
+    body = await readBody(req);
+  } catch (e) {
+    sendJson(res, 400, { error: 'Invalid JSON' });
+    return;
+  }
+
+  const content = typeof body?.content === 'string' ? body.content : '';
+  if (!content || content.trim().length === 0) {
+    sendJson(res, 400, { error: 'Missing content' });
+    return;
+  }
+  if (content.length > BUG_REPORT_MAX_CONTENT_CHARS) {
+    sendJson(res, 413, { error: 'Content too large' });
+    return;
+  }
+
+  const payload = JSON.stringify({ content });
+  const webhook = new URL(BUG_REPORT_WEBHOOK_URL);
+
+  const forward = new Promise((resolve, reject) => {
+    const fwdReq = https.request({
+      method: 'POST',
+      hostname: webhook.hostname,
+      path: webhook.pathname + webhook.search,
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payload)
+      },
+      timeout: 10000
+    }, (fwdRes) => {
+      // Drain response body so socket closes cleanly
+      fwdRes.on('data', () => {});
+      fwdRes.on('end', () => resolve(fwdRes.statusCode || 0));
+    });
+    fwdReq.on('error', reject);
+    fwdReq.on('timeout', () => { fwdReq.destroy(new Error('webhook timeout')); });
+    fwdReq.write(payload);
+    fwdReq.end();
+  });
+
+  try {
+    const status = await forward;
+    if (status >= 200 && status < 300) {
+      console.log(`[bug-report] Forwarded ${content.length} chars from ${ip} (webhook ${status})`);
+      sendJson(res, 204, {});
+    } else {
+      console.warn(`[bug-report] Webhook returned ${status} for ${ip}`);
+      sendJson(res, 502, { error: 'Webhook upstream error' });
+    }
+  } catch (e) {
+    console.error(`[bug-report] Forward failed for ${ip}: ${e.message}`);
+    sendJson(res, 502, { error: 'Webhook forward failed' });
+  }
+}
+
 // --- Dashboard NPC Data Cache ---
 let dashNpcCache = null;
 let dashNpcCacheTime = 0;
@@ -2567,6 +2669,19 @@ function handleHttpRequest(req, res) {
   if (req.url && req.url.startsWith('/api/dash/')) {
     handleDashRequest(req, res).catch(err => {
       console.error(`[usurper-web] Dashboard error: ${err.message}`);
+      if (!res.headersSent) sendJson(res, 500, { error: 'Internal error' });
+    });
+    return;
+  }
+
+  // POST /api/bug-report - in-game bug reporter proxy
+  // The game client POSTs { content: "..." } here; we forward to the real
+  // Discord webhook stored server-side in BUG_REPORT_WEBHOOK_URL. This exists
+  // because the client URL is baked into Steam/BBS binaries and was scraped
+  // and abused — the real URL now lives only in /opt/usurper/web/.env.
+  if (req.method === 'POST' && req.url === '/api/bug-report') {
+    handleBugReport(req, res).catch(err => {
+      console.error(`[usurper-web] Bug report proxy error: ${err.message}`);
       if (!res.headersSent) sendJson(res, 500, { error: 'Internal error' });
     });
     return;
