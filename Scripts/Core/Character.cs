@@ -121,6 +121,7 @@ public class Character
     public bool SkipIntimateScenes { get; set; }    // skip detailed intimate scenes (fade to black)
     public bool ScreenReaderMode { get; set; }      // simplified text output for screen readers (accessibility)
     public bool CompactMode { get; set; }             // compact menus for mobile/small screen SSH
+    public bool DisableCharacterMonsterArt { get; set; } // skip race/class portraits, NPC portraits, monster + Old God art (without going full SR mode)
     public string Language { get; set; } = "en";       // player language preference for localization
     public ColorThemeType ColorTheme { get; set; } = ColorThemeType.Default;  // player-selected color theme
     public bool AutoLevelUp { get; set; } = true;  // auto-level when XP threshold met (on by default)

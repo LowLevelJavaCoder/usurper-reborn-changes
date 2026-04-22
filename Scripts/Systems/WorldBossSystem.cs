@@ -413,8 +413,11 @@ namespace UsurperRemake.Systems
 
                     if (roundDamage > 0)
                     {
-                        // Record damage atomically to shared HP pool
-                        long remainingHp = await backend.RecordWorldBossDamage(
+                        // Record damage atomically to shared HP pool. wasKillingBlow is true only
+                        // for the single caller whose conditional status-flip won the race; other
+                        // concurrent callers who bring remainingHp to 0 in the same round see
+                        // wasKillingBlow == false (v0.57.9 fix for duplicate kill-credit bug).
+                        var (remainingHp, wasKillingBlow) = await backend.RecordWorldBossDamage(
                             currentBoss.Id, playerKey, roundDamage);
                         state.SessionDamage += roundDamage;
 
@@ -423,7 +426,7 @@ namespace UsurperRemake.Systems
                         terminal.SetColor("gray");
                         terminal.WriteLine($"  >> {Loc.Get("world_boss.boss_hp_remaining", $"{Math.Max(0, remainingHp):N0}")}");
 
-                        if (remainingHp <= 0)
+                        if (wasKillingBlow)
                         {
                             ActiveBossName = null;
                             terminal.SetColor("bright_green");
@@ -431,18 +434,31 @@ namespace UsurperRemake.Systems
                             terminal.SetColor("yellow");
                             terminal.WriteLine($"  {Loc.Get("world_boss.killing_blow")}");
 
-                            // Broadcast
+                            // Broadcast — only the killer's session sends this
                             string killMsg = $"\n  *** {Loc.Get("world_boss.defeat_broadcast", bossDef.Name, player.DisplayName)} ***";
                             MudServer.Instance?.BroadcastToAll(killMsg, playerKey);
 
-                            // News
+                            // News — also only the killer posts this
                             if (OnlineStateManager.IsActive)
                                 _ = OnlineStateManager.Instance!.AddNews(
                                     Loc.Get("world_boss.defeat_broadcast", bossDef.Name, player.DisplayName), "world_boss");
 
-                            // Distribute rewards to all contributors
+                            // Distribute rewards to all contributors (iterates the full leaderboard,
+                            // so every contributor gets paid — not just the killer)
                             await DistributeWorldBossRewards(currentBoss.Id, bossDef, currentBoss.MaxHP,
                                 currentBoss.BossLevel, backend, player, terminal);
+                            break;
+                        }
+                        else if (remainingHp <= 0)
+                        {
+                            // Boss died this round but another player landed the killing blow.
+                            // Exit cleanly with no broadcast, no duplicate news, no duplicate
+                            // reward distribution. Our damage was already recorded on the
+                            // leaderboard above — the killer's DistributeWorldBossRewards call
+                            // will reward us on the next DB read.
+                            ActiveBossName = null;
+                            terminal.SetColor("yellow");
+                            terminal.WriteLine($"\n  *** {Loc.Get("world_boss.already_defeated", bossDef.Name)} ***");
                             break;
                         }
                     }

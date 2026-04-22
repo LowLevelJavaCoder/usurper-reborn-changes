@@ -897,9 +897,18 @@ internal static class PlayerSaveEditor
                     // CompanionSystem.Deserialize doesn't rebuild the fallen-companions
                     // dict from stale entries. Leaves IsRecruited/IsActive alone — this
                     // is a revive-only operation, not a recruit.
+                    // v0.57.9 (Grug report): also clear ActiveGriefs and GriefMemories
+                    // for the revived companions, matching OnlineAdminConsole behavior.
+                    // Otherwise the player keeps seeing grief flashbacks for someone who
+                    // is now standing right next to them in the party.
+                    var revivedIds = data.StorySystems.Companions.Where(c => c.IsDead).Select(c => c.Id).ToList();
                     foreach (var c in data.StorySystems.Companions.Where(c => c.IsDead))
                         c.IsDead = false;
                     data.StorySystems.FallenCompanions.Clear();
+                    if (data.StorySystems.ActiveGriefs != null)
+                        data.StorySystems.ActiveGriefs.RemoveAll(g => revivedIds.Contains(g.CompanionId));
+                    if (data.StorySystems.GriefMemories != null)
+                        data.StorySystems.GriefMemories.RemoveAll(m => revivedIds.Contains(m.CompanionId));
                     EditorIO.Success("All companions marked alive. (Use Recruit to re-add to active party.)");
                     EditorIO.Pause();
                     break;
@@ -924,6 +933,15 @@ internal static class PlayerSaveEditor
         // stale entry keeps the companion "permanently dead" in the in-game
         // UI/logic even after IsDead = false.
         fallen.RemoveAll(f => f.CompanionId == id);
+        // v0.57.9 (Grug report): also strip the matching grief entries.
+        // OnlineAdminConsole's revive path already does this; the local editor
+        // didn't, so revived companions kept appearing in /health "grieving for"
+        // lists and triggered combat-start grief reminders despite being alive
+        // and in the party.
+        if (data.StorySystems.ActiveGriefs != null)
+            data.StorySystems.ActiveGriefs.RemoveAll(g => g.CompanionId == id);
+        if (data.StorySystems.GriefMemories != null)
+            data.StorySystems.GriefMemories.RemoveAll(m => m.CompanionId == id);
         EditorIO.Success($"{picked} revived. Use Recruit to re-add them to the active party.");
         EditorIO.Pause();
     }

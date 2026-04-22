@@ -1364,7 +1364,9 @@ namespace UsurperRemake.Systems
                 }
                 else
                 {
-                    // Fallback: guess from name
+                    // Fallback: guess from name when EquipmentDatabase has no matching entry
+                    // (procedurally-named loot like "Blazing Archmage's Staff" that doesn't
+                    // appear in the hand-crafted database).
                     string nameLower = item.Name.ToLower();
                     if (nameLower.Contains("two-hand") || nameLower.Contains("2h") ||
                         nameLower.Contains("greatsword") || nameLower.Contains("greataxe") ||
@@ -1381,6 +1383,13 @@ namespace UsurperRemake.Systems
                     {
                         handedness = WeaponHandedness.OneHanded;
                     }
+                    // v0.57.9 (Lumina): handedness was being inferred here but weaponType was
+                    // left as WeaponType.None, which broke Magician/Sage spell casting with
+                    // procedurally-named staves ("you need a staff" despite a staff being
+                    // equipped, because HasRequiredSpellWeapon checks WeaponType == Staff).
+                    // Use the same name-based inference that the dungeon-loot equip path uses
+                    // so the Equipment carries the correct WeaponType.
+                    weaponType = ShopItemGenerator.InferWeaponType(item.Name);
                 }
             }
             else if (item.Type == ObjType.Shield)

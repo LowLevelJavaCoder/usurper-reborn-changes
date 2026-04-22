@@ -4313,9 +4313,18 @@ namespace UsurperRemake.Systems
         return null;
     }
 
-    public async Task<long> RecordWorldBossDamage(int bossId, string playerName, long damage)
+    /// <summary>
+    /// Apply a player's damage to the shared world-boss HP pool and return the remaining HP
+    /// along with a flag indicating whether this specific call delivered the killing blow.
+    /// The killing-blow flag is set atomically via a conditional status flip so that when two
+    /// concurrent players bring HP to zero in the same round, only one is credited with the
+    /// kill. The other sees remainingHp == 0 but wasKillingBlow == false. Fixes v0.57.9 report
+    /// where two players both received "killing blow" broadcasts for the same boss.
+    /// </summary>
+    public async Task<(long remainingHp, bool wasKillingBlow)> RecordWorldBossDamage(int bossId, string playerName, long damage)
     {
         long remainingHp = 0;
+        bool wasKillingBlow = false;
         try
         {
             using var connection = OpenConnection();
@@ -4357,20 +4366,25 @@ namespace UsurperRemake.Systems
                 remainingHp = Convert.ToInt64(hpCmd.ExecuteScalar() ?? 0);
             }
 
-            // If dead, mark defeated
+            // If HP hit zero, try to atomically claim the kill by flipping status active → defeated.
+            // Only ONE caller whose transaction wins this race will get affected_rows == 1; every
+            // other caller who sees remainingHp == 0 will get 0 rows (status is already 'defeated').
+            // That row-count is the authoritative "I killed it" signal — remainingHp alone isn't.
             if (remainingHp <= 0)
             {
                 using var defeatCmd = connection.CreateCommand();
                 defeatCmd.Transaction = transaction;
-                defeatCmd.CommandText = @"UPDATE world_bosses SET status = 'defeated' WHERE id = @id;";
+                defeatCmd.CommandText = @"UPDATE world_bosses SET status = 'defeated'
+                                          WHERE id = @id AND status = 'active';";
                 defeatCmd.Parameters.AddWithValue("@id", bossId);
-                await defeatCmd.ExecuteNonQueryAsync();
+                int rowsAffected = await defeatCmd.ExecuteNonQueryAsync();
+                wasKillingBlow = rowsAffected == 1;
             }
 
             transaction.Commit();
         }
         catch (Exception ex) { DebugLogger.Instance.LogError("SQL", $"Failed to record world boss damage: {ex.Message}"); }
-        return remainingHp;
+        return (remainingHp, wasKillingBlow);
     }
 
     public async Task<List<WorldBossDamageEntry>> GetWorldBossDamageLeaderboard(int bossId, int limit = 20)

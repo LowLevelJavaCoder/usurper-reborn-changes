@@ -690,6 +690,7 @@ namespace UsurperRemake.Systems
                 SkipIntimateScenes = player.SkipIntimateScenes,
                 ScreenReaderMode = player.ScreenReaderMode,
                 CompactMode = player.CompactMode,
+                DisableCharacterMonsterArt = player.DisableCharacterMonsterArt,
                 Language = player.Language ?? "en",
                 ColorTheme = player.ColorTheme,
                 AutoLevelUp = player.AutoLevelUp,

@@ -441,9 +441,23 @@ public abstract class BaseLocation
                 terminal.WriteLine(Loc.Get("base.guard_loyalty_unquestioned"));
                 await terminal.PressAnyKey();
 
-                // Transport player to castle for defense
-                // The player will participate in the defense when they arrive
-                await GameEngine.Instance.NavigateToLocation(GameLocation.Castle);
+                // v0.57.9 (spudman report: "got the message 'You cannot go to Royal
+                // Castle from here'"). The previous code called
+                // GameEngine.Instance.NavigateToLocation(Castle), which routes through
+                // LocationManager.NavigateTo and gets gated on the navigationTable.
+                // The table has no entries for Castle as a destination from anywhere
+                // — the Castle is normally reached through OutsideCastle, not via
+                // direct travel — so the navigation always failed and the alert
+                // dead-ended. This is an emergency teleport, not a walk through the
+                // city, so it shouldn't be subject to the walking-rules check. Use
+                // LocationExitException, which the LocationManager catches and
+                // routes through EnterLocation directly (same pattern used for
+                // immortal-locked-to-Pantheon and royal-decree-establishment-closed).
+                // If the player is already at the Castle (alert fired at Castle
+                // entry), skip the throw — they're already where they need to be,
+                // and re-entering Castle would just re-render the menu.
+                if (LocationId != GameLocation.Castle)
+                    throw new LocationExitException(GameLocation.Castle);
             }
             else
             {
@@ -3342,6 +3356,7 @@ public abstract class BaseLocation
                 terminal.WriteLine($"  {Loc.Get("prefs.color_theme")}: {ColorTheme.GetThemeName(currentPlayer.ColorTheme)}");
                 terminal.WriteLine($"  {Loc.Get("prefs.auto_level")}: {(currentPlayer.AutoLevelUp ? Loc.Get("prefs.enabled") : Loc.Get("prefs.disabled"))}");
                 terminal.WriteLine($"  {Loc.Get("prefs.compact_mode")}: {(currentPlayer.CompactMode ? Loc.Get("prefs.enabled") : Loc.Get("prefs.disabled"))}");
+                terminal.WriteLine($"  {Loc.Get("prefs.disable_char_monster_art")}: {(currentPlayer.DisableCharacterMonsterArt ? Loc.Get("prefs.enabled") : Loc.Get("prefs.disabled"))}");
                 terminal.WriteLine($"  {Loc.Get("prefs.auto_equip")}: {(currentPlayer.AutoEquipDisabled ? Loc.Get("prefs.disabled") : Loc.Get("prefs.enabled"))}");
                 terminal.WriteLine("");
 
@@ -3356,6 +3371,7 @@ public abstract class BaseLocation
                 terminal.WriteLine(Loc.Get("base.prefs_display"));
                 terminal.WriteLine($"  6. {Loc.Get("prefs.color_theme")}");
                 terminal.WriteLine($"  9. {Loc.Get("prefs.toggle", Loc.Get("prefs.compact_mode"))}");
+                terminal.WriteLine($"  P. {Loc.Get("prefs.toggle", Loc.Get("prefs.disable_char_monster_art"))}");
                 terminal.WriteLine($"  D. {Loc.Get("base.prefs_date_format")} ({srDateFormat})");
                 if (IsRunningInWezTerm())
                     terminal.WriteLine($"  7. {Loc.Get("prefs.terminal_font")}");
@@ -3415,6 +3431,7 @@ public abstract class BaseLocation
                 terminal.SetColor("white");
                 WriteMenuOption("6", $"{Loc.Get("prefs.color_theme")}: {ColorTheme.GetThemeName(currentPlayer.ColorTheme)}");
                 WriteMenuOption("9", $"{Loc.Get("prefs.compact_mode")}: {onOff(currentPlayer.CompactMode)}");
+                WriteMenuOption("P", $"{Loc.Get("prefs.disable_char_monster_art")}: {onOff(currentPlayer.DisableCharacterMonsterArt)}");
                 WriteMenuOption("D", $"{Loc.Get("base.prefs_date_format")}: {dateFormatName}");
                 if (IsRunningInWezTerm())
                     WriteMenuOption("7", $"{Loc.Get("prefs.terminal_font")}: {ReadCurrentFont()}");
@@ -3575,6 +3592,23 @@ public abstract class BaseLocation
                     {
                         terminal.WriteLine(Loc.Get("base.pref_autoequip_enabled"), "green");
                         terminal.WriteLine(Loc.Get("base.pref_autoequip_enabled_desc"), "white");
+                    }
+                    await GameEngine.Instance.SaveCurrentGame();
+                    await Task.Delay(1000);
+                    break;
+
+                case "P":
+                    currentPlayer.DisableCharacterMonsterArt = !currentPlayer.DisableCharacterMonsterArt;
+                    GameConfig.DisableCharacterMonsterArt = currentPlayer.DisableCharacterMonsterArt;
+                    if (currentPlayer.DisableCharacterMonsterArt)
+                    {
+                        terminal.WriteLine(Loc.Get("base.pref_char_monster_art_disabled"), "green");
+                        terminal.WriteLine(Loc.Get("base.pref_char_monster_art_disabled_desc"), "white");
+                    }
+                    else
+                    {
+                        terminal.WriteLine(Loc.Get("base.pref_char_monster_art_enabled"), "green");
+                        terminal.WriteLine(Loc.Get("base.pref_char_monster_art_enabled_desc"), "white");
                     }
                     await GameEngine.Instance.SaveCurrentGame();
                     await Task.Delay(1000);
@@ -4160,8 +4194,8 @@ public abstract class BaseLocation
                 WriteBoxHeader(Loc.Get("base.talking_to", npc.Name2), "bright_cyan");
                 terminal.WriteLine("");
 
-                // Show NPC portrait (skip for screen readers)
-                if (!currentPlayer.ScreenReaderMode)
+                // Show NPC portrait (skip for screen readers and art-disabled)
+                if (!currentPlayer.ScreenReaderMode && !GameConfig.DisableCharacterMonsterArt)
                 {
                     var portrait = PortraitGenerator.GeneratePortrait(npc);
                     ANSIArt.DisplayArt(terminal, portrait);

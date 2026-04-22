@@ -701,6 +701,13 @@ public partial class MagicShopLocation : BaseLocation
 
         int displayNum = 0;
 
+        // v0.57.9 (Lumina report): list now shows the *taxed* total (the price the
+        // player will actually be charged), not the pre-tax base. Previously the list
+        // showed e.g. "261,200 gold" while the gold-check at click time used the
+        // tax-inclusive ~300,400 — so a player with 300,000 gold saw "you can afford
+        // it" prices but kept getting "you lack the gold" rejections with no
+        // explanation. Now the listed number IS the number that gets compared
+        // against player.Gold, and the listed total matches the confirmation prompt.
         // List player's cursed backpack items
         if (cursedItems.Count > 0)
         {
@@ -710,7 +717,8 @@ public partial class MagicShopLocation : BaseLocation
                 displayNum++;
                 var item = cursedItems[i];
                 long removalCost = CalculateCurseRemovalCost(item, player);
-                DisplayMessage(Loc.Get("magic_shop.cursed_item_entry", $"{displayNum}", item.Name, $"{removalCost:N0}"), "red");
+                var (_, _, listedTotal) = CityControlSystem.CalculateTaxedPrice(removalCost);
+                DisplayMessage(Loc.Get("magic_shop.cursed_item_entry", $"{displayNum}", item.Name, $"{listedTotal:N0}"), "red");
                 DisplayCurseDetails(item);
             }
         }
@@ -725,7 +733,8 @@ public partial class MagicShopLocation : BaseLocation
                 displayNum++;
                 var (slot, equip) = cursedPlayerGear[i];
                 long removalCost = CalculateEquipmentCurseRemovalCost(equip);
-                DisplayMessage($"  {displayNum}. {equip.Name} (your {slot.GetDisplayName()}) — {removalCost:N0} gold", "red");
+                var (_, _, listedTotal) = CityControlSystem.CalculateTaxedPrice(removalCost);
+                DisplayMessage($"  {displayNum}. {equip.Name} (your {slot.GetDisplayName()}) — {listedTotal:N0} gold", "red");
                 DisplayEquipmentCurseDetails(equip);
             }
         }
@@ -740,7 +749,8 @@ public partial class MagicShopLocation : BaseLocation
                 displayNum++;
                 var (ownerName, slot, equip) = cursedTeamGear[i];
                 long removalCost = CalculateEquipmentCurseRemovalCost(equip);
-                DisplayMessage($"  {displayNum}. {equip.Name} ({ownerName}'s {slot.GetDisplayName()}) — {removalCost:N0} gold", "red");
+                var (_, _, listedTotal) = CityControlSystem.CalculateTaxedPrice(removalCost);
+                DisplayMessage($"  {displayNum}. {equip.Name} ({ownerName}'s {slot.GetDisplayName()}) — {listedTotal:N0} gold", "red");
                 DisplayEquipmentCurseDetails(equip);
             }
         }
@@ -785,6 +795,10 @@ public partial class MagicShopLocation : BaseLocation
         {
             DisplayMessage("");
             DisplayMessage(Loc.Get("magic_shop.curse_no_gold"), "cyan");
+            // v0.57.9 (Lumina report): show the actual shortfall so the player can
+            // see exactly how much more gold is needed instead of guessing whether
+            // they're 1 gold short or 50,000 short.
+            DisplayMessage(Loc.Get("magic_shop.curse_short_by", $"{curseTotalWithTax:N0}", $"{player.Gold:N0}", $"{curseTotalWithTax - player.Gold:N0}"), "darkgray");
             DisplayMessage(Loc.Get("magic_shop.curse_remains"), "red");
             return;
         }
@@ -887,6 +901,7 @@ public partial class MagicShopLocation : BaseLocation
         {
             DisplayMessage("");
             DisplayMessage(Loc.Get("magic_shop.curse_no_gold"), "cyan");
+            DisplayMessage(Loc.Get("magic_shop.curse_short_by", $"{curseTotalWithTax:N0}", $"{player.Gold:N0}", $"{curseTotalWithTax - player.Gold:N0}"), "darkgray");
             DisplayMessage(Loc.Get("magic_shop.curse_remains"), "red");
             return;
         }
@@ -1095,15 +1110,23 @@ public partial class MagicShopLocation : BaseLocation
             return;
         }
 
-        // For stat-boosting enchants, let player choose the stat
+        // For stat-boosting enchants, let player choose the stat.
+        // v0.57.9 (Lumina report: "there are only these stats available: WP, STR, DEX,
+        // DEF, WIS, AP. What about the rest?"): expanded from 5 options to 13 so casters
+        // can actually enhance INT/Mana, tanks can buff HP/CON, dex builds get Agility,
+        // etc. The first 5 cases are identical to the legacy behavior; cases 6-13 cover
+        // every remaining Item stat field (Armor, HP, Mana, Agility, Charisma, Stamina)
+        // plus the two fields that live in the LootEffects list (Constitution, Intelligence).
         int statChoice = 0;
         if (enchantChoice >= 1 && enchantChoice <= 3)
         {
             DisplayMessage("");
             DisplayMessage(Loc.Get("magic_shop.old_choose_stat"), "cyan");
             DisplayMessage(Loc.Get("magic_shop.old_stat_options"), "gray");
+            DisplayMessage(Loc.Get("magic_shop.old_stat_options_2"), "gray");
+            DisplayMessage(Loc.Get("magic_shop.old_stat_options_3"), "gray");
             input = await terminal.GetInput(Loc.Get("ui.choice"));
-            if (!int.TryParse(input, out statChoice) || statChoice <= 0 || statChoice > 5)
+            if (!int.TryParse(input, out statChoice) || statChoice <= 0 || statChoice > 13)
                 return;
         }
 
@@ -1215,6 +1238,51 @@ public partial class MagicShopLocation : BaseLocation
             case 5:
                 item.Attack += bonus;
                 break;
+            case 6:
+                item.Armor += bonus;
+                break;
+            case 7:
+                item.HP += bonus;
+                break;
+            case 8:
+                item.Mana += bonus;
+                break;
+            case 9:
+                item.Agility += bonus;
+                break;
+            case 10:
+                item.Charisma += bonus;
+                break;
+            case 11:
+                item.Stamina += bonus;
+                break;
+            case 12:
+                IncrementLootEffect(item, (int)LootGenerator.SpecialEffect.Constitution, bonus);
+                break;
+            case 13:
+                IncrementLootEffect(item, (int)LootGenerator.SpecialEffect.Intelligence, bonus);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Increment (or add) a value on an Item.LootEffects entry. Used for Constitution /
+    /// Intelligence enchants, which live in the LootEffects list rather than as direct
+    /// Item fields. Tuple elements aren't mutable in place, so an existing entry is
+    /// replaced with a new tuple carrying the summed value.
+    /// </summary>
+    private static void IncrementLootEffect(Item item, int effectType, int bonus)
+    {
+        if (item.LootEffects == null) return;
+        int existing = item.LootEffects.FindIndex(e => e.EffectType == effectType);
+        if (existing >= 0)
+        {
+            var (type, value) = item.LootEffects[existing];
+            item.LootEffects[existing] = (type, value + bonus);
+        }
+        else
+        {
+            item.LootEffects.Add((effectType, bonus));
         }
     }
 

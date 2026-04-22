@@ -79,6 +79,22 @@ public class Item
     }
     
     /// <summary>
+    /// Ensure MinLevel reflects the weapon/armor power tier — mirrors
+    /// Equipment.EnforceMinLevelFromPower so loot drops show the real
+    /// requirement at display time instead of a clamped-down value that
+    /// gets bumped up later at equip time (v0.57.9 Lumina report: staff
+    /// showed "Requires Level 80" on drop but rejected at 100 on equip).
+    /// </summary>
+    public void EnforceMinLevelFromPower()
+    {
+        int power = Math.Max(Attack, Armor);
+        if (power <= 15) return; // Starter gear has no restriction
+        int powerFloor = Math.Min(100, Math.Max(1, power / 10));
+        if (MinLevel < powerFloor)
+            MinLevel = powerFloor;
+    }
+
+    /// <summary>
     /// Check if a character can use this item
     /// </summary>
     public bool CanUse(Character character)

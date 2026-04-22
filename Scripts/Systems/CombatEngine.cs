@@ -642,8 +642,8 @@ public partial class CombatEngine
             terminal.SetColor("white");
             terminal.WriteLine(Loc.Get("combat.facing", monster.GetDisplayInfo()));
 
-            // Show monster silhouette for single monster (skip for screen readers and BBS mode)
-            if (player is Player pp3 && !pp3.ScreenReaderMode && !DoorMode.IsInDoorMode && !GameConfig.CompactMode)
+            // Show monster silhouette for single monster (skip for screen readers, BBS mode, compact mode, and art-disabled)
+            if (player is Player pp3 && !pp3.ScreenReaderMode && !DoorMode.IsInDoorMode && !GameConfig.CompactMode && !GameConfig.DisableCharacterMonsterArt)
             {
                 var art = MonsterArtDatabase.GetArtForFamily(monster.FamilyName);
                 if (art != null)
@@ -655,8 +655,8 @@ public partial class CombatEngine
         }
         else
         {
-            // Show first monster's silhouette if 3 or fewer (skip for screen readers and BBS mode)
-            if (monsters.Count <= 3 && player is Player pp4 && !pp4.ScreenReaderMode && !DoorMode.IsInDoorMode && !GameConfig.CompactMode)
+            // Show first monster's silhouette if 3 or fewer (skip for screen readers, BBS mode, compact mode, and art-disabled)
+            if (monsters.Count <= 3 && player is Player pp4 && !pp4.ScreenReaderMode && !DoorMode.IsInDoorMode && !GameConfig.CompactMode && !GameConfig.DisableCharacterMonsterArt)
             {
                 var art = MonsterArtDatabase.GetArtForFamily(monsters[0].FamilyName);
                 if (art != null)
@@ -1559,8 +1559,8 @@ public partial class CombatEngine
         terminal.WriteLine(Loc.Get("combat.facing", monster.GetDisplayInfo()));
         terminal.WriteLine("");
 
-        // Show monster silhouette (skip for screen readers and BBS mode)
-        if (player is Player pp2 && !pp2.ScreenReaderMode && !DoorMode.IsInDoorMode && !GameConfig.CompactMode)
+        // Show monster silhouette (skip for screen readers, BBS mode, compact mode, and art-disabled)
+        if (player is Player pp2 && !pp2.ScreenReaderMode && !DoorMode.IsInDoorMode && !GameConfig.CompactMode && !GameConfig.DisableCharacterMonsterArt)
         {
             var art = MonsterArtDatabase.GetArtForFamily(monster.FamilyName);
             if (art != null)
@@ -7301,9 +7301,13 @@ public partial class CombatEngine
                 {
                     loot = LootGenerator.GenerateMiniBossLoot(monster.Level, result.Player.Class);
                     if (loot == null) continue;
-                    // Cap MinLevel to player's level — if you killed it, you earned it
-                    if (loot.MinLevel > result.Player.Level)
-                        loot.MinLevel = result.Player.Level;
+                    // v0.57.9 (Lumina report: staff said "Requires Level 80" on drop but
+                    // rejected at 100 on equip): apply the same power-based floor the equip
+                    // path uses, so the displayed level requirement matches reality. The old
+                    // "clamp-down to player level" was a friendly lie — the equip path later
+                    // ran EnforceMinLevelFromPower and bumped MinLevel back up, making the
+                    // drop screen and the equip screen disagree.
+                    loot.EnforceMinLevelFromPower();
                     terminal.WriteLine("");
                     terminal.SetColor("bright_yellow");
                     terminal.WriteLine(Loc.Get("combat.loot_champion_drop"));
@@ -7321,9 +7325,13 @@ public partial class CombatEngine
                 loot = LootGenerator.GenerateBossLoot(monster.Level, result.Player.Class);
                 if (loot != null)
                 {
-                    // Cap MinLevel to player's level — if you killed it, you earned it
-                    if (loot.MinLevel > result.Player.Level)
-                        loot.MinLevel = result.Player.Level;
+                    // v0.57.9 (Lumina report: staff said "Requires Level 80" on drop but
+                    // rejected at 100 on equip): apply the same power-based floor the equip
+                    // path uses, so the displayed level requirement matches reality. The old
+                    // "clamp-down to player level" was a friendly lie — the equip path later
+                    // ran EnforceMinLevelFromPower and bumped MinLevel back up, making the
+                    // drop screen and the equip screen disagree.
+                    loot.EnforceMinLevelFromPower();
                     terminal.WriteLine("");
                     terminal.SetColor("bright_yellow");
                     terminal.WriteLine(Loc.Get("combat.loot_boss_drop"));
@@ -7373,9 +7381,13 @@ public partial class CombatEngine
 
                 if (loot != null)
                 {
-                    // Cap MinLevel to player's level — if you killed it, you earned it
-                    if (loot.MinLevel > result.Player.Level)
-                        loot.MinLevel = result.Player.Level;
+                    // v0.57.9 (Lumina report: staff said "Requires Level 80" on drop but
+                    // rejected at 100 on equip): apply the same power-based floor the equip
+                    // path uses, so the displayed level requirement matches reality. The old
+                    // "clamp-down to player level" was a friendly lie — the equip path later
+                    // ran EnforceMinLevelFromPower and bumped MinLevel back up, making the
+                    // drop screen and the equip screen disagree.
+                    loot.EnforceMinLevelFromPower();
                     // Round-robin: pick primary recipient
                     var recipient = allPlayers[_lootRoundRobinIndex % allPlayers.Count];
                     _lootRoundRobinIndex++;
@@ -7784,10 +7796,16 @@ public partial class CombatEngine
                     else
                     {
                         terminal.SetColor("green");
-                        // v0.57.2 — append companion name when this was a companion equip so the
-                        // player can tell which party member now has the item.
+                        // v0.57.9 (Aura report: "Moved X to inventory" followed by "couldn't fit X"
+                        // contradictory messages on companion equip): `equipMsg` from EquipItem
+                        // contains "Moved {displacedItem} to inventory. " whenever the equip
+                        // displaced a prior weapon. That message was accurate for player-equipped
+                        // items but misleading for companion equips — the displaced-items loop at
+                        // ~7757 already prints the real outcome per item (moved to player bag or
+                        // dropped if full). Suppress equipMsg on companion equips so the player
+                        // sees only the accurate per-item line plus a clean "equipped on X" line.
                         if (isCompanionEquip)
-                            terminal.WriteLine(equipMsg + Loc.Get("combat.loot_equipped_on_companion_suffix", player.DisplayName));
+                            terminal.WriteLine(Loc.Get("combat.loot_equipped_on_companion", lootItem.Name, player.DisplayName));
                         else
                             terminal.WriteLine(equipMsg);
                     }

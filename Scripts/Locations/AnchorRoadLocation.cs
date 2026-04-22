@@ -548,8 +548,27 @@ public class AnchorRoadLocation : BaseLocation
                 TotalPower = g.Sum(m => m.Level + (int)m.Strength + (int)m.Defence),
                 ControlsTurf = g.Any(m => m.CTurf)
             })
-            .OrderByDescending(t => t.TotalPower)
             .ToList();
+
+        // v0.57.9 (Coosh report: "I can't challenge the team watchers even though they own
+        // the town turf"): teams that hold CTurf but have zero alive members (all dead /
+        // permadead) got filtered out above, making the turf unreachable via Gang War.
+        // Pascal's GANGWARS.PAS had EasyTownTakeover for this; the C# inline port missed it.
+        // Surface them here as "ghost" controllers with 0 members — the fight loop below
+        // short-circuits to an unopposed takeover when selected.
+        var ghostControllers = allNPCs
+            .Where(n => !string.IsNullOrEmpty(n.Team) && n.CTurf && n.Team != currentPlayer.Team)
+            .GroupBy(n => n.Team)
+            .Where(g => !teams.Any(t => t.TeamName == g.Key))
+            .Select(g => new
+            {
+                TeamName = g.Key,
+                MemberCount = 0,
+                TotalPower = 0,
+                ControlsTurf = true
+            });
+        teams.AddRange(ghostControllers);
+        teams = teams.OrderByDescending(t => t.TotalPower).ToList();
 
         if (teams.Count == 0)
         {
@@ -623,6 +642,34 @@ public class AnchorRoadLocation : BaseLocation
                 .Where(n => n.Team == targetTeam.TeamName && n.IsAlive && !n.IsDead)
                 .OrderBy(n => n.Level)
                 .ToList();
+
+            // v0.57.9: "ghost controller" short-circuit — team holds turf but has zero alive
+            // members, so there's nobody to fight. Unopposed takeover, turf transfers clean.
+            if (enemyTeamMembers.Count == 0 && targetTeam.ControlsTurf)
+            {
+                terminal.SetColor("bright_yellow");
+                WriteSectionHeader(Loc.Get("anchor_road.gang_war_victory"), "bright_green");
+                terminal.SetColor("white");
+                terminal.WriteLine(Loc.Get("anchor_road.ghost_takeover", targetTeam.TeamName));
+                terminal.WriteLine("");
+
+                // Strip turf from any remaining flagged NPCs on the ghost team (even dead ones)
+                foreach (var npc in allNPCs.Where(n => n.Team == targetTeam.TeamName))
+                    npc.CTurf = false;
+                currentPlayer.CTurf = true;
+                foreach (var ally in playerTeamMembers)
+                    ally.CTurf = true;
+
+                terminal.SetColor("bright_yellow");
+                terminal.WriteLine(Loc.Get("anchor_road.team_controls_town"));
+                NewsSystem.Instance.Newsy(true, $"Gang War! {currentPlayer.Team} took the town unopposed — {targetTeam.TeamName} had no living members left.");
+
+                terminal.WriteLine("");
+                terminal.SetColor("darkgray");
+                terminal.WriteLine(Loc.Get("ui.press_enter"));
+                await terminal.ReadKeyAsync();
+                return;
+            }
 
             bool playerWon = true;
             int enemiesDefeated = 0;

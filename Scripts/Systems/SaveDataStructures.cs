@@ -403,6 +403,7 @@ namespace UsurperRemake.Systems
         public bool SkipIntimateScenes { get; set; }  // Skip detailed intimate scenes (fade to black)
         public bool ScreenReaderMode { get; set; }  // Simplified text for screen readers (accessibility)
         public bool CompactMode { get; set; }  // Compact menus for mobile/small screen SSH
+        public bool DisableCharacterMonsterArt { get; set; }  // Skip portrait + monster + Old God art (without going full SR)
         public string Language { get; set; } = "en";  // Player language preference
         public ColorThemeType ColorTheme { get; set; } = ColorThemeType.Default;  // Player-selected color theme
         public bool AutoLevelUp { get; set; } = true;  // Auto-level on XP threshold (default on)

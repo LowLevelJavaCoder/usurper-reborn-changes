@@ -1755,6 +1755,14 @@ public partial class QuestSystem
         int targetValue;
         string targetName;
 
+        // v0.57.9 (Lumina report: "royal quest on floor 106, max is 100 — uncompletable").
+        // The board-quest path has a CapFloor helper that clamps to the player's accessible
+        // dungeon range; royal audience quests went through raw Math.Max with no upper bound,
+        // so a Lv.94 with difficulty 4 got assigned floor 106. Match the board-quest ceiling:
+        // max of MaxDungeonLevel (100) and player.Level + 10 (the dungeon-access range).
+        int maxAccessibleFloor = Math.Min(GameConfig.MaxDungeonLevel, player.Level + 10);
+        int ClampFloor(int raw) => Math.Clamp(raw, 1, maxAccessibleFloor);
+
         if (questDescription.Contains("monster") || questDescription.Contains("creature"))
         {
             questTarget = QuestTarget.Monster;
@@ -1767,14 +1775,14 @@ public partial class QuestSystem
             // FindArtifact removed (no tracking/completion code) — treat as dungeon exploration
             questTarget = QuestTarget.ReachFloor;
             objectiveType = QuestObjectiveType.ReachDungeonFloor;
-            targetValue = Math.Max(1, player.Level + difficulty * 3);
+            targetValue = ClampFloor(player.Level + difficulty * 3);
             targetName = $"Floor {targetValue}";
         }
         else if (questDescription.Contains("floor") || questDescription.Contains("clear"))
         {
             questTarget = QuestTarget.ClearFloor;
             objectiveType = QuestObjectiveType.ClearDungeonFloor;
-            targetValue = Math.Max(1, player.Level - 5 + difficulty * 5); // Near player level
+            targetValue = ClampFloor(player.Level - 5 + difficulty * 5); // Near player level
             targetName = $"Floor {targetValue}";
         }
         else if (questDescription.Contains("criminal") || questDescription.Contains("hunt"))
@@ -1788,7 +1796,7 @@ public partial class QuestSystem
         {
             questTarget = QuestTarget.ReachFloor;
             objectiveType = QuestObjectiveType.ReachDungeonFloor;
-            targetValue = Math.Max(1, player.Level + difficulty * 3);
+            targetValue = ClampFloor(player.Level + difficulty * 3);
             targetName = $"Floor {targetValue}";
         }
 

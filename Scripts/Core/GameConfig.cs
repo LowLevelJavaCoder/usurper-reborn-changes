@@ -9,7 +9,7 @@ using System.Collections.Generic;
 public static partial class GameConfig
 {
     // Version information
-    public const string Version = "0.57.8";
+    public const string Version = "0.57.9";
     public const string VersionName = "Alignment and Shields";
     public const string DiscordInvite = "discord.gg/EZhwgDT6Ta";
 
@@ -245,6 +245,31 @@ public static partial class GameConfig
                 ctx.Language = value;
             else
                 _languageGlobal = value;
+        }
+    }
+
+    /// <summary>
+    /// Disable character/monster ASCII art without going full screen-reader mode.
+    /// Skips race/class portraits at character creation, NPC portraits during dialogue,
+    /// monster silhouettes in combat, and Old God boss reveals. Leaves all other UI
+    /// (borders, status bars, story art, splash screens, level-up / treasure /
+    /// dungeon-entrance art) intact. Per-session in MUD mode, global elsewhere.
+    /// </summary>
+    private static bool _disableCharacterMonsterArtGlobal = false;
+    public static bool DisableCharacterMonsterArt
+    {
+        get
+        {
+            var ctx = UsurperRemake.Server.SessionContext.Current;
+            return ctx != null ? ctx.DisableCharacterMonsterArt : _disableCharacterMonsterArtGlobal;
+        }
+        set
+        {
+            var ctx = UsurperRemake.Server.SessionContext.Current;
+            if (ctx != null)
+                ctx.DisableCharacterMonsterArt = value;
+            else
+                _disableCharacterMonsterArtGlobal = value;
         }
     }
 

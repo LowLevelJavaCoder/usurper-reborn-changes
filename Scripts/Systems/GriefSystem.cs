@@ -47,10 +47,38 @@ namespace UsurperRemake.Systems
         public event Action<string>? OnNpcGriefComplete;
 
         /// <summary>
+        /// v0.57.9 (Grug report: "Aldric is in my party but I keep seeing grief
+        /// messages for his death"). A grief state is "live" only when the subject
+        /// is actually still dead. Stale entries can survive when a companion is
+        /// revived through the editor / SysOp tools / a future resurrection feature
+        /// without the matching grief cleanup. Filter at the read side so the UI
+        /// only ever surfaces grief for genuinely-fallen companions/NPCs.
+        /// </summary>
+        private bool IsGriefLive(GriefState g)
+        {
+            if (g.IsComplete) return false;
+
+            if (!g.IsNpcGrief)
+            {
+                var companion = CompanionSystem.Instance?.GetCompanion(g.CompanionId);
+                if (companion != null && companion.IsRecruited && !companion.IsDead)
+                    return false;
+            }
+            else if (!string.IsNullOrEmpty(g.NpcId))
+            {
+                var npc = NPCSpawnSystem.Instance?.ActiveNPCs?.FirstOrDefault(n => n.ID == g.NpcId);
+                if (npc != null && !npc.IsDead && npc.HP > 0)
+                    return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
         /// Check if player is currently grieving any companion or NPC
         /// </summary>
-        public bool IsGrieving => activeGrief.Values.Any(g => !g.IsComplete) ||
-                                   activeNpcGrief.Values.Any(g => !g.IsComplete);
+        public bool IsGrieving => activeGrief.Values.Any(IsGriefLive) ||
+                                   activeNpcGrief.Values.Any(IsGriefLive);
 
         /// <summary>
         /// Get the current grief stage (returns highest priority active grief from companions or NPCs)
@@ -60,7 +88,7 @@ namespace UsurperRemake.Systems
             get
             {
                 var allActiveGrief = activeGrief.Values.Concat(activeNpcGrief.Values)
-                    .Where(g => !g.IsComplete)
+                    .Where(IsGriefLive)
                     .Select(g => g.CurrentStage);
                 return allActiveGrief.DefaultIfEmpty(GriefStage.None).First();
             }
@@ -201,7 +229,7 @@ namespace UsurperRemake.Systems
             // Apply effects from companion grief
             foreach (var grief in activeGrief.Values)
             {
-                if (grief.IsComplete)
+                if (!IsGriefLive(grief))
                     continue;
 
                 var stageEffects = GetStageEffects(grief.CurrentStage);
@@ -225,7 +253,7 @@ namespace UsurperRemake.Systems
             // Apply effects from NPC grief
             foreach (var grief in activeNpcGrief.Values)
             {
-                if (grief.IsComplete)
+                if (!IsGriefLive(grief))
                     continue;
 
                 var stageEffects = GetStageEffects(grief.CurrentStage);
@@ -665,12 +693,12 @@ namespace UsurperRemake.Systems
             var details = new List<(string name, GriefStage stage)>();
             foreach (var grief in activeGrief.Values)
             {
-                if (!grief.IsComplete)
+                if (IsGriefLive(grief))
                     details.Add((grief.CompanionName, grief.CurrentStage));
             }
             foreach (var grief in activeNpcGrief.Values)
             {
-                if (!grief.IsComplete)
+                if (IsGriefLive(grief))
                     details.Add((grief.CompanionName, grief.CurrentStage));
             }
             return details;
@@ -688,7 +716,7 @@ namespace UsurperRemake.Systems
 
             // Pick a random active grief
             var allActive = activeGrief.Values.Concat(activeNpcGrief.Values)
-                .Where(g => !g.IsComplete).ToList();
+                .Where(IsGriefLive).ToList();
             if (allActive.Count == 0) return null;
 
             var grief = allActive[random.Next(allActive.Count)];
@@ -716,7 +744,7 @@ namespace UsurperRemake.Systems
             if (!IsGrieving) return null;
 
             var allActive = activeGrief.Values.Concat(activeNpcGrief.Values)
-                .Where(g => !g.IsComplete).ToList();
+                .Where(IsGriefLive).ToList();
             if (allActive.Count == 0) return null;
 
             // Pick one to focus on

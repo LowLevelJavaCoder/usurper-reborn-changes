@@ -675,9 +675,15 @@ public class FeatureInteractionSystem
         // DC scales gently: 8 at floor 1, 20 at floor 50, 33 at floor 100
         int difficulty = 8 + (level / 4);
         int roll = random.Next(1, 21);
-        // Cap stat bonus at 20 to keep checks meaningful at endgame
-        // (raw stat / 10 gives 50+ at high stats, trivializing all checks)
-        int statBonus = Math.Min(statValue / 10, 20);
+        // v0.57.9 (Lumina report: Int 967 capped to +20, feature check failed at floor 94):
+        // previous cap of 20 meant every stat over 200 contributed nothing to the check,
+        // which defeated the whole point of a Magician building Intelligence. The comment
+        // about "trivializing checks at endgame" was also backwards — capping at 20 makes
+        // floor-94 checks feel random for a committed caster, where they should feel like
+        // confident wins. Raised the cap to 40. Stat 400+ now caps out, which at the
+        // maximum DC of 33 means auto-pass for a committed specialist; mid-stat (100-300)
+        // still has a meaningful roll; low-stat (<100) is still mostly at the mercy of d20.
+        int statBonus = Math.Min(statValue / 10, 40);
         int total = roll + statBonus;
         bool success = total >= difficulty;
 

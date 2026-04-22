@@ -401,7 +401,7 @@ async function handleBugReport(req, res) {
     return;
   }
 
-  const content = typeof body?.content === 'string' ? body.content : '';
+  let content = typeof body?.content === 'string' ? body.content : '';
   if (!content || content.trim().length === 0) {
     sendJson(res, 400, { error: 'Missing content' });
     return;
@@ -411,7 +411,21 @@ async function handleBugReport(req, res) {
     return;
   }
 
-  const payload = JSON.stringify({ content });
+  // Strip Discord mention syntax before forwarding. Older clients prefixed every
+  // report with an owner ping; this neutralizes all user/role/everyone/here mentions
+  // so the proxy is never a tool for silently pinging anyone. Also blocks user-typed
+  // pings in the free-form description field.
+  //   <@123...>, <@!123...>, <@&123...>  -> (@user) / (@role)
+  //   @everyone, @here                   -> @-everyone / @-here
+  content = content
+    .replace(/<@!?(\d+)>/g, '(@user)')
+    .replace(/<@&(\d+)>/g, '(@role)')
+    .replace(/@everyone/g, '@-everyone')
+    .replace(/@here/g, '@-here');
+
+  // Defense-in-depth: Discord also honors an allowed_mentions.parse empty array,
+  // which guarantees no mention triggers even if our regex missed something exotic.
+  const payload = JSON.stringify({ content, allowed_mentions: { parse: [] } });
   const webhook = new URL(BUG_REPORT_WEBHOOK_URL);
 
   const forward = new Promise((resolve, reject) => {

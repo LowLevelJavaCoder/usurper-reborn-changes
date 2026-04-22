@@ -410,8 +410,8 @@ namespace UsurperRemake.Systems
             }
             terminal.WriteLine("");
 
-            // Show Old God art (skip for screen readers and BBS mode)
-            if (player is Player pp && !pp.ScreenReaderMode && !DoorMode.IsInDoorMode)
+            // Show Old God art (skip for screen readers, BBS mode, and art-disabled)
+            if (player is Player pp && !pp.ScreenReaderMode && !DoorMode.IsInDoorMode && !GameConfig.DisableCharacterMonsterArt)
             {
                 var art = OldGodArtDatabase.GetArtForGod(boss.Type);
                 if (art != null)

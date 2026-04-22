@@ -3648,6 +3648,7 @@ public partial class GameEngine
 
         // Inherit pre-login compact mode and language into new character
         currentPlayer.CompactMode = GameConfig.CompactMode;
+        currentPlayer.DisableCharacterMonsterArt = GameConfig.DisableCharacterMonsterArt;
         currentPlayer.Language = GameConfig.Language;
 
         // Auto-populate quickbar with starting spells/abilities
@@ -4091,6 +4092,7 @@ public partial class GameEngine
             SkipIntimateScenes = playerData.SkipIntimateScenes,
             ScreenReaderMode = playerData.ScreenReaderMode,
             CompactMode = playerData.CompactMode,
+            DisableCharacterMonsterArt = playerData.DisableCharacterMonsterArt,
             Language = playerData.Language ?? "en",
             ColorTheme = playerData.ColorTheme,
             AutoLevelUp = playerData.AutoLevelUp,
@@ -4777,6 +4779,7 @@ public partial class GameEngine
 
         // Sync compact mode and language from player save to global
         GameConfig.CompactMode = player.CompactMode;
+        GameConfig.DisableCharacterMonsterArt = player.DisableCharacterMonsterArt;
         // If the player actively chose a language on the main menu this session, keep it
         // and update their character to match. Otherwise restore from save.
         if (_languageSetThisSession.Value)

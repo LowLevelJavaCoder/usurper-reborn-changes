@@ -103,7 +103,7 @@ public class TeamCornerLocation : BaseLocation
         terminal.SetColor("cyan");
         terminal.WriteLine(Loc.Get("team.section_comm"));
         terminal.SetColor("white");
-        WriteMenuOption("M", Loc.Get("team.menu_message"), "!", Loc.Get("team.menu_resurrect"));
+        WriteMenuOption("M", Loc.Get("team.menu_message"), "U", Loc.Get("team.menu_resurrect"));
         if (DoorMode.IsOnlineMode)
         {
             WriteMenuOption("W", Loc.Get("team.menu_recruit_player"), "", "");
@@ -167,7 +167,7 @@ public class TeamCornerLocation : BaseLocation
         terminal.SetColor("cyan");
         terminal.WriteLine(Loc.Get("team.sr_comm_section"));
         WriteSRMenuOption("M", Loc.Get("team_corner.message"));
-        WriteSRMenuOption("!", Loc.Get("team_corner.resurrect"));
+        WriteSRMenuOption("U", Loc.Get("team_corner.resurrect"));
         if (DoorMode.IsOnlineMode)
         {
             WriteSRMenuOption("W", Loc.Get("team_corner.recruit_player"));
@@ -245,7 +245,7 @@ public class TeamCornerLocation : BaseLocation
         terminal.SetColor("cyan");
         terminal.WriteLine(Loc.Get("team.bbs_actions"));
         ShowBBSMenuRow(("C", "bright_yellow", Loc.Get("team.bbs_create")), ("J", "bright_yellow", Loc.Get("team.bbs_join")), ("Q", "bright_yellow", Loc.Get("team.bbs_quit_team")), ("A", "bright_yellow", Loc.Get("team.bbs_apply")), ("N", "bright_yellow", Loc.Get("team.bbs_recruit_npc")));
-        ShowBBSMenuRow(("2", "bright_yellow", Loc.Get("team.bbs_sack_member")), ("G", "bright_yellow", Loc.Get("team.bbs_equip_mbr")), ("X", "bright_yellow", Loc.Get("team.bbs_specialize")), ("M", "bright_yellow", Loc.Get("team.bbs_message")), ("!", "bright_yellow", Loc.Get("team.bbs_resurrect")));
+        ShowBBSMenuRow(("2", "bright_yellow", Loc.Get("team.bbs_sack_member")), ("G", "bright_yellow", Loc.Get("team.bbs_equip_mbr")), ("X", "bright_yellow", Loc.Get("team.bbs_specialize")), ("M", "bright_yellow", Loc.Get("team.bbs_message")), ("U", "bright_yellow", Loc.Get("team.bbs_resurrect")));
         if (DoorMode.IsOnlineMode)
         {
             ShowBBSMenuRow(("W", "bright_yellow", Loc.Get("team.bbs_recruit_ally")), ("B", "bright_yellow", Loc.Get("team.bbs_team_battle")), ("H", "bright_yellow", Loc.Get("team.bbs_hq")));
@@ -262,19 +262,19 @@ public class TeamCornerLocation : BaseLocation
 
         var upperChoice = choice.ToUpper().Trim();
 
-        // Handle ! locally first (Resurrect) before global handler claims it for bug report
-        if (upperChoice == "!")
-        {
-            await ResurrectTeammate();
-            return false;
-        }
-
-        // Handle global quick commands
+        // Handle global quick commands first — keeps `!` as the Report Bug shortcut
+        // consistent with every other location (v0.57.10 Coosh report: the prior local
+        // intercept of `!` for Resurrect clashed with the global bug-report key).
         var (handled, shouldExit) = await TryProcessGlobalCommand(choice);
         if (handled) return shouldExit;
 
         switch (upperChoice)
         {
+            case "U":
+                await ResurrectTeammate();
+                return false;
+
+
             case "T":
                 await ShowTeamRankings();
                 return false;

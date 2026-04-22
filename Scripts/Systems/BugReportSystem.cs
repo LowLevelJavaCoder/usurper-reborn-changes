@@ -185,8 +185,6 @@ public static class BugReportSystem
         {
             var sb = new StringBuilder();
 
-            // Ping Rage on new bug reports
-            sb.AppendLine("<@273583986482348032>");
             sb.AppendLine("**Bug Report** from Usurper Reborn");
             sb.AppendLine("```");
             sb.AppendLine($"Version:  {info.GameVersion}");

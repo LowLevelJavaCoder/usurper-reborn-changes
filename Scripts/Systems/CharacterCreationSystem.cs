@@ -668,7 +668,8 @@ public class CharacterCreationSystem
             return await ShowRacePreviewScreenReader(race);
 
         // Try side-by-side portrait layout if a portrait exists for this race
-        var portrait = RacePortraits.GetCroppedPortrait(race, 38);
+        // (skip portrait when player disabled character/monster art — use card layout instead)
+        var portrait = GameConfig.DisableCharacterMonsterArt ? null : RacePortraits.GetCroppedPortrait(race, 38);
         if (portrait != null)
             return await ShowRacePreviewSideBySide(race, portrait);
 
@@ -1209,7 +1210,8 @@ public class CharacterCreationSystem
             return await ShowClassPreviewScreenReader(characterClass);
 
         // Try side-by-side portrait layout if a portrait exists for this class
-        var portrait = RacePortraits.GetCroppedClassPortrait(characterClass, 38);
+        // (skip portrait when player disabled character/monster art — use card layout instead)
+        var portrait = GameConfig.DisableCharacterMonsterArt ? null : RacePortraits.GetCroppedClassPortrait(characterClass, 38);
         if (portrait != null)
             return await ShowClassPreviewSideBySide(characterClass, portrait);
 
