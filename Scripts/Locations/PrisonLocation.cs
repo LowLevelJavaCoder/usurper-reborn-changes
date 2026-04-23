@@ -116,13 +116,26 @@ public partial class PrisonLocation : BaseLocation
             await DisplayPrisonMenu(player, true, true);
 
             // Get user input
-
             string input = (await terminal.ReadLineAsync())?.Trim() ?? "";
 
+            // v0.57.12: prisoners can use communication slash commands (PR #84) — shouting through the
+            // bars, getting messages out, checking /who — but NOT action/admin commands like group
+            // management, guild admin, or guild banking. A locked-in-cell player moving guild gold or
+            // inviting someone to a dungeon party doesn't make in-world sense and is an exploit vector.
             if (input.StartsWith("/") && SessionContext.IsActive)
             {
-                if (await MudChatSystem.TryProcessCommand(input, terminal))
+                if (IsPrisonAllowedSlashCommand(input))
+                {
+                    if (await MudChatSystem.TryProcessCommand(input, terminal))
+                        continue;
+                }
+                else
+                {
+                    await terminal.WriteColorLineAsync(
+                        "  From this cell you can only speak — not act.",
+                        TerminalEmulator.ColorDarkGray);
                     continue;
+                }
             }
 
             if (input.Length == 0) continue;
@@ -131,6 +144,24 @@ public partial class PrisonLocation : BaseLocation
             // Process user choice - returns true if player escaped/freed
             exitPrison = await ProcessPrisonChoice(player, choice);
         }
+    }
+
+    // v0.57.12: whitelist of slash commands a prisoner is allowed to use. Communication only —
+    // chat/shout/tell/who/emote/title and the in-world-inert guild info+chat commands (`/guild`,
+    // `/ginfo`, `/gc`). Every action/admin command (group management, guild admin, bank transfers,
+    // accepting party invites, etc.) falls through and the prisoner sees a "you can only speak" message.
+    private static readonly HashSet<string> PrisonAllowedSlashCommands = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "say", "s", "shout", "tell", "t", "emote", "me", "gossip", "gos",
+        "who", "w", "title", "guild", "ginfo", "gc"
+    };
+
+    private static bool IsPrisonAllowedSlashCommand(string input)
+    {
+        if (string.IsNullOrEmpty(input) || !input.StartsWith("/")) return false;
+        int spaceIdx = input.IndexOf(' ');
+        string cmd = spaceIdx > 0 ? input.Substring(1, spaceIdx - 1) : input.Substring(1);
+        return PrisonAllowedSlashCommands.Contains(cmd);
     }
 
     private Task UpdatePrisonStatus(Character player)

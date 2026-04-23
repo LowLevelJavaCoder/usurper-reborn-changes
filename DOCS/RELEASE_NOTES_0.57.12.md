@@ -1,4 +1,11 @@
-# v0.57.12 - Alignment System Audit + Bank Guard Wage + Gauntlet Kill-Tracking
+# v0.57.12 - Alignment System Audit + Bank Guard Wage + Gauntlet Kill-Tracking + Prison Chat
+
+## Prison Chat (PR #84 + Follow-up Hardening)
+
+Community PR #84 (LowLevelJavaCoder) added slash-command handling to `PrisonLocation.ShowPrisonInterface` so imprisoned players can chat instead of being fully cut off from the online world. The base change — swapping `GetCharAsync` (single-key) for `ReadLineAsync` + routing `/`-prefixed input through `MudChatSystem.TryProcessCommand` — was merged as-is. Follow-up tightening in the same release:
+
+- **Slash-command whitelist.** `MudChatSystem.TryProcessCommand` routes every command the chat system knows about — including group management (`/group`, `/leave`, `/disband`), guild admin (`/gcreate`, `/ginvite`, `/gkick`, `/gleave`, `/gtransfer`, `/grank`), and guild banking (`/gbank`, `/gwithdraw`, `/gdeposit`). A locked-in-cell prisoner recruiting dungeon parties or wiring guild gold doesn't make in-world sense and is an exploit surface. New `PrisonLocation.IsPrisonAllowedSlashCommand` gates the entry point on a communication-only allowlist (`say`, `s`, `shout`, `tell`, `t`, `emote`, `me`, `gossip`, `gos`, `who`, `w`, `title`, `guild`, `ginfo`, `gc`). Non-whitelisted commands show a gray "From this cell you can only speak — not act." line and swallow the input.
+- **`MudChatSystem.GetChatDisplayName` reverted to `private`.** PR #84 widened its visibility to `public` but added no new caller. The helper is still used internally by room broadcast paths; no external code needs it. Reverted to narrow the API surface back to what's actually consumed.
 
 ## Zero-Reward Combat Victory (Anchor Road Gauntlet)
 

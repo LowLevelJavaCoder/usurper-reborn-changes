@@ -179,7 +179,9 @@ public static class MudChatSystem
     /// Returns the display name for a player: character name (not login name).
     /// Gods: "DivineName the Lesser Spirit", others: Name2 → Name1 → login username fallback.
     /// </summary>
-    public static string GetChatDisplayName(string username)
+    // v0.57.12: PR #84 widened this to `public` with no new caller — reverted to `private` since the
+    // prison chat integration uses TryProcessCommand (public) and doesn't need direct access.
+    private static string GetChatDisplayName(string username)
     {
         var server = MudServer.Instance;
         if (server != null && server.ActiveSessions.TryGetValue(username.ToLowerInvariant(), out var session))
