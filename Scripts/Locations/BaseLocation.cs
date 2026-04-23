@@ -2632,6 +2632,11 @@ public abstract class BaseLocation
                 await Task.Delay(1000);
                 return (true, false);
 
+            case "town":
+            case "townhall":
+                await ShowTownHall();
+                return (true, false);
+
             default:
                 terminal.WriteLine("");
                 terminal.SetColor("red");
@@ -2724,6 +2729,7 @@ public abstract class BaseLocation
         WriteCmd("/trade", Loc.Get("base.help_trade"));
         WriteCmd("/auction", Loc.Get("base.help_auction"));
         WriteCmd("/boss", Loc.Get("base.help_boss"));
+        WriteCmd("/town", Loc.Get("base.help_town"));
         WriteCmd("/compact", Loc.Get("base.help_compact"));
         WriteCmd("/bug", Loc.Get("base.help_bug"));
 
@@ -2829,6 +2835,7 @@ public abstract class BaseLocation
         terminal.WriteLine($"/trade {Loc.Get("base.help_trade")}");
         terminal.WriteLine($"/auction {Loc.Get("base.help_auction")}");
         terminal.WriteLine($"/boss {Loc.Get("base.help_boss")}");
+        terminal.WriteLine($"/town {Loc.Get("base.help_town")}");
         terminal.WriteLine($"/compact {Loc.Get("base.help_compact")}");
         terminal.WriteLine($"/bug {Loc.Get("base.help_bug")}");
         terminal.WriteLine("");
@@ -3019,6 +3026,75 @@ public abstract class BaseLocation
         terminal.SetColor("bright_green");
         terminal.WriteLine($"{(currentPlayer?.Gold ?? 0) + bankBalance:N0}");
         terminal.WriteLine("");
+        await terminal.PressAnyKey();
+    }
+
+    /// <summary>
+    /// v0.57.10: Town Hall menu for city-turf controllers. Accessible via the
+    /// `/town` slash command from any location. Shows the controller their
+    /// team affiliation, member count, weekly and lifetime city-tax income,
+    /// and the current king-set city-tax rate.
+    ///
+    /// First iteration is read-only. Adjusting the city-tax rate stays a
+    /// King-only power (set via Castle), so the controller doesn't step on
+    /// the King's political levers. Future iterations may grow this into
+    /// lightweight civic powers (commissioning notices, etc.) — right now
+    /// the value is purely "you can see what holding turf actually earned
+    /// you" since the tax money otherwise just flows silently into the
+    /// player's bank account.
+    /// </summary>
+    protected async Task ShowTownHall()
+    {
+        if (currentPlayer == null || terminal == null) return;
+
+        if (!currentPlayer.CTurf)
+        {
+            terminal.WriteLine("");
+            terminal.SetColor("gray");
+            terminal.WriteLine($"  {Loc.Get("town_hall.not_controller")}");
+            terminal.WriteLine("");
+            await terminal.PressAnyKey();
+            return;
+        }
+
+        terminal.ClearScreen();
+        WriteBoxHeader(Loc.Get("town_hall.title"), "bright_yellow");
+        terminal.WriteLine("");
+
+        // Team summary
+        terminal.SetColor("bright_cyan");
+        terminal.WriteLine($"  {Loc.Get("town_hall.ruling_team", currentPlayer.Team ?? "?")}");
+        terminal.SetColor("white");
+
+        int teamMembers = 0;
+        try
+        {
+            teamMembers = NPCSpawnSystem.Instance.ActiveNPCs
+                .Count(n => n.Team == currentPlayer.Team && n.IsAlive && !n.IsDead);
+        }
+        catch { }
+        terminal.WriteLine($"  {Loc.Get("town_hall.team_members", teamMembers)}");
+        terminal.WriteLine("");
+
+        // Tax rate (set by King)
+        var king = CastleLocation.GetCurrentKing();
+        int cityRate = king?.CityTaxPercent ?? 0;
+        int kingRate = king?.KingTaxPercent ?? 0;
+        terminal.SetColor("darkgray");
+        terminal.WriteLine($"  {Loc.Get("town_hall.tax_rate", cityRate)}");
+        terminal.WriteLine($"  {Loc.Get("town_hall.king_rate", kingRate)}");
+        terminal.WriteLine("");
+
+        // Earnings
+        terminal.SetColor("bright_green");
+        terminal.WriteLine($"  {Loc.Get("town_hall.earned_week", $"{currentPlayer.CityTaxEarnedThisWeek:N0}")}");
+        terminal.WriteLine($"  {Loc.Get("town_hall.earned_lifetime", $"{currentPlayer.CityTaxEarnedLifetime:N0}")}");
+        terminal.WriteLine("");
+
+        terminal.SetColor("darkgray");
+        terminal.WriteLine($"  {Loc.Get("town_hall.earnings_note")}");
+        terminal.WriteLine("");
+
         await terminal.PressAnyKey();
     }
 

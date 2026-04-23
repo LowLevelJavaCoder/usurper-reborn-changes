@@ -2424,6 +2424,21 @@ public partial class GameEngine
                         terminal.SetColor("yellow");
                         terminal.WriteLine($"  You dropped {Math.Abs(change)} rank{(Math.Abs(change) != 1 ? "s" : "")}. Now #{currentPlayer.WeeklyRank}");
                     }
+
+                    // v0.57.10 (player report — "Every single time I have logged
+                    // in recently, it says you have moved up 28 ranks and are
+                    // now in 14th place. It always says the same place."):
+                    // the display fired whenever `WeeklyRank != PreviousWeeklyRank`,
+                    // but the only code that touches `PreviousWeeklyRank` is the
+                    // Monday daily-reset in `DailySystemManager.UpdateWeeklyRankings`.
+                    // Between Mondays the delta stayed constant, so every login
+                    // re-printed the same message. Consume the delta after
+                    // showing it — next week's Monday update will re-snapshot
+                    // the current rank into `PreviousWeeklyRank` before
+                    // recomputing, so the week-over-week comparison stays
+                    // intact.
+                    currentPlayer.PreviousWeeklyRank = currentPlayer.WeeklyRank;
+                    _ = SaveCurrentGame();
                 }
                 if (!string.IsNullOrEmpty(currentPlayer.RivalName))
                 {
@@ -2464,6 +2479,84 @@ public partial class GameEngine
 
                 // Load settlement from world_state (authoritative source, not stale player save)
                 await OnlineStateManager.Instance.LoadSettlementFromWorldState();
+
+                // v0.57.10 (Coosh report — "When I challenge the turf, I win it.
+                // When I relog though it appears Watchers has taken back over"):
+                // self-heal stale turf flags on relog. Three cases to resolve:
+                //
+                //   (a) Player save says CTurf=true AND world_state NPCs have
+                //       CTurf=true on a DIFFERENT team (real NPC team, not the
+                //       player's). The "different team with CTurf" is more
+                //       recent — either (i) the pre-v0.57.10 stale-Watchers
+                //       snapshot, which we'd want to clear, or (ii) another
+                //       online player's team legitimately took turf while this
+                //       player was offline, in which case the player save is
+                //       now stale and CTurf should come OFF the player. We
+                //       can't distinguish (i) from (ii) here, but the
+                //       conservative choice is to trust world_state — clearing
+                //       player.CTurf is always safer than leaving two
+                //       controllers in disagreement. If (i) was the truth and
+                //       we cleared wrongly, the player just re-wins the turf
+                //       from the stale Watchers flag, which is at worst a
+                //       minor annoyance compared to the current silent-reverts
+                //       bug.
+                //
+                //   (b) Player save says CTurf=true AND no other team has it
+                //       in world_state (or only the player's own team does).
+                //       Player is the rightful controller — rebase NPC flags
+                //       onto the player's team NPCs (fixes the pre-v0.57.10
+                //       saves that never wrote their win to world_state).
+                //
+                //   (c) Player save says CTurf=false. No action — world_state
+                //       is authoritative, player will read the true state from
+                //       it naturally.
+                if (currentPlayer.CTurf && !string.IsNullOrEmpty(currentPlayer.Team))
+                {
+                    var rivalController = NPCSpawnSystem.Instance.ActiveNPCs
+                        .FirstOrDefault(n => n.CTurf
+                                          && !string.IsNullOrEmpty(n.Team)
+                                          && n.Team != currentPlayer.Team);
+                    if (rivalController != null)
+                    {
+                        // Case (a): clear the stale player flag. world_state wins.
+                        currentPlayer.CTurf = false;
+                        DebugLogger.Instance.LogInfo("TURF", $"Login heal: player {currentPlayer.DisplayName} save said CTurf=true on team '{currentPlayer.Team}' but world_state has team '{rivalController.Team}' holding turf. Cleared player.CTurf.");
+
+                        // v0.57.10 (C1): surface the loss to the player on login.
+                        // Without this, a player who held turf and comes back to
+                        // find a rival in charge only sees the change by noticing
+                        // the `/town` command stopped working. Give them a clear
+                        // one-line notice so the state change isn't invisible.
+                        terminal.WriteLine("");
+                        terminal.SetColor("bright_red");
+                        terminal.WriteLine($"  {Loc.Get("engine.turf_lost_offline", rivalController.Team ?? "another team")}");
+                        terminal.SetColor("gray");
+                        terminal.WriteLine($"  {Loc.Get("engine.turf_lost_offline_hint")}");
+                        terminal.WriteLine("");
+                    }
+                    else
+                    {
+                        // Case (b): stamp / strip flags to match the player.
+                        int stripped = 0, stamped = 0;
+                        foreach (var npc in NPCSpawnSystem.Instance.ActiveNPCs)
+                        {
+                            if (npc.Team == currentPlayer.Team)
+                            {
+                                if (!npc.CTurf) { npc.CTurf = true; stamped++; }
+                            }
+                            else if (npc.CTurf)
+                            {
+                                npc.CTurf = false; stripped++;
+                            }
+                        }
+                        if (stripped > 0 || stamped > 0)
+                        {
+                            DebugLogger.Instance.LogInfo("TURF", $"Login heal: player {currentPlayer.DisplayName} has CTurf on team '{currentPlayer.Team}'. Stamped {stamped} teammate NPCs, stripped {stripped} stale NPC flags. Persisting to world_state.");
+                            try { await OnlineStateManager.Instance.SaveAllSharedState(); }
+                            catch (Exception ex) { DebugLogger.Instance.LogError("TURF", $"Login heal save failed: {ex.Message}"); }
+                        }
+                    }
+                }
             }
 
             // NOTE: Player quests are already merged in RestorePlayerFromSaveData via MergePlayerQuests.
@@ -4122,6 +4215,8 @@ public partial class GameEngine
             CTurf = playerData.IsTeamLeader,
             TeamRec = playerData.TeamRec,
             BGuard = playerData.BGuard,
+            CityTaxEarnedThisWeek = playerData.CityTaxEarnedThisWeek,
+            CityTaxEarnedLifetime = playerData.CityTaxEarnedLifetime,
 
             Allowed = true // Always allow loaded players
         };

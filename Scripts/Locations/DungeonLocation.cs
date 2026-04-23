@@ -5580,10 +5580,26 @@ public class DungeonLocation : BaseLocation
                 {
                     room.IsExplored = roomState.IsExplored;
 
-                    // Monster clear status respawns after 24h (unless permanent)
-                    if (shouldRespawn && !savedState.IsPermanentlyClear)
+                    // Monster clear status respawns after 24h (unless permanent).
+                    // v0.57.10 (Lumina report — "25/25 explored, 24/25 cleared,
+                    // no known destinations"): only respawn rooms that actually
+                    // had monsters. Rooms with HasMonsters=false (settlements,
+                    // meditation chambers, puzzle rooms, riddle gates, trap
+                    // gauntlets, memory fragments, lore libraries, treasure
+                    // chests) have nothing to re-clear — their IsCleared comes
+                    // from auto-clear on entry, not from combat. If we blank
+                    // IsCleared on them too, they sit at IsExplored=true /
+                    // IsCleared=false / HasMonsters=false forever unless the
+                    // player physically re-enters, and the nav guide's
+                    // uncleared filter (which requires HasMonsters) silently
+                    // hides them. Player sees "N-1 / N cleared" with no way
+                    // to find the missing room.
+                    //
+                    // Net effect: respawn now only resets IsCleared on
+                    // monster rooms. No-monster rooms stay cleared across
+                    // respawns, matching the actual gameplay meaning.
+                    if (shouldRespawn && !savedState.IsPermanentlyClear && room.HasMonsters)
                     {
-                        // Monsters respawn - room is no longer cleared
                         room.IsCleared = false;
                     }
                     else
@@ -5601,6 +5617,18 @@ public class DungeonLocation : BaseLocation
                     room.InsightGranted = roomState.InsightGranted;
                     room.MemoryTriggered = roomState.MemoryTriggered;
                     room.SecretBossDefeated = roomState.SecretBossDefeated;
+
+                    // v0.57.10 self-heal: saves from pre-v0.57.10 may already
+                    // have the bad state (IsExplored=true, IsCleared=false,
+                    // HasMonsters=false) from a previous respawn. Those rooms
+                    // should be cleared — they have nothing to re-clear. Patch
+                    // them here on load so Lumina's floor 95 (and every other
+                    // floor with the phantom uncleared room) heals itself
+                    // without needing manual intervention.
+                    if (room.IsExplored && !room.IsCleared && !room.HasMonsters)
+                    {
+                        room.IsCleared = true;
+                    }
                 }
 
                 // CRITICAL: Boss rooms should NEVER be marked cleared unless the actual boss
@@ -15139,8 +15167,30 @@ public class DungeonLocation : BaseLocation
             ? Math.Max(0, (int)(DateTime.UtcNow - vex.RecruitedDate).TotalDays)
             : Math.Max(0, UsurperRemake.Systems.StoryProgressionSystem.Instance.CurrentGameDay - vex.RecruitedDay);
 
-        // Only trigger if he's been with player for at least 10 days
-        if (daysWithVex < 10)
+        // v0.57.10 (Lumina report — Lv.100 floor 100 and Vex's quest never
+        // triggered): Aldric / Mira / Lyris all gate on floor ranges
+        // (40-50, 55-65, 80-90). Vex was the odd one out — "10 days with
+        // player" only. Two things break that gate in practice: (1) in
+        // online mode, `StoryProgressionSystem.CurrentGameDay` is a
+        // process-wide singleton that's overwritten on login and doesn't
+        // advance cleanly per-player (same root cause as the v0.57.6 child-
+        // parenting fix), so the fallback game-day counter drifts low
+        // regardless of real-world playtime; (2) legacy saves that predate
+        // the `RecruitedDate` field get their `RecruitedDate` reset to
+        // `DateTime.UtcNow` on every login by the heal at
+        // `CompanionSystem.cs:1643`, which means the wall-clock path also
+        // reads 0 forever. Either way, late-game players never see Vex's
+        // bucket list.
+        //
+        // Parallel floor gate: if the player is deep enough in the dungeon
+        // (floor 70+), they've earned Vex's quest regardless of what the
+        // day counter says. He's dying anyway — the narrative still lands.
+        // Day gate still fires normally for players who hit it organically
+        // (short-session single-player, or anyone whose CurrentGameDay
+        // advances cleanly).
+        bool dayGateReady = daysWithVex >= 10;
+        bool floorGateReady = currentDungeonLevel >= 70;
+        if (!dayGateReady && !floorGateReady)
             return false;
 
         // Check which bucket list items are done

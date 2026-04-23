@@ -585,6 +585,8 @@ namespace UsurperRemake.Systems
                 IsTeamLeader = player.CTurf,
                 TeamRec = player.TeamRec,
                 BGuard = player.BGuard,
+                CityTaxEarnedThisWeek = player.CityTaxEarnedThisWeek,
+                CityTaxEarnedLifetime = player.CityTaxEarnedLifetime,
 
                 // Status
                 Chivalry = player.Chivalry,

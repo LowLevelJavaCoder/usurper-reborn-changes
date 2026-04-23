@@ -47,6 +47,8 @@ public class Character
     public int TeamRec { get; set; }                // team record, days had town
     public int BGuard { get; set; }                 // type of guard
     public bool CTurf { get; set; }                 // is team in control of town
+    public long CityTaxEarnedThisWeek { get; set; }  // city-tax revenue earned since last Monday reset (v0.57.10)
+    public long CityTaxEarnedLifetime { get; set; }  // total city-tax revenue earned as a turf-controller (v0.57.10)
 
     // Group dungeon system (v0.45.0) — transient, not serialized
     /// <summary>If set, this character is a grouped player whose combat I/O goes through this terminal.</summary>

@@ -344,7 +344,9 @@ namespace UsurperRemake.Systems
         public bool IsTeamLeader { get; set; }
         public int TeamRec { get; set; }  // Team record, days had town
         public int BGuard { get; set; }   // Type of guard
-        
+        public long CityTaxEarnedThisWeek { get; set; }  // v0.57.10: weekly city-tax income
+        public long CityTaxEarnedLifetime { get; set; }  // v0.57.10: lifetime city-tax income
+
         // Status
         public long Chivalry { get; set; }
         public long Darkness { get; set; }

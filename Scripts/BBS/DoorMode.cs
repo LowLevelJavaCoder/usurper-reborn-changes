@@ -78,6 +78,24 @@ namespace UsurperRemake.BBS
         public static bool IsInDoorMode => _sessionInfo != null && _sessionInfo.SourceType != DropFileType.None;
 
         /// <summary>
+        /// True when the door is using a directly-inherited TCP socket handle for I/O
+        /// (DOOR32.SYS socket mode, not stdio). This is the case that needs
+        /// `NativeExitProcess` on shutdown to prevent .NET Socket finalizers from
+        /// closing the BBS-owned inherited handle (v0.54.7 Mystic/EleBBS fix).
+        ///
+        /// In stdio mode (auto-detected via redirected I/O, `--stdio` flag, or
+        /// BBS-name match in `_sessionInfo.BBSName`), stdin/stdout are pipes owned
+        /// by the parent process (NFU, Synchronet, the MUD relay, etc.). Using
+        /// `NativeExitProcess` there tears those pipes down without flushing,
+        /// which hangs FOSSIL intermediaries like NFU and kills the BBS node
+        /// (issue #75 — Renegade + NFU).
+        /// </summary>
+        public static bool IsNativeSocketMode
+            => IsInDoorMode && !_forceStdio
+               && _sessionInfo != null
+               && _sessionInfo.SocketHandle > 0;
+
+        /// <summary>
         /// True when the terminal should emit ANSI escape codes instead of using Console.ForegroundColor.
         /// Covers BBS door mode AND online mode (where stdout goes through SSH pipe to the client).
         /// </summary>

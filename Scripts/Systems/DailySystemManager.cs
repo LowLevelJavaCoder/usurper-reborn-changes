@@ -385,6 +385,8 @@ public class DailySystemManager
                 if (nowEastern.DayOfWeek == DayOfWeek.Monday)
                 {
                     UpdateWeeklyRankings(player);
+                    // v0.57.10: reset weekly city-tax counter alongside rankings
+                    player.CityTaxEarnedThisWeek = 0;
                 }
             }
             catch (TimeZoneNotFoundException)
@@ -397,6 +399,7 @@ public class DailySystemManager
                     if (nowEastern.DayOfWeek == DayOfWeek.Monday)
                     {
                         UpdateWeeklyRankings(player);
+                        player.CityTaxEarnedThisWeek = 0;
                     }
                 }
                 catch { /* If TZ lookup fails entirely, skip weekly update this cycle */ }

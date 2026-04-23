@@ -433,18 +433,34 @@ namespace UsurperConsole
                 DoorMode.Shutdown();
                 SteamIntegration.Shutdown();
 
-                // Use native ExitProcess to terminate WITHOUT running .NET finalizers.
-                // Environment.Exit(0) runs finalizers, which causes .NET's internal Socket
-                // infrastructure to call closesocket()/Shutdown() on inherited handles.
-                // This kills the BBS's TCP connection and prevents the door from being
-                // relaunched without a full BBS reconnect. ExitProcess skips all .NET
-                // cleanup — the OS closes handles cleanly without sending TCP shutdown signals.
-                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                // v0.54.7 (Mystic/EleBBS fix): when we own an inherited TCP socket
+                // handle from DOOR32.SYS, Environment.Exit(0) runs .NET Socket
+                // finalizers which call closesocket()/Shutdown() on that handle —
+                // killing the BBS's TCP connection and preventing relaunch without
+                // a full reconnect. NativeExitProcess bypasses all finalizers so the
+                // OS just closes handles cleanly without emitting TCP shutdown.
+                //
+                // v0.57.10 (issue #75 — Renegade + NFU): that guard was too broad.
+                // In stdio mode (NFU, Synchronet, MUD relay, auto-detected pipe I/O)
+                // we don't own any socket handle — stdin/stdout are pipes owned by
+                // the parent. NativeExitProcess tears those pipes down before .NET
+                // flushes stdout, so the parent sees a truncated stream instead of
+                // a clean EOF. NFU in particular hangs its FOSSIL emulation, the
+                // NTVDM subsystem locks up, and the node becomes unusable until the
+                // host reboots.
+                //
+                // Fix: only take the NativeExitProcess path when we actually have
+                // an inherited socket to protect. Everything else (stdio, non-door,
+                // non-Windows) gets a proper Console.Out.Flush() and normal
+                // Environment.Exit() so parents get a clean EOF.
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && DoorMode.IsNativeSocketMode)
                 {
                     NativeExitProcess(0);
                 }
                 else
                 {
+                    try { Console.Out.Flush(); } catch { }
+                    try { Console.Error.Flush(); } catch { }
                     Environment.Exit(0);
                 }
             }

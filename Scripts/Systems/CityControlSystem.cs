@@ -166,7 +166,15 @@ public class CityControlSystem
             // Deposit to the player's bank account
             var player = GameEngine.Instance?.CurrentPlayer;
             if (player != null)
+            {
                 player.BankGold += cityShare;
+                // v0.57.10: track tax income so the Town Hall menu can show
+                // players what holding turf actually earned them. Weekly
+                // counter resets on Monday daily reset; lifetime counter
+                // accumulates forever.
+                player.CityTaxEarnedThisWeek += cityShare;
+                player.CityTaxEarnedLifetime += cityShare;
+            }
         }
         else
         {

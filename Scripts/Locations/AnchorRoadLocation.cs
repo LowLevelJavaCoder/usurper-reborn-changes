@@ -632,9 +632,18 @@ public class AnchorRoadLocation : BaseLocation
             terminal.WriteLine("");
             await Task.Delay(1500);
 
-            // Get player's NPC team members for turf transfer
-            var playerTeamMembers = allNPCs
+            // Get player's NPC team members.
+            // `playerTeamFighters` (alive only) is used for combat participation.
+            // `allPlayerTeamMembers` (all, including dead) is used when setting the
+            // CTurf flag on turf transfer — v0.57.10 (Coosh report): dead teammates
+            // who respawn later need to read as controllers too, otherwise the
+            // "who controls the town" query flips back to an NPC team on the first
+            // respawn tick.
+            var playerTeamFighters = allNPCs
                 .Where(n => n.Team == currentPlayer.Team && n.IsAlive)
+                .ToList();
+            var allPlayerTeamMembers = allNPCs
+                .Where(n => n.Team == currentPlayer.Team)
                 .ToList();
 
             // Get enemy team members sorted by level (weakest first)
@@ -657,12 +666,18 @@ public class AnchorRoadLocation : BaseLocation
                 foreach (var npc in allNPCs.Where(n => n.Team == targetTeam.TeamName))
                     npc.CTurf = false;
                 currentPlayer.CTurf = true;
-                foreach (var ally in playerTeamMembers)
+                foreach (var ally in allPlayerTeamMembers)
                     ally.CTurf = true;
 
                 terminal.SetColor("bright_yellow");
                 terminal.WriteLine(Loc.Get("anchor_road.team_controls_town"));
                 NewsSystem.Instance.Newsy(true, $"Gang War! {currentPlayer.Team} took the town unopposed — {targetTeam.TeamName} had no living members left.");
+
+                // v0.57.10 (Coosh report): persist the turf transfer to world_state
+                // immediately. Without this, a relog before the next auto-save tick
+                // reloads the stale `Watchers` NPC snapshot with its old CTurf=true
+                // flag and the "who controls town" query returns the old owner.
+                await PersistTurfTransfer();
 
                 terminal.WriteLine("");
                 terminal.SetColor("darkgray");
@@ -736,18 +751,27 @@ public class AnchorRoadLocation : BaseLocation
                     terminal.WriteLine("");
                     terminal.WriteLine(Loc.Get("anchor_road.team_controls_town"));
 
-                    foreach (var enemy in enemyTeamMembers)
-                    {
-                        enemy.CTurf = false;
-                    }
+                    // v0.57.10: strip CTurf from EVERY NPC on the losing team, not
+                    // just the alive ones who participated in the fight — dead /
+                    // permadead members on the losing team would otherwise keep
+                    // CTurf=true and reappear as controllers the moment they
+                    // respawn. Matches the ghost-takeover strip above.
+                    foreach (var enemyNpc in allNPCs.Where(n => n.Team == targetTeam.TeamName))
+                        enemyNpc.CTurf = false;
                     currentPlayer.CTurf = true;
-                    foreach (var ally in playerTeamMembers)
-                    {
+                    foreach (var ally in allPlayerTeamMembers)
                         ally.CTurf = true;
-                    }
                 }
 
                 NewsSystem.Instance.Newsy(true, $"Gang War! {currentPlayer.Team} defeated {targetTeam.TeamName}!");
+
+                // v0.57.10 (Coosh report): sync the transfer to world_state before
+                // the player can log out. Without this, `OnlineStateManager.LoadSharedNPCs`
+                // on the next login reloads the stale NPC snapshot and the old
+                // controller (often the Watchers default team) reclaims the CTurf
+                // flag silently.
+                if (targetTeam.ControlsTurf)
+                    await PersistTurfTransfer();
             }
             else
             {
@@ -1026,6 +1050,29 @@ public class AnchorRoadLocation : BaseLocation
     /// <summary>
     /// Claim town for your team
     /// </summary>
+    /// <summary>
+    /// v0.57.10: shared helper to persist a turf-control change to world_state
+    /// in online mode. Called immediately after any mutation of CTurf flags
+    /// (Gang War win, ghost takeover, Claim Town, Abandon Town) so the shared
+    /// NPC snapshot in `world_state` reflects the new controller before the
+    /// player can log out. Without this, the authoritative `LoadSharedNPCs`
+    /// call on the next login would overwrite the player's new CTurf flag
+    /// with the stale NPC team's.
+    /// </summary>
+    private async Task PersistTurfTransfer()
+    {
+        if (!UsurperRemake.BBS.DoorMode.IsOnlineMode) return;
+        if (OnlineStateManager.Instance == null) return;
+        try
+        {
+            await OnlineStateManager.Instance.SaveAllSharedState();
+        }
+        catch (Exception ex)
+        {
+            DebugLogger.Instance.LogError("TURF", $"SaveAllSharedState after turf transfer failed: {ex.Message}");
+        }
+    }
+
     private async Task ClaimTown()
     {
         terminal.ClearScreen();
@@ -1086,6 +1133,9 @@ public class AnchorRoadLocation : BaseLocation
                 terminal.WriteLine(Loc.Get("anchor_road.rule_wisely"));
 
                 NewsSystem.Instance.Newsy(true, $"{currentPlayer.Team} has taken control of the town!");
+
+                // v0.57.10: persist unopposed claim to world_state immediately
+                await PersistTurfTransfer();
             }
         }
         else
@@ -1144,6 +1194,9 @@ public class AnchorRoadLocation : BaseLocation
             terminal.WriteLine(Loc.Get("anchor_road.town_free"));
 
             NewsSystem.Instance.Newsy(true, $"{currentPlayer.Team} abandoned control of the town!");
+
+            // v0.57.10: persist abandonment to world_state immediately
+            await PersistTurfTransfer();
         }
         else
         {
