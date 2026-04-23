@@ -1948,8 +1948,8 @@ public class MainStreetLocation : BaseLocation
                 var encounterResult = await StreetEncounterSystem.Instance.AttackCharacter(
                     currentPlayer, target, terminal);
 
-                // Increase darkness for unprovoked attack
-                currentPlayer.Darkness += 15;
+                // Increase darkness for unprovoked attack — v0.57.12: paired movement
+                AlignmentSystem.Instance.ChangeAlignment(currentPlayer, 15, isGood: false, "main_street.unprovoked_attack");
 
                 if (encounterResult.Victory)
                 {
@@ -2300,7 +2300,7 @@ public class MainStreetLocation : BaseLocation
         if (int.TryParse(choice, out int deed) && deed >= 1 && deed <= 3)
         {
             currentPlayer.ChivNr--;
-            currentPlayer.Chivalry += 10;
+            AlignmentSystem.Instance.ChangeAlignment(currentPlayer, 10, isGood: true, "main_street.good_deed"); // v0.57.12: paired movement
             
             var deedName = deed switch
             {

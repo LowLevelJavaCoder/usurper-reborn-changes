@@ -415,13 +415,15 @@ namespace UsurperRemake.Systems
                     break;
 
                 case EffectType.AddChivalry:
-                    currentPlayer.Chivalry += effect.IntValue;
+                    // v0.57.12: paired movement — dialogue-triggered chivalry also reduces darkness
+                    AlignmentSystem.Instance.ChangeAlignment(currentPlayer, effect.IntValue, isGood: true, "dialogue.add_chivalry");
                     currentPlayer.ChivNr++;
                     terminal?.WriteLine($"(+{effect.IntValue} Chivalry)", "bright_green");
                     break;
 
                 case EffectType.AddDarkness:
-                    currentPlayer.Darkness += effect.IntValue;
+                    // v0.57.12: paired movement — dialogue-triggered darkness also reduces chivalry
+                    AlignmentSystem.Instance.ChangeAlignment(currentPlayer, effect.IntValue, isGood: false, "dialogue.add_darkness");
                     currentPlayer.DarkNr++;
                     terminal?.WriteLine($"(+{effect.IntValue} Darkness)", "dark_red");
                     break;

@@ -218,10 +218,10 @@ namespace UsurperRemake.Systems
             story.UpdateGodState(type, GodStatus.Saved);
             story.SetStoryFlag($"{type.ToString().ToLower()}_saved", true);
 
-            // Award experience and Chivalry
+            // Award experience and Chivalry — v0.57.12: paired movement
             long xpReward = boss.Level * 1000;
             player.Experience += xpReward;
-            player.Chivalry += 100;
+            AlignmentSystem.Instance.ChangeAlignment(player, 100, isGood: true, "old_god.save");
 
             terminal.SetColor("bright_green");
             terminal.WriteLine(Loc.Get("old_god.save_xp_reward", xpReward));
@@ -1063,8 +1063,8 @@ namespace UsurperRemake.Systems
             player.Experience += xpReward;
             terminal.WriteLine(Loc.Get("old_god.saved_xp", $"{xpReward:N0}"), "cyan");
 
-            // Award chivalry
-            player.Chivalry += 100;
+            // Award chivalry — v0.57.12: paired movement
+            AlignmentSystem.Instance.ChangeAlignment(player, 100, isGood: true, "old_god.saved");
             terminal.WriteLine(Loc.Get("old_god.saved_chivalry"), "bright_green");
 
             // Saved gods give their artifact as a gift (instead of looting from their corpse)

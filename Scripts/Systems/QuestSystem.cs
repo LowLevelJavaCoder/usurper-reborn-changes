@@ -630,12 +630,14 @@ public partial class QuestSystem
                 break;
 
             case QuestRewardType.Darkness:
-                player.Darkness += (int)rewardAmount;
+                // v0.57.12: paired movement — evil-quest darkness reward also lowers chivalry by half
+                AlignmentSystem.Instance.ChangeAlignment(player, (int)rewardAmount, isGood: false, "quest.reward");
                 terminal.WriteLine(Loc.Get("quest.reward_darkness", rewardAmount), "red");
                 break;
 
             case QuestRewardType.Chivalry:
-                player.Chivalry += (int)rewardAmount;
+                // v0.57.12: paired movement — good-quest chivalry reward also lowers darkness by half
+                AlignmentSystem.Instance.ChangeAlignment(player, (int)rewardAmount, isGood: true, "quest.reward");
                 terminal.WriteLine(Loc.Get("quest.reward_chivalry", rewardAmount), "bright_white");
                 break;
 

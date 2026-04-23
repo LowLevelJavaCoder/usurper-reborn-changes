@@ -762,7 +762,7 @@ namespace UsurperRemake.Locations
                 if (effects.SpeedPenalty > 0) terminal.WriteLine(Loc.Get("dark_alley.drug_pen_speed", effects.SpeedPenalty));
                 if (effects.HPDrain > 0) terminal.WriteLine(Loc.Get("dark_alley.drug_pen_hp_drain", effects.HPDrain));
 
-                currentPlayer.Darkness += 5; // Dark act
+                AlignmentSystem.Instance.ChangeAlignment(currentPlayer, 5, isGood: false, "dark_alley.drug_pen"); // v0.57.12: paired movement
                 currentPlayer.Fame = Math.Max(0, currentPlayer.Fame - 3); // Infamy
 
                 // Increase Shadows standing for shady dealings
@@ -811,7 +811,7 @@ namespace UsurperRemake.Locations
             currentPlayer.Gold -= price;
             currentPlayer.Strength += 5;
             currentPlayer.Stamina += 3;
-            currentPlayer.Darkness += 3;
+            AlignmentSystem.Instance.ChangeAlignment(currentPlayer, 3, isGood: false, "dark_alley.steroids"); // v0.57.12: paired movement
             currentPlayer.Fame = Math.Max(0, currentPlayer.Fame - 2); // Infamy
             currentPlayer.SteroidShopPurchases++;
 
@@ -1006,7 +1006,7 @@ namespace UsurperRemake.Locations
                     terminal.WriteLine(Loc.Get("dark_alley.alchemist_heal"), "bright_green");
                     break;
                 default:
-                    currentPlayer.Darkness += 2;
+                    AlignmentSystem.Instance.ChangeAlignment(currentPlayer, 2, isGood: false, "dark_alley.alchemist_fizzle"); // v0.57.12: paired movement
                     terminal.WriteLine(Loc.Get("dark_alley.alchemist_fizzle"), "yellow");
                     break;
             }
@@ -1925,7 +1925,7 @@ namespace UsurperRemake.Locations
                 long stolen = Math.Max(1, (long)(target.Gold * stealPercent));
                 target.Gold -= stolen;
                 currentPlayer.Gold += stolen;
-                currentPlayer.Darkness += 3;
+                AlignmentSystem.Instance.ChangeAlignment(currentPlayer, 3, isGood: false, "dark_alley.pickpocket"); // v0.57.12: paired movement
                 currentPlayer.DarkAlleyReputation = Math.Min(1000, currentPlayer.DarkAlleyReputation + 2);
 
                 terminal.SetColor("bright_green");
@@ -2048,7 +2048,7 @@ namespace UsurperRemake.Locations
 
                 currentPlayer.PitFightsToday++;
                 currentPlayer.DarkAlleyReputation = Math.Min(1000, currentPlayer.DarkAlleyReputation + 5);
-                currentPlayer.Darkness += 2;
+                AlignmentSystem.Instance.ChangeAlignment(currentPlayer, 2, isGood: false, "dark_alley.pit_fight"); // v0.57.12: paired movement
 
                 if (result.Outcome == CombatOutcome.Victory)
                 {
@@ -2157,7 +2157,7 @@ namespace UsurperRemake.Locations
 
                 currentPlayer.PitFightsToday++;
                 currentPlayer.DarkAlleyReputation = Math.Min(1000, currentPlayer.DarkAlleyReputation + 8); // NPC fights give more rep
-                currentPlayer.Darkness += 2;
+                AlignmentSystem.Instance.ChangeAlignment(currentPlayer, 2, isGood: false, "dark_alley.pit_fight_npc"); // v0.57.12: paired movement
 
                 if (result.Outcome == CombatOutcome.Victory)
                 {
@@ -2322,7 +2322,7 @@ namespace UsurperRemake.Locations
                         currentPlayer.LoanDaysRemaining = 0;
                         currentPlayer.LoanInterestAccrued = 0;
                         currentPlayer.DarkAlleyReputation = Math.Min(1000, currentPlayer.DarkAlleyReputation + 3);
-                        currentPlayer.Chivalry += 1; // Keeping your word, even to criminals
+                        AlignmentSystem.Instance.ChangeAlignment(currentPlayer, 1, isGood: true, "dark_alley.loan_paid"); // v0.57.12: paired movement (keeping your word)
 
                         terminal.SetColor("bright_green");
                         terminal.WriteLine(Loc.Get("dark_alley.loan_paid"));
@@ -2367,7 +2367,7 @@ namespace UsurperRemake.Locations
                             currentPlayer.LoanDaysRemaining = 0;
                             currentPlayer.LoanInterestAccrued = 0;
                             currentPlayer.DarkAlleyReputation = Math.Min(1000, currentPlayer.DarkAlleyReputation + 3);
-                            currentPlayer.Chivalry += 1; // Keeping your word, even to criminals
+                            AlignmentSystem.Instance.ChangeAlignment(currentPlayer, 1, isGood: true, "dark_alley.loan_fully_paid"); // v0.57.12: paired movement
                             terminal.SetColor("bright_green");
                             terminal.WriteLine(Loc.Get("dark_alley.loan_fully_paid"));
 
@@ -2519,7 +2519,7 @@ namespace UsurperRemake.Locations
             currentPlayer.ItemType.RemoveAt(selected.index);
             currentPlayer.Gold += selected.value;
             currentPlayer.Statistics?.RecordSale(selected.value);
-            currentPlayer.Darkness += 1; // Fencing stolen goods is a minor crime
+            AlignmentSystem.Instance.ChangeAlignment(currentPlayer, 1, isGood: false, "dark_alley.fence_goods"); // v0.57.12: paired movement
             currentPlayer.DarkAlleyReputation = Math.Min(1000, currentPlayer.DarkAlleyReputation + 1);
 
             terminal.SetColor("bright_green");
@@ -3315,7 +3315,7 @@ namespace UsurperRemake.Locations
                 terminal.WriteLine("");
 
                 // Partial darkness (you tried)
-                currentPlayer.Darkness += Math.Max(3, deed.DarknessGain / 3);
+                AlignmentSystem.Instance.ChangeAlignment(currentPlayer, Math.Max(3, deed.DarknessGain / 3), isGood: false, "dark_alley.evil_fail"); // v0.57.12: paired movement
 
                 if (deed.FailDamagePct > 0)
                 {
@@ -3342,8 +3342,8 @@ namespace UsurperRemake.Locations
                 terminal.WriteLine(Loc.Get("dark_alley.evil_done"));
                 terminal.WriteLine("");
 
-                // Darkness gain
-                currentPlayer.Darkness += deed.DarknessGain;
+                // Darkness gain — v0.57.12: paired movement lowers chivalry by half (this is the v0.57.0 design intent)
+                AlignmentSystem.Instance.ChangeAlignment(currentPlayer, deed.DarknessGain, isGood: false, "dark_alley.evil_deed");
                 terminal.SetColor("red");
                 terminal.WriteLine(Loc.Get("dark_alley.evil_darkness_gain", deed.DarknessGain));
 

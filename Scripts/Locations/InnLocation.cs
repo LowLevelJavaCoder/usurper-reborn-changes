@@ -977,7 +977,7 @@ public class InnLocation : BaseLocation
                     terminal.WriteLine(Loc.Get("inn.seth_legend"));
                     currentPlayer.PKills++;
                     currentPlayer.Fame += 10;
-                    currentPlayer.Chivalry += 5;
+                    AlignmentSystem.Instance.ChangeAlignment(currentPlayer, 5, isGood: true, "inn.seth_defeated"); // v0.57.12: paired movement
                 }
                 else
                 {
@@ -5814,7 +5814,7 @@ public class InnLocation : BaseLocation
         terminal.WriteLine(Loc.Get("inn.atk_pick_lock", npcName));
         await Task.Delay(1500);
 
-        currentPlayer.Darkness += 30; // Extra darkness for invading inn
+        AlignmentSystem.Instance.ChangeAlignment(currentPlayer, 30, isGood: false, "inn.invade_room"); // v0.57.12: paired movement
 
         // Inn NPCs fight with defense boost (+50% STR/DEF, better rested)
         long origStr = npc.Strength;
@@ -5999,7 +5999,7 @@ public class InnLocation : BaseLocation
         terminal.WriteLine(Loc.Get("inn.atk_reach_target", target.Username));
         await Task.Delay(1000);
 
-        currentPlayer.Darkness += 30;
+        AlignmentSystem.Instance.ChangeAlignment(currentPlayer, 30, isGood: false, "inn.attack_online_player"); // v0.57.12: paired movement
 
         var combatEngine = new CombatEngine(terminal);
         var result = await combatEngine.PlayerVsPlayer(currentPlayer, victim);

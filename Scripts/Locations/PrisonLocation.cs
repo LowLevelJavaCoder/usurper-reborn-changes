@@ -508,7 +508,10 @@ public partial class PrisonLocation : BaseLocation
             if (king.AI == CharacterAI.Computer)
             {
                 // NPC king: 20% chance of pardon based on chivalry
-                int pardonChance = 10 + (int)(player.Chivalry / 500);
+                // v0.57.12: divisor was /500 (+2 max at cap=1000, effectively inert). Originally scaled against
+                // the dead MaxChivalry=30000 constant. Changed to /50 so max chivalry gives +20 bonus,
+                // preserving the intended spread with `Math.Clamp(5, 40)` still bounding the result.
+                int pardonChance = 10 + (int)(player.Chivalry / 50);
                 pardonChance = Math.Clamp(pardonChance, 5, 40);
 
                 await terminal.WriteColorLineAsync("  The king considers your plea for mercy...", TerminalEmulator.ColorWhite);

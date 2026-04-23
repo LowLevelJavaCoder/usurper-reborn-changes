@@ -450,8 +450,8 @@ namespace UsurperRemake.Systems
                     break;
 
                 case BetrayalType.Political:
-                    // Political betrayal - reputation damage
-                    player.Darkness += 100; // Scandal
+                    // Political betrayal - reputation damage — v0.57.12: paired movement
+                    AlignmentSystem.Instance.ChangeAlignment(player, 100, isGood: false, "betrayal.political");
                     break;
 
                 case BetrayalType.Sacrifice:
@@ -532,8 +532,9 @@ namespace UsurperRemake.Systems
                     return netGoodOrBalanced && profile.ActsOfKindness.Count >= 5;
 
                 case "KingsAdvisor":
-                    // Proved commitment to realm
-                    return player.Chivalry > 2000 || StoryProgressionSystem.Instance.HasStoryFlag("saved_the_realm");
+                    // v0.57.12: was `> 2000` — unreachable with AlignmentCap=1000. Changed to Holy-tier threshold (>= 800)
+                    // to preserve the original "very high chivalry proves commitment to realm" intent.
+                    return player.Chivalry >= 800 || StoryProgressionSystem.Instance.HasStoryFlag("saved_the_realm");
 
                 case "Lyris":
                     // Cannot "forgive" a sacrifice - only honor it
@@ -625,8 +626,8 @@ namespace UsurperRemake.Systems
             terminal.WriteLine($"  {Loc.Get("betrayal.debt_paid")}", "dark_red");
             terminal.WriteLine($"  {Loc.Get("betrayal.weight_remains")}", "gray");
 
-            // Apply consequences
-            player.Darkness += 200;
+            // Apply consequences — v0.57.12: paired movement
+            AlignmentSystem.Instance.ChangeAlignment(player, 200, isGood: false, "betrayal.final");
             player.MKills++; // Counts as a kill
 
             // Update state

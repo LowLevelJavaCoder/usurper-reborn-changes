@@ -20,8 +20,23 @@ public class Character
     public long Experience { get; set; }            // experience
     public int Level { get; set; } = 1;
     public long BankGold { get; set; }              // gold in bank
-    public long Chivalry { get; set; }              // chivalry
-    public long Darkness { get; set; }              // darkness
+    // v0.57.12: Chivalry and Darkness setters clamp to [0, GameConfig.AlignmentCap] — defense in depth
+    // against the ~35 direct-mutation sites (Church donations, DarkAlley evil deeds, quest rewards, FeatureInteraction,
+    // DormitoryLocation, AnchorRoadLocation, etc.) that do `.Chivalry +=`/`-=` without routing through
+    // AlignmentSystem.ChangeAlignment. Pre-v0.57.12 saves could overflow unbounded; on load, GameEngine calls
+    // AlignmentSystem.HealOverflow to retroactively apply paired-movement before the setter clamps.
+    private long _chivalry;
+    public long Chivalry
+    {
+        get => _chivalry;
+        set => _chivalry = Math.Clamp(value, 0L, GameConfig.AlignmentCap);
+    }
+    private long _darkness;
+    public long Darkness
+    {
+        get => _darkness;
+        set => _darkness = Math.Clamp(value, 0L, GameConfig.AlignmentCap);
+    }
     public int Fights { get; set; }                 // dungeon fights
     public long Strength { get; set; }              // strength
     public long Defence { get; set; }               // defence

@@ -217,8 +217,9 @@ namespace UsurperRemake.Systems
         /// </summary>
         public void ModifyAlignment(Character character, int chivalryChange, int darknessChange, string reason)
         {
-            character.Chivalry = Math.Max(0, Math.Min(1000, character.Chivalry + chivalryChange));
-            character.Darkness = Math.Max(0, Math.Min(1000, character.Darkness + darknessChange));
+            // v0.57.12: clamp via GameConfig.AlignmentCap (was hardcoded 1000). Character setter also clamps — belt and suspenders.
+            character.Chivalry = Math.Clamp(character.Chivalry + chivalryChange, 0L, GameConfig.AlignmentCap);
+            character.Darkness = Math.Clamp(character.Darkness + darknessChange, 0L, GameConfig.AlignmentCap);
 
             // Generate news for significant alignment shifts
             if (Math.Abs(chivalryChange) >= 20 || Math.Abs(darknessChange) >= 20)
@@ -251,6 +252,48 @@ namespace UsurperRemake.Systems
             else
                 ModifyAlignment(character, -opposite, amount, reason);
         }
+
+        /// <summary>
+        /// v0.57.12: Retroactive paired-movement heal for pre-v0.57.12 saves that exceeded GameConfig.AlignmentCap
+        /// through bypass mutation sites (Church donations, DarkAlley evil deeds, quest rewards, etc. that
+        /// used raw `+=`/`-=` without routing through ChangeAlignment/ModifyAlignment). When a scale overflows,
+        /// reduce the OPPOSITE scale by excess/2 — this is what paired movement would have done at mutation time
+        /// if the site had used the helper. Then clamp the overflowing scale to the cap.
+        ///
+        /// Called from GameEngine load paths before the Character setter fires, so we operate on raw save values.
+        /// Returns the healed (chivalry, darkness) pair, both guaranteed within [0, AlignmentCap].
+        /// </summary>
+        public static (long chivalry, long darkness) HealOverflow(long rawChivalry, long rawDarkness)
+        {
+            long cap = GameConfig.AlignmentCap;
+            long chiv = rawChivalry;
+            long dark = rawDarkness;
+
+            if (chiv > cap)
+            {
+                long excess = chiv - cap;
+                dark = Math.Max(0, dark - excess / 2);
+                chiv = cap;
+            }
+            if (dark > cap)
+            {
+                long excess = dark - cap;
+                chiv = Math.Max(0, chiv - excess / 2);
+                dark = cap;
+            }
+            // Floor at zero in case either raw input was negative (shouldn't happen, but defense in depth).
+            chiv = Math.Max(0, chiv);
+            dark = Math.Max(0, dark);
+            return (chiv, dark);
+        }
+
+        /// <summary>Convenience accessor for object-initializer syntax at load sites.</summary>
+        public static long HealOverflowChivalry(long rawChivalry, long rawDarkness)
+            => HealOverflow(rawChivalry, rawDarkness).chivalry;
+
+        /// <summary>Convenience accessor for object-initializer syntax at load sites.</summary>
+        public static long HealOverflowDarkness(long rawChivalry, long rawDarkness)
+            => HealOverflow(rawChivalry, rawDarkness).darkness;
 
         /// <summary>
         /// Get special abilities available based on alignment

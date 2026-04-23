@@ -541,7 +541,7 @@ namespace UsurperRemake.Systems
                     EmotionalImpact = 0.2f
                 });
 
-                player.Chivalry += 5;
+                AlignmentSystem.Instance.ChangeAlignment(player, 5, isGood: true, "petition.save_marriage"); // v0.57.12: paired movement
                 NewsSystem.Instance?.Newsy($"{player.Name2} intervened to save the marriage of {petitioner.Name2} and {spouse.Name2}.");
             }
             else
@@ -618,7 +618,7 @@ namespace UsurperRemake.Systems
                     EmotionalImpact = -0.8f
                 });
 
-                player.Darkness += 15;
+                AlignmentSystem.Instance.ChangeAlignment(player, 15, isGood: false, "petition.exploit_scandal"); // v0.57.12: paired movement
                 NewsSystem.Instance?.Newsy($"Scandalous rumors swirl about {player.Name2} and {petitioner.Name2}...");
             }
             else
@@ -638,7 +638,7 @@ namespace UsurperRemake.Systems
                     EmotionalImpact = -0.6f
                 });
 
-                player.Darkness += 5;
+                AlignmentSystem.Instance.ChangeAlignment(player, 5, isGood: false, "petition.exploit_fail"); // v0.57.12: paired movement
             }
 
             await terminal.PressAnyKey();
@@ -734,7 +734,7 @@ namespace UsurperRemake.Systems
                         terminal.SetColor("yellow");
                         terminal.WriteLine($"\n  {Loc.Get("petition.wingman.success_overjoyed", suitor.Name2, reward)}");
 
-                        player.Chivalry += 3;
+                        AlignmentSystem.Instance.ChangeAlignment(player, 3, isGood: true, "petition.wingman"); // v0.57.12: paired movement
                         NewsSystem.Instance?.Newsy($"{player.Name2} played matchmaker for {suitor.Name2} and {crushName}.");
                     }
                     else
@@ -771,7 +771,7 @@ namespace UsurperRemake.Systems
                                 (impressionDict.GetValueOrDefault(suitor.Name2, 0f)) - 0.5f);
                         }
 
-                        player.Darkness += 10;
+                        AlignmentSystem.Instance.ChangeAlignment(player, 10, isGood: false, "petition.sabotage"); // v0.57.12: paired movement
 
                         // Risk of discovery
                         if (_random.Next(100) < 30)
@@ -903,7 +903,7 @@ namespace UsurperRemake.Systems
                             });
                         }
 
-                        player.Chivalry += 8;
+                        AlignmentSystem.Instance.ChangeAlignment(player, 8, isGood: true, "petition.mediate_custody"); // v0.57.12: paired movement
                         long reward = 200 + petitioner.Level * 30;
                         player.Gold += reward;
                         terminal.SetColor("yellow");
@@ -1074,7 +1074,7 @@ namespace UsurperRemake.Systems
                         king.Treasury -= cost;
                         terminal.SetColor("bright_green");
                         terminal.WriteLine($"\n  {Loc.Get("petition.royal.tax_grant_result", cost)}");
-                        player.Chivalry += 5;
+                        AlignmentSystem.Instance.ChangeAlignment(player, 5, isGood: true, "petition.royal.tax_grant"); // v0.57.12: paired movement
                         petitioner.Memory?.RecordEvent(new MemoryEvent
                         {
                             Type = MemoryType.Saved, Description = $"King {player.Name2} granted me tax relief",
@@ -1088,7 +1088,7 @@ namespace UsurperRemake.Systems
                         king.Treasury -= cost;
                         terminal.SetColor("cyan");
                         terminal.WriteLine($"\n  {Loc.Get("petition.royal.tax_halve_result", cost)}");
-                        player.Chivalry += 2;
+                        AlignmentSystem.Instance.ChangeAlignment(player, 2, isGood: true, "petition.royal.tax_halve"); // v0.57.12: paired movement
                         NewsSystem.Instance?.Newsy($"King {player.Name2} offered partial tax relief to {petitioner.Name2}.");
                     }
                     else
@@ -1097,7 +1097,7 @@ namespace UsurperRemake.Systems
                         terminal.WriteLine($"\n  {Loc.Get("petition.royal.tax_deny_result")}");
                         terminal.SetColor("white");
                         terminal.WriteLine($"  {Loc.Get("petition.royal.tax_deny_muttering", petitioner.Name2)}");
-                        player.Darkness += 3;
+                        AlignmentSystem.Instance.ChangeAlignment(player, 3, isGood: false, "petition.royal.tax_deny"); // v0.57.12: paired movement
                         petitioner.Memory?.RecordEvent(new MemoryEvent
                         {
                             Type = MemoryType.Insulted, Description = $"King {player.Name2} denied my plea for tax relief",
@@ -1112,7 +1112,7 @@ namespace UsurperRemake.Systems
                     {
                         terminal.SetColor("bright_green");
                         terminal.WriteLine($"\n  {Loc.Get("petition.royal.justice_investigate_result")}");
-                        player.Chivalry += 5;
+                        AlignmentSystem.Instance.ChangeAlignment(player, 5, isGood: true, "petition.royal.justice"); // v0.57.12: paired movement
                         petitioner.Memory?.RecordEvent(new MemoryEvent
                         {
                             Type = MemoryType.Defended, Description = $"King {player.Name2} ordered justice for my complaint",
@@ -1151,7 +1151,7 @@ namespace UsurperRemake.Systems
                         king.Treasury -= 500;
                         terminal.SetColor("bright_green");
                         terminal.WriteLine($"\n  {Loc.Get("petition.royal.monster_send_result")}");
-                        player.Chivalry += 5;
+                        AlignmentSystem.Instance.ChangeAlignment(player, 5, isGood: true, "petition.royal.monster_send"); // v0.57.12: paired movement
                         petitioner.Memory?.RecordEvent(new MemoryEvent
                         {
                             Type = MemoryType.Saved, Description = $"King {player.Name2} sent guards to protect us",
@@ -1165,7 +1165,7 @@ namespace UsurperRemake.Systems
                         terminal.WriteLine($"\n  {Loc.Get("petition.royal.monster_promise_result")}");
                         terminal.SetColor("white");
                         terminal.WriteLine($"  {Loc.Get("petition.royal.monster_promise_inspired")}");
-                        player.Chivalry += 8;
+                        AlignmentSystem.Instance.ChangeAlignment(player, 8, isGood: true, "petition.royal.monster_promise"); // v0.57.12: paired movement
                         petitioner.Memory?.RecordEvent(new MemoryEvent
                         {
                             Type = MemoryType.Defended, Description = $"King {player.Name2} promised to personally protect us",
@@ -1177,7 +1177,7 @@ namespace UsurperRemake.Systems
                     {
                         terminal.SetColor("gray");
                         terminal.WriteLine($"\n  {Loc.Get("petition.royal.monster_dismiss_result")}");
-                        player.Darkness += 3;
+                        AlignmentSystem.Instance.ChangeAlignment(player, 3, isGood: false, "petition.royal.monster_dismiss"); // v0.57.12: paired movement
                         petitioner.Memory?.RecordEvent(new MemoryEvent
                         {
                             Type = MemoryType.Abandoned, Description = $"King {player.Name2} ignored our plea for protection",
@@ -1194,7 +1194,7 @@ namespace UsurperRemake.Systems
                         terminal.WriteLine($"\n  {Loc.Get("petition.royal.marriage_bless_result")}");
                         terminal.SetColor("white");
                         terminal.WriteLine($"  {Loc.Get("petition.royal.marriage_bless_joy", petitioner.Name2)}");
-                        player.Chivalry += 3;
+                        AlignmentSystem.Instance.ChangeAlignment(player, 3, isGood: true, "petition.royal.marriage_bless"); // v0.57.12: paired movement
                         petitioner.Memory?.RecordEvent(new MemoryEvent
                         {
                             Type = MemoryType.Helped, Description = $"King {player.Name2} blessed my marriage",
@@ -1208,7 +1208,7 @@ namespace UsurperRemake.Systems
                         terminal.WriteLine($"\n  {Loc.Get("petition.royal.marriage_deny_result")}");
                         terminal.SetColor("white");
                         terminal.WriteLine($"  {Loc.Get("petition.royal.marriage_deny_crushed", petitioner.Name2)}");
-                        player.Darkness += 3;
+                        AlignmentSystem.Instance.ChangeAlignment(player, 3, isGood: false, "petition.royal.marriage_deny"); // v0.57.12: paired movement
                         petitioner.Memory?.RecordEvent(new MemoryEvent
                         {
                             Type = MemoryType.Insulted, Description = $"King {player.Name2} denied my marriage blessing",
@@ -1287,7 +1287,7 @@ namespace UsurperRemake.Systems
                             });
                         }
 
-                        player.Chivalry += 10;
+                        AlignmentSystem.Instance.ChangeAlignment(player, 10, isGood: true, "petition.dying_forgive"); // v0.57.12: paired movement
                         NewsSystem.Instance?.Newsy($"{player.Name2} honored the dying wish of {elder.Name2}.");
                     }
                     else
@@ -1405,7 +1405,7 @@ namespace UsurperRemake.Systems
                         terminal.SetColor("yellow");
                         terminal.WriteLine($"  {Loc.Get("petition.dying.protect_gold", elder.Name2, gift)}");
 
-                        player.Chivalry += 8;
+                        AlignmentSystem.Instance.ChangeAlignment(player, 8, isGood: true, "petition.dying_protect"); // v0.57.12: paired movement
                         elder.Memory?.RecordEvent(new MemoryEvent
                         {
                             Type = MemoryType.Saved,

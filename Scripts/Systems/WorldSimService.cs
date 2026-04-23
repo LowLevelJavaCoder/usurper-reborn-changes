@@ -1316,8 +1316,9 @@ namespace UsurperRemake.Systems
                     SpouseName = data.SpouseName ?? "",
                     MarriedTimes = data.MarriedTimes,
                     NPCFaction = data.NPCFaction >= 0 ? (Faction)data.NPCFaction : null,
-                    Chivalry = data.Chivalry,
-                    Darkness = data.Darkness,
+                    // v0.57.12: retroactive paired-movement heal for pre-v0.57.12 NPC saves that exceeded AlignmentCap
+                    Chivalry = AlignmentSystem.HealOverflowChivalry(data.Chivalry, data.Darkness),
+                    Darkness = AlignmentSystem.HealOverflowDarkness(data.Chivalry, data.Darkness),
                     Gold = data.Gold,
                     BankGold = data.BankGold,
                     AI = CharacterAI.Computer

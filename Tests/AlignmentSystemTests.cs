@@ -367,6 +367,125 @@ public class AlignmentSystemTests
 
     #endregion
 
+    #region v0.57.12 — Setter Clamp & HealOverflow
+
+    [Fact]
+    public void CharacterSetter_ClampsChivalryToCap()
+    {
+        var character = new Character();
+        character.Chivalry = 99999;
+        character.Chivalry.Should().Be(GameConfig.AlignmentCap);
+    }
+
+    [Fact]
+    public void CharacterSetter_ClampsDarknessToCap()
+    {
+        var character = new Character();
+        character.Darkness = 50000;
+        character.Darkness.Should().Be(GameConfig.AlignmentCap);
+    }
+
+    [Fact]
+    public void CharacterSetter_ClampsNegativeChivalryToZero()
+    {
+        var character = new Character { Chivalry = 500 };
+        character.Chivalry = -100;
+        character.Chivalry.Should().Be(0);
+    }
+
+    [Fact]
+    public void CharacterSetter_ClampsNegativeDarknessToZero()
+    {
+        var character = new Character { Darkness = 500 };
+        character.Darkness = -100;
+        character.Darkness.Should().Be(0);
+    }
+
+    [Fact]
+    public void CharacterSetter_PreservesInRangeValue()
+    {
+        var character = new Character();
+        character.Chivalry = 750;
+        character.Darkness = 250;
+        character.Chivalry.Should().Be(750);
+        character.Darkness.Should().Be(250);
+    }
+
+    [Fact]
+    public void CharacterSetter_DirectPlusEqualsOverflowClamps()
+    {
+        // Simulates the pre-v0.57.12 bypass pattern (e.g. ChurchLocation donations using `+=`).
+        // Even if callers bypass ChangeAlignment, the setter now catches overflow.
+        var character = new Character { Chivalry = 950 };
+        character.Chivalry += 200;
+        character.Chivalry.Should().Be(GameConfig.AlignmentCap);
+    }
+
+    [Fact]
+    public void HealOverflow_InRangeReturnsUnchanged()
+    {
+        var (chiv, dark) = AlignmentSystem.HealOverflow(500, 300);
+        chiv.Should().Be(500);
+        dark.Should().Be(300);
+    }
+
+    [Fact]
+    public void HealOverflow_ExcessChivalryClampsAndReducesDarkness()
+    {
+        // 15,000 chivalry with 0 darkness (the reported bug scenario):
+        // excess = 14,000, darkness should be reduced by 7,000 but floors at 0.
+        var (chiv, dark) = AlignmentSystem.HealOverflow(15000, 0);
+        chiv.Should().Be(GameConfig.AlignmentCap);
+        dark.Should().Be(0);
+    }
+
+    [Fact]
+    public void HealOverflow_ExcessChivalryReducesDarknessByHalfExcess()
+    {
+        // Chivalry 1500 (excess 500), Darkness 600 → darkness should become 600 - 250 = 350.
+        var (chiv, dark) = AlignmentSystem.HealOverflow(1500, 600);
+        chiv.Should().Be(GameConfig.AlignmentCap);
+        dark.Should().Be(350);
+    }
+
+    [Fact]
+    public void HealOverflow_ExcessDarknessClampsAndReducesChivalry()
+    {
+        var (chiv, dark) = AlignmentSystem.HealOverflow(600, 1400);
+        dark.Should().Be(GameConfig.AlignmentCap);
+        chiv.Should().Be(400); // 600 - (400/2) = 600 - 200 = 400
+    }
+
+    [Fact]
+    public void HealOverflow_BothSidesOverflowClampsBoth()
+    {
+        var (chiv, dark) = AlignmentSystem.HealOverflow(5000, 3000);
+        chiv.Should().Be(GameConfig.AlignmentCap);
+        dark.Should().Be(GameConfig.AlignmentCap);
+    }
+
+    [Fact]
+    public void HealOverflow_NegativeInputsClampToZero()
+    {
+        var (chiv, dark) = AlignmentSystem.HealOverflow(-50, -100);
+        chiv.Should().Be(0);
+        dark.Should().Be(0);
+    }
+
+    [Fact]
+    public void HealOverflowChivalry_ReturnsHealedChivalry()
+    {
+        AlignmentSystem.HealOverflowChivalry(2000, 500).Should().Be(GameConfig.AlignmentCap);
+    }
+
+    [Fact]
+    public void HealOverflowDarkness_ReturnsHealedDarkness()
+    {
+        AlignmentSystem.HealOverflowDarkness(500, 2000).Should().Be(GameConfig.AlignmentCap);
+    }
+
+    #endregion
+
     #region Helper Methods
 
     private static Character CreateCharacterWithAlignment(AlignmentSystem.AlignmentType alignment)

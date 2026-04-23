@@ -1288,7 +1288,7 @@ public class AnchorRoadLocation : BaseLocation
                 terminal.WriteLine("");
                 terminal.WriteLine(Loc.Get("anchor_road.prisoner_thanks"));
 
-                currentPlayer.Chivalry += 50;
+                AlignmentSystem.Instance.ChangeAlignment(currentPlayer, 50, isGood: true, "anchor_road.prison_escape"); // v0.57.12: paired movement
                 NewsSystem.Instance.Newsy(true, $"{currentPlayer.DisplayName} orchestrated a daring prison escape!");
             }
             else
@@ -1301,7 +1301,7 @@ public class AnchorRoadLocation : BaseLocation
                 // Damage and possible imprisonment
                 long damage = currentPlayer.MaxHP / 5;
                 currentPlayer.HP = Math.Max(1, currentPlayer.HP - damage);
-                currentPlayer.Darkness += 25;
+                AlignmentSystem.Instance.ChangeAlignment(currentPlayer, 25, isGood: false, "anchor_road.escape_caught"); // v0.57.12: paired movement
 
                 terminal.WriteLine(Loc.Get("anchor_road.barely_escaped", damage));
             }

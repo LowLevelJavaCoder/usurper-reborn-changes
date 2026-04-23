@@ -208,7 +208,7 @@ namespace UsurperRemake.Data
                 ArtifactDropped = ArtifactType.SoulweaversLoom,
 
                 CanBeSaved = true,
-                SaveRequirement = "Chivalry >= 5000 AND completed a romance questline",
+                SaveRequirement = "Possess the Soulweaver's Loom artifact AND completed a romance questline",
                 SaveDialogue = new[]
                 {
                     "> [SAVE] \"Love's not dead. I can prove it.\"",
@@ -515,7 +515,7 @@ namespace UsurperRemake.Data
                 ArtifactDropped = ArtifactType.SunforgedBlade,
 
                 CanBeSaved = true,
-                SaveRequirement = "Chivalry >= 3000 AND no lies told in dialogue",
+                SaveRequirement = "Possess the god's matching artifact AND no lies told in dialogue",
                 SaveDialogue = new[]
                 {
                     "> [SAVE] \"Give it to me. The light. I'll carry it.\"",

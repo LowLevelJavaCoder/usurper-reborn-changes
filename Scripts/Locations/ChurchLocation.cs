@@ -735,9 +735,9 @@ namespace UsurperRemake.Locations
                     break;
             }
 
-            // Grant small chivalry bonus for seeking healing
+            // Grant small chivalry bonus for seeking healing — v0.57.12: paired movement
             int chivGain = Random.Shared.Next(1, 4);
-            currentPlayer.Chivalry += chivGain;
+            AlignmentSystem.Instance.ChangeAlignment(currentPlayer, chivGain, isGood: true, "church.healing");
             terminal.WriteLine(Loc.Get("church.heal_faith_wisdom", chivGain), "cyan");
             
             await Task.Delay(3000);
@@ -966,8 +966,8 @@ namespace UsurperRemake.Locations
             terminal.WriteLine(Loc.Get("church.wedding_married", targetNPC.Name2), "bright_green");
             terminal.WriteLine(Loc.Get("church.wedding_bells"), "bright_yellow");
 
-            // Marriage bonuses
-            currentPlayer.Chivalry += 10;
+            // Marriage bonuses — v0.57.12: paired movement
+            AlignmentSystem.Instance.ChangeAlignment(currentPlayer, 10, isGood: true, "church.wedding");
             currentPlayer.Charisma += 5;
 
             terminal.WriteLine(Loc.Get("church.wedding_chivalry"), "cyan");
@@ -1200,7 +1200,7 @@ namespace UsurperRemake.Locations
                     terminal.WriteLine("");
                     terminal.WriteLine(Loc.Get("church.bishop_reward"), "bright_yellow");
                     currentPlayer.DivineBlessing = Math.Max(currentPlayer.DivineBlessing, 3);
-                    currentPlayer.Chivalry += 5;
+                    AlignmentSystem.Instance.ChangeAlignment(currentPlayer, 5, isGood: true, "church.bishop_reward"); // v0.57.12: paired movement
                     terminal.WriteLine(Loc.Get("church.bishop_blessing_days"), "bright_white");
                     terminal.WriteLine(Loc.Get("church.bishop_chivalry5"), "cyan");
                 }

@@ -663,7 +663,7 @@ namespace UsurperRemake.Systems
             {
                 Id = "dream_high_darkness",
                 Title = "The Dark Welcomes You",
-                MinDarkness = 3000,
+                MinDarkness = 800, // v0.57.12: was 3000, unreachable with AlignmentCap=1000. 800 = Evil-tier threshold.
                 Priority = 20,
                 Content = new[] {
                     "The shadows in the dream don't flee from you. They reach for you.",
@@ -678,7 +678,7 @@ namespace UsurperRemake.Systems
             {
                 Id = "dream_high_chivalry",
                 Title = "The Light Remembers",
-                MinChivalry = 3000,
+                MinChivalry = 800, // v0.57.12: was 3000, unreachable with AlignmentCap=1000. 800 = Holy-tier threshold.
                 Priority = 20,
                 Content = new[] {
                     "A warm light reaches for you in the dream. Not sunlight. Something older.",

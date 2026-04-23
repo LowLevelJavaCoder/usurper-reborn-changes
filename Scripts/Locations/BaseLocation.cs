@@ -1188,7 +1188,8 @@ public abstract class BaseLocation
 
             if (stage.Reward.ChivalryBonus > 0)
             {
-                currentPlayer.Chivalry += stage.Reward.ChivalryBonus;
+                // v0.57.12: paired movement — stage reward chivalry also lowers darkness by half
+                AlignmentSystem.Instance.ChangeAlignment(currentPlayer, stage.Reward.ChivalryBonus, isGood: true, "base.stage_reward");
                 terminal.WriteLine(Loc.Get("base.reward_chivalry", stage.Reward.ChivalryBonus));
             }
             if (stage.Reward.Wisdom > 0)
@@ -4805,8 +4806,8 @@ public abstract class BaseLocation
             terminal.WriteLine("\n  " + Loc.Get("base.duel_victory", npc.Name2));
             currentPlayer.PKills++;
 
-            // Small reputation boost for honorable duel
-            currentPlayer.Chivalry += 5;
+            // Small reputation boost for honorable duel — v0.57.12: paired movement
+            AlignmentSystem.Instance.ChangeAlignment(currentPlayer, 5, isGood: true, "base.duel_honor");
         }
         else
         {

@@ -4081,9 +4081,10 @@ public partial class GameEngine
             DarkNr = playerData.DarkNr > 0 ? playerData.DarkNr : GameConfig.DefaultDarkDeeds,
             ChivNr = playerData.ChivNr > 0 ? playerData.ChivNr : GameConfig.DefaultGoodDeeds,
             
-            // Status
-            Chivalry = playerData.Chivalry,
-            Darkness = playerData.Darkness,
+            // Status — v0.57.12: retroactive paired-movement heal for pre-v0.57.12 saves that exceeded AlignmentCap
+            // through bypass mutation sites. HealOverflow reduces the opposite scale by excess/2 and clamps.
+            Chivalry = AlignmentSystem.HealOverflowChivalry(playerData.Chivalry, playerData.Darkness),
+            Darkness = AlignmentSystem.HealOverflowDarkness(playerData.Chivalry, playerData.Darkness),
             Fame = playerData.Fame,
             Mental = playerData.Mental,
             Poison = playerData.Poison,
@@ -5137,9 +5138,10 @@ public partial class GameEngine
                 // Divine worship
                 WorshippedGod = data.WorshippedGod ?? "",
 
-                // Alignment
-                Chivalry = data.Chivalry,
-                Darkness = data.Darkness,
+                // Alignment — v0.57.12: same overflow heal applied to NPCs (WorldSimulator also had unbounded
+                // direct-mutation sites that could push NPC alignment past the cap).
+                Chivalry = AlignmentSystem.HealOverflowChivalry(data.Chivalry, data.Darkness),
+                Darkness = AlignmentSystem.HealOverflowDarkness(data.Chivalry, data.Darkness),
 
                 // Inventory
                 Gold = data.Gold,

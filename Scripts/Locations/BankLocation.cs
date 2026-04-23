@@ -65,6 +65,12 @@ public class BankLocation : BaseLocation
             _lastResetDate = DateTime.Now;
         }
 
+        // v0.57.12: refresh guard wage from current level so level-ups between daily ticks are visible
+        // immediately on the bank's display (otherwise the player sees the stale hire-time wage until
+        // the next daily payout).
+        if (currentPlayer.BankGuard)
+            currentPlayer.BankWage = CalculateGuardWage(currentPlayer);
+
         terminal.ClearScreen();
 
         // Check if player is banned from the bank
@@ -983,7 +989,8 @@ public class BankLocation : BaseLocation
         terminal.WriteLine(Loc.Get("bank.guard_reviews", BankerName));
         terminal.WriteLine("");
 
-        int guardWage = 1000 + (currentPlayer.Level * GameConfig.GuardSalaryPerLevel);
+        // v0.57.12: single source of truth — same helper used by daily payout + display refresh.
+        long guardWage = CalculateGuardWage(currentPlayer);
 
         terminal.SetColor("white");
         terminal.WriteLine(Loc.Get("bank.guard_position_title"));
@@ -1423,6 +1430,17 @@ public class BankLocation : BaseLocation
     }
 
     /// <summary>
+    /// v0.57.12: Recompute bank guard wage from current level. Hire-time wage is `1000 + Level * GuardSalaryPerLevel`
+    /// (BankLocation.cs:986), but `BankWage` was only ever set at hire time — players who leveled up while
+    /// employed stayed frozen at their hire-time wage (Lumina report: resigned and re-applied to see the Lv.100
+    /// value). Called at daily payout and on bank entry so the displayed + paid wage always matches current level.
+    /// </summary>
+    public static long CalculateGuardWage(Character player)
+    {
+        return 1000 + ((long)player.Level * GameConfig.GuardSalaryPerLevel);
+    }
+
+    /// <summary>
     /// Daily maintenance - pay guard wages and calculate interest
     /// Called by DailySystemManager
     /// </summary>
@@ -1431,6 +1449,8 @@ public class BankLocation : BaseLocation
         // Pay guard wages
         if (player.BankGuard && player.IsAlive)
         {
+            // v0.57.12: recompute wage from current level so it scales automatically on level-up.
+            player.BankWage = CalculateGuardWage(player);
             player.BankGold += player.BankWage;
             DebugLogger.Instance.LogInfo("GOLD", $"BANK GUARD WAGE: {player.DisplayName} +{player.BankWage:N0}g wage (bank now {player.BankGold:N0})");
         }

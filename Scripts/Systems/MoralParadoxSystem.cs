@@ -503,8 +503,8 @@ namespace UsurperRemake.Systems
                             "The world is lighter.",
                             "And you carry its shadow."
                         },
-                        ChivalryChange = 1000,
-                        DarknessChange = 5000, // Take on the darkness
+                        ChivalryChange = 1000, // Maxes out chivalry — "transmuted the world's pain into wisdom"
+                        DarknessChange = 1000, // v0.57.12: was 5000 (stale against pre-cap 30000 constant). Max darkness is now 1000 — intent preserved (absorb the world's darkness until you max out).
                         WisdomChange = 20,
                         StoryFlag = "absorbed_world_darkness",
                         OceanPhilosophyBonus = true

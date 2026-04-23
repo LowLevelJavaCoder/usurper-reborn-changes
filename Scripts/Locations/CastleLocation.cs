@@ -1402,7 +1402,7 @@ public class CastleLocation : BaseLocation
         if (confirm?.ToUpper() == "Y")
         {
             currentKing.Prisoners.Remove(name);
-            currentPlayer.Darkness += 100;
+            AlignmentSystem.Instance.ChangeAlignment(currentPlayer, 100, isGood: false, "castle.execute_prisoner"); // v0.57.12: paired movement
 
             // Permadeath the NPC
             var npc = NPCSpawnSystem.Instance?.GetNPCByName(name);
@@ -2776,7 +2776,7 @@ public class CastleLocation : BaseLocation
         }
 
         currentKing.MagicBudget -= 1000;
-        currentPlayer.Chivalry += 25;
+        AlignmentSystem.Instance.ChangeAlignment(currentPlayer, 25, isGood: true, "castle.wizard_court"); // v0.57.12: paired movement
 
         terminal.SetColor("bright_yellow");
         terminal.WriteLine("");
@@ -3778,7 +3778,7 @@ public class CastleLocation : BaseLocation
         terminal.SetColor("yellow");
         terminal.WriteLine(Loc.Get("castle.orphan_treasury_minus", GameConfig.OrphanCommissionCost.ToString("N0")));
 
-        currentPlayer.Chivalry += 10;
+        AlignmentSystem.Instance.ChangeAlignment(currentPlayer, 10, isGood: true, "castle.orphan_loyalty"); // v0.57.12: paired movement
         PersistRoyalCourtToWorldState();
         await Task.Delay(2500);
     }
@@ -3823,7 +3823,7 @@ public class CastleLocation : BaseLocation
         terminal.SetColor("yellow");
         terminal.WriteLine(Loc.Get("castle.orphan_treasury_minus", mercCost.ToString("N0")));
 
-        currentPlayer.Chivalry += 10;
+        AlignmentSystem.Instance.ChangeAlignment(currentPlayer, 10, isGood: true, "castle.commission_merc"); // v0.57.12: paired movement
         PersistRoyalCourtToWorldState();
         await Task.Delay(2500);
     }
@@ -3843,7 +3843,7 @@ public class CastleLocation : BaseLocation
         terminal.SetColor("yellow");
         terminal.WriteLine(Loc.Get("castle.orphan_treasury_minus", GameConfig.OrphanCommissionCost.ToString("N0")));
 
-        currentPlayer.Chivalry += 5;
+        AlignmentSystem.Instance.ChangeAlignment(currentPlayer, 5, isGood: true, "castle.commission_npc"); // v0.57.12: paired movement
         PersistRoyalCourtToWorldState();
         await Task.Delay(2500);
     }
@@ -3909,7 +3909,7 @@ public class CastleLocation : BaseLocation
         terminal.SetColor("yellow");
         terminal.WriteLine(Loc.Get("castle.orphan_treasury_minus", adoptCost.ToString("N0")));
 
-        currentPlayer.Chivalry += 15;
+        AlignmentSystem.Instance.ChangeAlignment(currentPlayer, 15, isGood: true, "castle.adopt_orphan"); // v0.57.12: paired movement
         PersistRoyalCourtToWorldState();
 
         await Task.Delay(2500);
@@ -3956,7 +3956,7 @@ public class CastleLocation : BaseLocation
                 terminal.SetColor("yellow");
                 terminal.WriteLine(Loc.Get("castle.orphan_treasury_minus", amount.ToString("N0")));
 
-                currentPlayer.Chivalry += (int)Math.Min(50, amount / 200);
+                AlignmentSystem.Instance.ChangeAlignment(currentPlayer, (int)Math.Min(50, amount / 200), isGood: true, "castle.orphan_gifts"); // v0.57.12: paired movement
                 PersistRoyalCourtToWorldState();
             }
         }
@@ -6429,8 +6429,8 @@ public class CastleLocation : BaseLocation
             terminal.WriteLine("");
             await Task.Delay(1500);
 
-            // Bonuses for knighthood
-            currentPlayer.Chivalry += 50;
+            // Bonuses for knighthood — v0.57.12: paired movement
+            AlignmentSystem.Instance.ChangeAlignment(currentPlayer, 50, isGood: true, "castle.knighthood");
             currentPlayer.Fame += 25;
 
             // Show benefits
@@ -6626,7 +6626,7 @@ public class CastleLocation : BaseLocation
                     terminal.WriteLine(Loc.Get("castle.loan_debt_paid"));
                     terminal.WriteLine("");
                     terminal.WriteLine(Loc.Get("castle.loan_chivalry_bonus"));
-                    currentPlayer.Chivalry += 10;
+                    AlignmentSystem.Instance.ChangeAlignment(currentPlayer, 10, isGood: true, "castle.loan_repaid"); // v0.57.12: paired movement
 
                     NewsSystem.Instance?.Newsy(false, $"{currentPlayer.DisplayName} repaid their royal loan.");
                 }
@@ -6787,16 +6787,16 @@ public class CastleLocation : BaseLocation
                         terminal.WriteLine(Loc.Get("castle.crime_bounty_placed", target.Name));
                         terminal.WriteLine(Loc.Get("castle.crime_justice_served"));
 
-                        // Increase the target's darkness (they're now wanted)
-                        target.Darkness += 25;
+                        // Increase the target's darkness (they're now wanted) — v0.57.12: paired movement on target
+                        AlignmentSystem.Instance.ChangeAlignment(target, 25, isGood: false, "castle.bounty_target");
 
                         NewsSystem.Instance?.Newsy(true, $"A bounty has been placed on {target.Name} by royal decree!");
 
                         // Wire into QuestSystem so the bounty is trackable
                         QuestSystem.PostBountyOnPlayer(target.Name, "Criminal activity", (int)Math.Min(bountyCost, int.MaxValue));
 
-                        // Small chivalry boost for reporting
-                        currentPlayer.Chivalry += 5;
+                        // Small chivalry boost for reporting — v0.57.12: paired movement
+                        AlignmentSystem.Instance.ChangeAlignment(currentPlayer, 5, isGood: true, "castle.report_crime");
                     }
                 }
                 else
@@ -6994,9 +6994,9 @@ public class CastleLocation : BaseLocation
                     terminal.WriteLine("");
                     terminal.WriteLine(Loc.Get("castle.tax_rate_reduced", oldRate, currentKing.TaxRate));
 
-                    // Fame boost for helping the people
+                    // Fame boost for helping the people — v0.57.12: paired movement on chivalry
                     currentPlayer.Fame += 20;
-                    currentPlayer.Chivalry += 10;
+                    AlignmentSystem.Instance.ChangeAlignment(currentPlayer, 10, isGood: true, "castle.tax_relief");
                     terminal.WriteLine(Loc.Get("castle.tax_fame_chivalry"));
 
                     NewsSystem.Instance?.Newsy(true, $"{currentPlayer.DisplayName} petitioned {currentKing.GetTitle()} {currentKing.Name} for tax relief! Kingdom taxes reduced to {currentKing.TaxRate}%.");
@@ -7052,7 +7052,7 @@ public class CastleLocation : BaseLocation
                 currentPlayer.Gold -= amount;
                 currentKing.Treasury += amount;
                 int chivalryGain = (int)Math.Min(50, amount / 100);
-                currentPlayer.Chivalry += chivalryGain;
+                AlignmentSystem.Instance.ChangeAlignment(currentPlayer, chivalryGain, isGood: true, "castle.donate_treasury"); // v0.57.12: paired movement
 
                 terminal.SetColor("bright_green");
                 terminal.WriteLine(Loc.Get("castle.donate_gold", amount));
@@ -7208,8 +7208,8 @@ public class CastleLocation : BaseLocation
             // News announcement
             NewsSystem.Instance?.Newsy(true, $"{currentPlayer.DisplayName} has joined the Royal Guard!");
 
-            // Small chivalry boost
-            currentPlayer.Chivalry += 10;
+            // Small chivalry boost — v0.57.12: paired movement
+            AlignmentSystem.Instance.ChangeAlignment(currentPlayer, 10, isGood: true, "castle.royal_guard_joined");
         }
         else
         {

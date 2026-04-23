@@ -1689,8 +1689,8 @@ public class DungeonLocation : BaseLocation
                     term.WriteLine(Loc.Get("dungeon.gold_gained", result.GoldGained), "yellow");
                 }
 
-                // Chivalry impact
-                player.Darkness += 100;
+                // Chivalry impact — v0.57.12: paired movement (killing an Old God is evil, lowers chivalry)
+                AlignmentSystem.Instance.ChangeAlignment(player, 100, isGood: false, "dungeon.old_god_killed");
                 term.WriteLine(Loc.Get("dungeon.darkness_deepens"), "red");
 
                 // Check achievements
@@ -1711,7 +1711,7 @@ public class DungeonLocation : BaseLocation
                 term.WriteLine(Loc.Get("dungeon.god_corruption_lifts"), "bright_cyan");
                 term.WriteLine(Loc.Get("dungeon.divine_gratitude"), "white");
 
-                player.Chivalry += 150;
+                AlignmentSystem.Instance.ChangeAlignment(player, 150, isGood: true, "dungeon.old_god_saved"); // v0.57.12: paired movement
                 term.WriteLine(Loc.Get("dungeon.chivalry_grows"), "bright_green");
 
                 // Ocean Philosophy moment
@@ -1731,7 +1731,7 @@ public class DungeonLocation : BaseLocation
                 term.WriteLine(Loc.Get("dungeon.god_alliance"), "bright_magenta");
                 term.WriteLine(Loc.Get("dungeon.forged_alliance"), "white");
 
-                player.Chivalry += 50;
+                AlignmentSystem.Instance.ChangeAlignment(player, 50, isGood: true, "dungeon.old_god_allied"); // v0.57.12: paired movement
                 player.Wisdom += 2;
                 break;
 
@@ -1741,7 +1741,7 @@ public class DungeonLocation : BaseLocation
                 term.WriteLine(Loc.Get("dungeon.god_spared_lingers"), "white");
                 term.WriteLine("");
 
-                player.Chivalry += 75;
+                AlignmentSystem.Instance.ChangeAlignment(player, 75, isGood: true, "dungeon.old_god_spared"); // v0.57.12: paired movement
                 term.WriteLine(Loc.Get("dungeon.chivalry_mercy"), "bright_green");
 
                 // Online news
@@ -6718,7 +6718,7 @@ public class DungeonLocation : BaseLocation
             case 0: // Blessing
                 {
                     long chivalryGain = dungeonRandom.Next(500) + 50;
-                    player.Chivalry += chivalryGain;
+                    AlignmentSystem.Instance.ChangeAlignment(player, (int)chivalryGain, isGood: true, "dungeon.scroll_blessing"); // v0.57.12: paired movement
 
                     terminal.SetColor("bright_yellow");
                     terminal.WriteLine(Loc.Get("dungeon.scroll_divine_light"));
@@ -6974,7 +6974,7 @@ public class DungeonLocation : BaseLocation
         {
             terminal.SetColor("white");
             terminal.WriteLine(Loc.Get("dungeon.pray_for_fallen"));
-            currentPlayer.Chivalry += 2;
+            AlignmentSystem.Instance.ChangeAlignment(currentPlayer, 2, isGood: true, "dungeon.pray_fallen"); // v0.57.12: paired movement
             terminal.SetColor("green");
             terminal.WriteLine(Loc.Get("dungeon.chivalry_increases_slightly"));
         }
@@ -7295,7 +7295,7 @@ public class DungeonLocation : BaseLocation
                 long xpReward = (long)(Math.Pow(currentDungeonLevel, 1.5) * 15 * (1 + rivalryBonus * 0.5));
                 currentPlayer.Gold += goldReward;
                 currentPlayer.Experience += xpReward;
-                currentPlayer.Chivalry += 5;
+                AlignmentSystem.Instance.ChangeAlignment(currentPlayer, 5, isGood: true, "dungeon.duelist_victory"); // v0.57.12: paired movement
 
                 terminal.WriteLine(Loc.Get("dungeon.duelist_rewards", goldReward, xpReward));
             }
@@ -7339,7 +7339,7 @@ public class DungeonLocation : BaseLocation
                 terminal.WriteLine(Loc.Get("dungeon.duelist_decline_new_1", duelist.Name));
                 terminal.WriteLine(Loc.Get("dungeon.duelist_decline_new_2"));
             }
-            currentPlayer.Chivalry += 1;
+            AlignmentSystem.Instance.ChangeAlignment(currentPlayer, 1, isGood: true, "dungeon.duelist_decline"); // v0.57.12: paired movement
         }
         else if (choice.ToUpper() == "I")
         {
@@ -7359,7 +7359,7 @@ public class DungeonLocation : BaseLocation
             }
             await Task.Delay(1000);
 
-            currentPlayer.Darkness += 3;
+            AlignmentSystem.Instance.ChangeAlignment(currentPlayer, 3, isGood: false, "dungeon.duelist_insult"); // v0.57.12: paired movement
             duelist.WasInsulted = true;
 
             // Enraged duelist is much stronger
@@ -7394,7 +7394,7 @@ public class DungeonLocation : BaseLocation
                 terminal.SetColor("yellow");
                 terminal.WriteLine(Loc.Get("dungeon.duelist_slain", duelist.Name));
                 terminal.WriteLine(Loc.Get("dungeon.duelist_spirit_haunts"));
-                currentPlayer.Darkness += 5;
+                AlignmentSystem.Instance.ChangeAlignment(currentPlayer, 5, isGood: false, "dungeon.duelist_slain"); // v0.57.12: paired movement
 
                 // Kill them permanently - they won't return
                 duelist.IsDead = true;
@@ -7887,7 +7887,7 @@ public class DungeonLocation : BaseLocation
                 terminal.WriteLine(Loc.Get("dungeon.chivalry_increase", chivGain), "white");
 
                 currentPlayer.Gold += reward;
-                currentPlayer.Chivalry += chivGain;
+                AlignmentSystem.Instance.ChangeAlignment(currentPlayer, (int)chivGain, isGood: true, "dungeon.damsel_rescue"); // v0.57.12: paired movement
             }
         }
         else if (choice.ToUpper() == "J")
@@ -7900,7 +7900,7 @@ public class DungeonLocation : BaseLocation
             long darkGain = dungeonRandom.Next(75) + 50;
 
             currentPlayer.Gold += stolen;
-            currentPlayer.Darkness += darkGain;
+            AlignmentSystem.Instance.ChangeAlignment(currentPlayer, (int)darkGain, isGood: false, "dungeon.damsel_ruffian"); // v0.57.12: paired movement
 
             terminal.WriteLine(Loc.Get("dungeon.damsel_steal", stolen), "yellow");
             terminal.WriteLine(Loc.Get("dungeon.darkness_increase", darkGain), "magenta");
@@ -7951,7 +7951,7 @@ public class DungeonLocation : BaseLocation
                 terminal.WriteLine(Loc.Get("dungeon.chivalry_increase", chivGain), "white");
 
                 currentPlayer.Gold += reward;
-                currentPlayer.Chivalry += chivGain;
+                AlignmentSystem.Instance.ChangeAlignment(currentPlayer, (int)chivGain, isGood: true, "dungeon.wounded_heal"); // v0.57.12: paired movement
             }
             else
             {
@@ -7961,7 +7961,7 @@ public class DungeonLocation : BaseLocation
                 if (dungeonRandom.NextDouble() < 0.5)
                 {
                     terminal.WriteLine(Loc.Get("dungeon.wounded_helps"), "green");
-                    currentPlayer.Chivalry += 10;
+                    AlignmentSystem.Instance.ChangeAlignment(currentPlayer, 10, isGood: true, "dungeon.wounded_bandage"); // v0.57.12: paired movement
                 }
                 else
                 {
@@ -7981,7 +7981,7 @@ public class DungeonLocation : BaseLocation
             terminal.WriteLine(Loc.Get("dungeon.darkness_increase", darkGain), "magenta");
 
             currentPlayer.Gold += stolen;
-            currentPlayer.Darkness += darkGain;
+            AlignmentSystem.Instance.ChangeAlignment(currentPlayer, (int)darkGain, isGood: false, "dungeon.wounded_rob"); // v0.57.12: paired movement
 
             terminal.WriteLine(Loc.Get("dungeon.wounded_dies_cursing"), "gray");
         }
@@ -8083,7 +8083,7 @@ public class DungeonLocation : BaseLocation
             terminal.WriteLine(Loc.Get("dungeon.darkness_increase", darkGain), "magenta");
 
             currentPlayer.Gold += stolen;
-            currentPlayer.Darkness += darkGain;
+            AlignmentSystem.Instance.ChangeAlignment(currentPlayer, (int)darkGain, isGood: false, "dungeon.shrine_desecrate"); // v0.57.12: paired movement
             ShareEventRewardsWithGroup(currentPlayer, stolen, 0, "Desecrated Shrine");
 
             // Chance of angering spirits
@@ -8558,7 +8558,7 @@ public class DungeonLocation : BaseLocation
                     {
                         mate.Gold += goldPerMember;
                         mate.Healing = Math.Min(mate.MaxPotions, mate.Healing + 3);
-                        mate.Darkness += 10;
+                        AlignmentSystem.Instance.ChangeAlignment(mate, 10, isGood: false, "dungeon.merchant_rob_group"); // v0.57.12: paired movement per group member
                         mate.Statistics?.RecordGoldChange(mate.Gold);
 
                         if (mate.RemoteTerminal != null)
@@ -8579,8 +8579,8 @@ public class DungeonLocation : BaseLocation
                 }
             }
 
-            // Evil deed (leader always gets darkness — group members handled above)
-            player.Darkness += 10;
+            // Evil deed (leader always gets darkness — group members handled above) — v0.57.12: paired movement
+            AlignmentSystem.Instance.ChangeAlignment(player, 10, isGood: false, "dungeon.merchant_rob_leader");
             terminal.SetColor("red");
             terminal.WriteLine(Loc.Get("dungeon.merchant_darkness"));
         }
@@ -12737,7 +12737,7 @@ public class DungeonLocation : BaseLocation
                     terminal.WriteLine(Loc.Get("dungeon.rob_explorer"), "red");
                     terminal.WriteLine(Loc.Get("dungeon.rob_explorer_cry"), "yellow");
                     player.Gold += reward;
-                    player.Darkness += 25;
+                    AlignmentSystem.Instance.ChangeAlignment(player, 25, isGood: false, "dungeon.rob_explorer"); // v0.57.12: paired movement
                     terminal.WriteLine(Loc.Get("dungeon.rob_explorer_gold", reward), "red");
                     terminal.WriteLine(Loc.Get("dungeon.darkness_increases"), "dark_magenta");
                     ShareEventRewardsWithGroup(player, reward, 0, "Robbed Explorer");
@@ -12750,7 +12750,7 @@ public class DungeonLocation : BaseLocation
                     terminal.WriteLine(Loc.Get("dungeon.guide_explorer"), "green");
                     reward = currentDungeonLevel * 150;
                     player.Gold += reward;
-                    player.Chivalry += 20;
+                    AlignmentSystem.Instance.ChangeAlignment(player, 20, isGood: true, "dungeon.guide_explorer"); // v0.57.12: paired movement
                     terminal.WriteLine(Loc.Get("dungeon.explorer_reward", reward), "yellow");
                     terminal.WriteLine(Loc.Get("dungeon.chivalry_increases"), "white");
                     ShareEventRewardsWithGroup(player, reward, 0, "Lost Explorer Rescue");
@@ -14340,7 +14340,7 @@ public class DungeonLocation : BaseLocation
             if (currentPlayer.Gold >= giveAmount)
             {
                 currentPlayer.Gold -= giveAmount;
-                currentPlayer.Chivalry += 5;
+                AlignmentSystem.Instance.ChangeAlignment(currentPlayer, 5, isGood: true, "dungeon.beggar_give"); // v0.57.12: paired movement
                 terminal.WriteLine("");
                 terminal.WriteLine(Loc.Get("dungeon.beggar_give", giveAmount), "green");
                 terminal.WriteLine(Loc.Get("dungeon.beggar_bless"), "green");
@@ -14367,7 +14367,7 @@ public class DungeonLocation : BaseLocation
         {
             int stolenGold = 5 + dungeonRandom.Next(currentPlayer.Level, currentPlayer.Level * 3);
             currentPlayer.Gold += stolenGold;
-            currentPlayer.Darkness += 10;
+            AlignmentSystem.Instance.ChangeAlignment(currentPlayer, 10, isGood: false, "dungeon.beggar_rob"); // v0.57.12: paired movement
             terminal.WriteLine("");
             terminal.WriteLine(Loc.Get("dungeon.beggar_rob"), "red");
             terminal.WriteLine(Loc.Get("dungeon.beggar_rob_gold", stolenGold), "yellow");

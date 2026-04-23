@@ -613,9 +613,9 @@ public partial class PrisonWalkLocation : BaseLocation
         await terminal.WriteLineAsync(Loc.Get("prison_walk.now_free"));
         await terminal.WriteLineAsync();
 
-        // Increase chivalry for the heroic rescue
+        // Increase chivalry for the heroic rescue — v0.57.12: paired movement
         long chivalryGain = 50 + prisoner.Level * 10;
-        player.Chivalry += chivalryGain;
+        AlignmentSystem.Instance.ChangeAlignment(player, (int)chivalryGain, isGood: true, "prison_walk.rescue");
         await terminal.WriteLineAsync(Loc.Get("prison_walk.chivalry_gain", chivalryGain.ToString()));
 
         await terminal.WriteLineAsync();
@@ -660,8 +660,8 @@ public partial class PrisonWalkLocation : BaseLocation
             await terminal.WriteLineAsync(Loc.Get("prison_walk.gold_fine", fine.ToString("N0")));
         }
 
-        // Darkness increases for criminal activity
-        player.Darkness += 25;
+        // Darkness increases for criminal activity — v0.57.12: paired movement
+        AlignmentSystem.Instance.ChangeAlignment(player, 25, isGood: false, "prison_walk.crime");
         await terminal.WriteColorLineAsync(Loc.Get("prison_walk.darkness_increase"), TerminalEmulator.ColorMagenta);
 
         await terminal.WriteLineAsync();

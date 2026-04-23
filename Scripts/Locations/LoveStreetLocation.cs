@@ -668,7 +668,7 @@ public class LoveStreetLocation : BaseLocation
             IsFirstTime = false
         };
         RomanceTracker.Instance.RecordEncounter(encounter);
-        currentPlayer.Darkness += 1;
+        AlignmentSystem.Instance.ChangeAlignment(currentPlayer, 1, isGood: false, "love_street.seedy_encounter"); // v0.57.12: paired movement
     }
 
     private async Task GenerateIntimateScene(string partnerName, string race, long price)
@@ -2384,7 +2384,9 @@ public class LoveStreetLocation : BaseLocation
 
     private void GiveDarkness(Character player, int amount)
     {
-        player.Darkness += amount;
+        // v0.57.12: paired movement — all callers of GiveDarkness now also lose chivalry
+        if (amount > 0)
+            AlignmentSystem.Instance.ChangeAlignment(player, amount, isGood: false, "love_street.give_darkness");
     }
 
     /// <summary>

@@ -1401,6 +1401,18 @@ public partial class CombatEngine
         }
         else if (!monsters.Any(m => m.IsAlive))
         {
+            // v0.57.12 (Lumina's AnchorRoad Gauntlet zero-reward report): safety net for kill tracking.
+            // Many code paths deal damage (main attack in ExecuteSingleAttack, weapon enchant procs in
+            // CheckElementalEnchantProcs, etc.) without explicitly calling `result.DefeatedMonsters.Add(m)`.
+            // HandleVictoryMultiMonster prints "Defeated {0} monster(s)" + rewards from DefeatedMonsters.Count,
+            // so a kill that didn't get tracked produced "0 monsters slain" and no XP/gold despite victory.
+            // Sweep any dead monsters not yet tracked before we call the victory handler.
+            foreach (var m in monsters)
+            {
+                if (!m.IsAlive && !result.DefeatedMonsters.Contains(m))
+                    result.DefeatedMonsters.Add(m);
+            }
+
             // All monsters dead — victory! (Even if leader died, grouped players carried the fight)
             result.Outcome = CombatOutcome.Victory;
             if (!player.IsAlive)
@@ -1426,6 +1438,12 @@ public partial class CombatEngine
                 player.HP = godModeHP;
                 player.Mana = godModeMana;
                 result.Outcome = CombatOutcome.Victory;
+                // v0.57.12: same kill-tracking safety net (see main victory branch above)
+                foreach (var m in monsters)
+                {
+                    if (!m.IsAlive && !result.DefeatedMonsters.Contains(m))
+                        result.DefeatedMonsters.Add(m);
+                }
                 await HandleVictoryMultiMonster(result, offerMonkEncounter);
             }
             else
@@ -18456,13 +18474,17 @@ public partial class CombatEngine
             });
         }
 
-        // Option 3: Deal with Death (costs 10,000 darkness + permanent stat loss)
-        if (player.Level >= 5 && player.Darkness >= 10000)
+        // Option 3: Deal with Death — v0.57.12: threshold was 10,000 Darkness (unreachable with AlignmentCap=1000).
+        // Dropped to 500 (half cap) to preserve the intent "committed evil characters can bargain with death."
+        if (player.Level >= 5 && player.Darkness >= 500)
         {
             choices.Add(new ResurrectionChoice
             {
                 Name = Loc.Get("death.deal_with_death"),
-                Description = "Bargain with the reaper (costs 10,000 Darkness, permanent stat loss)",
+                // v0.57.12: switched from hardcoded English string to the pre-existing `death.deal_desc` loc key.
+                // The loc key is intentionally vague ("costs Darkness") which keeps display accurate
+                // across all 5 languages even if the specific Darkness cost is rebalanced later.
+                Description = Loc.Get("death.deal_desc"),
                 Cost = 0,
                 HPRestored = (int)(player.MaxHP * 0.25), // 25% HP
                 Method = "Dark Bargain",
@@ -18663,9 +18685,9 @@ public partial class CombatEngine
         }
         else if (selectedChoice.IsDarkBargain)
         {
-            // Dark bargain - costs 10,000 darkness and a permanent stat reduction
+            // Dark bargain — v0.57.12: cost scaled from 10,000 → 500 to match AlignmentCap=1000.
             long darknessBefore = player.Darkness;
-            player.Darkness -= 10000;
+            player.Darkness -= 500;
             var random = Random.Shared;
             int statLoss = 2 + random.Next(4);
 

@@ -166,16 +166,17 @@ public class FeatureInteractionSystem
 
         if (lore.AffectsAlignment)
         {
+            // v0.57.12: paired movement — lore events nudge you toward light/dark AND away from the opposite
             int amount = Math.Abs(lore.AlignmentShift);
             if (lore.AlignmentShift > 0)
             {
-                player.Chivalry += amount;
+                AlignmentSystem.Instance.ChangeAlignment(player, amount, isGood: true, "feature.lore_light");
                 terminal.SetColor("bright_yellow");
                 terminal.WriteLine(Loc.Get("feature.drawn_to_light", amount));
             }
             else
             {
-                player.Darkness += amount;
+                AlignmentSystem.Instance.ChangeAlignment(player, amount, isGood: false, "feature.lore_dark");
                 terminal.SetColor("dark_magenta");
                 terminal.WriteLine(Loc.Get("feature.drawn_to_darkness", amount));
             }
@@ -879,15 +880,16 @@ public class FeatureInteractionSystem
         // Apply alignment shift to Chivalry/Darkness
         if (option.AlignmentShift != 0)
         {
+            // v0.57.12: paired movement — soul-path choices also cleanse the opposite scale
             int amount = Math.Abs(option.AlignmentShift);
             if (option.AlignmentShift > 0)
             {
-                player.Chivalry += amount;
+                AlignmentSystem.Instance.ChangeAlignment(player, amount, isGood: true, "feature.soul_light");
                 terminal.WriteLine(Loc.Get("feature.soul_toward_light", amount), "bright_cyan");
             }
             else
             {
-                player.Darkness += amount;
+                AlignmentSystem.Instance.ChangeAlignment(player, amount, isGood: false, "feature.soul_dark");
                 terminal.WriteLine(Loc.Get("feature.soul_toward_darkness", amount), "dark_red");
             }
         }

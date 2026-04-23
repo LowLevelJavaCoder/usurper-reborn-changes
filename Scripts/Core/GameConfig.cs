@@ -9,8 +9,14 @@ using System.Collections.Generic;
 public static partial class GameConfig
 {
     // Version information
-    public const string Version = "0.57.11";
+    public const string Version = "0.57.12";
     public const string VersionName = "Alignment and Shields";
+
+    // v0.57.12: Alignment scale cap. Character.Chivalry and Character.Darkness setters clamp to [0, AlignmentCap]
+    // as defense in depth against direct-mutation bypass sites that don't route through AlignmentSystem.ChangeAlignment.
+    // Pre-v0.57.12 saves could exceed this cap (one player reached 15,000 chivalry through accumulated unchecked +=);
+    // AlignmentSystem.HealOverflow retroactively applies paired-movement and clamps on load.
+    public const long AlignmentCap = 1000;
     public const string DiscordInvite = "discord.gg/EZhwgDT6Ta";
 
     // Electron graphical client mode — emits JSON events via OSC sequences
@@ -582,9 +588,10 @@ public static partial class GameConfig
     public const int MaxBelieversPerGod = 1000;        // Maximum believers per deity
     public const long ResurrectionBaseCost = 5000;     // Base cost for resurrection
     
-    // Alignment and Morality Constants  
-    public const int MaxChivalry = 30000;              // Maximum chivalry points
-    public const int MaxDarkness = 30000;              // Maximum darkness points
+    // Alignment and Morality Constants
+    // v0.57.12: MaxChivalry and MaxDarkness were 30000 (dead / contradictory — no callers referenced them).
+    // Removed to avoid confusion with the authoritative AlignmentCap=1000 defined above.
+    // Any new caller needing the alignment ceiling must use GameConfig.AlignmentCap.
     public const int ChivalryGoodDeedCost = 1;         // Good deeds consumed per chivalrous act
     public const int DarknessEvilDeedCost = 1;         // Evil deeds consumed per dark act
     public const int AlignmentChangeThreshold = 100;   // Points needed to shift alignment

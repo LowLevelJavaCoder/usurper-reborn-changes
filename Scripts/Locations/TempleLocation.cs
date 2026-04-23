@@ -1430,18 +1430,18 @@ public partial class TempleLocation : BaseLocation
 
         if (isEvilGod)
         {
-            // Evil god sacrifice - dark act
+            // Evil god sacrifice - dark act — v0.57.12: paired movement
             currentPlayer.DarkNr++;
-            currentPlayer.Darkness += standingGain;
+            AlignmentSystem.Instance.ChangeAlignment(currentPlayer, standingGain, isGood: false, "temple.evil_sacrifice");
             UsurperRemake.Systems.FactionSystem.Instance.ModifyReputation(UsurperRemake.Systems.Faction.TheShadows, standingGain);
             terminal.SetColor("bright_magenta");
             terminal.WriteLine(Loc.Get("temple.darkness_accepts", standingGain));
         }
         else
         {
-            // Good god sacrifice - light act
+            // Good god sacrifice - light act — v0.57.12: paired movement
             currentPlayer.ChivNr++;
-            currentPlayer.Chivalry += standingGain;
+            AlignmentSystem.Instance.ChangeAlignment(currentPlayer, standingGain, isGood: true, "temple.good_sacrifice");
             UsurperRemake.Systems.FactionSystem.Instance.ModifyReputation(UsurperRemake.Systems.Faction.TheFaith, standingGain);
             terminal.SetColor("bright_cyan");
             terminal.WriteLine(Loc.Get("temple.devotion_noted", standingGain));
@@ -2078,16 +2078,18 @@ public partial class TempleLocation : BaseLocation
 
         if (isEvilGod)
         {
+            // v0.57.12: paired movement
             currentPlayer.DarkNr++;
-            currentPlayer.Darkness += amount;
+            AlignmentSystem.Instance.ChangeAlignment(currentPlayer, amount, isGood: false, "temple.evil_devotion");
             UsurperRemake.Systems.FactionSystem.Instance.ModifyReputation(UsurperRemake.Systems.Faction.TheShadows, amount);
             terminal.SetColor("bright_magenta");
             terminal.WriteLine(Loc.Get("temple.darkness_notes_devotion", amount));
         }
         else
         {
+            // v0.57.12: paired movement
             currentPlayer.ChivNr++;
-            currentPlayer.Chivalry += amount;
+            AlignmentSystem.Instance.ChangeAlignment(currentPlayer, amount, isGood: true, "temple.good_devotion");
             UsurperRemake.Systems.FactionSystem.Instance.ModifyReputation(UsurperRemake.Systems.Faction.TheFaith, amount);
             terminal.SetColor("bright_cyan");
             terminal.WriteLine(Loc.Get("temple.light_notes_devotion", amount));
