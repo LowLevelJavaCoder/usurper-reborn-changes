@@ -2138,6 +2138,10 @@
                 var sel = document.getElementById('lang-select');
                 if (sel) sel.value = lang;
                 applyTranslations();
+                // Stats are rendered via innerHTML (no data-i18n attributes) so applyTranslations can't
+                // fix keys that rendered before the lang file loaded. If we already have cached stats
+                // data, re-render now so any raw `stats.*` keys get replaced with localized text.
+                if (_lastStatsData) renderStats(_lastStatsData);
             })
             .catch(function() {
                 if (lang !== 'en') loadLanguage('en');
@@ -2189,6 +2193,8 @@
                 i18nStrings = data;
                 var sel = document.getElementById('lang-select');
                 if (sel) sel.value = 'en';
+                // Same re-render as loadLanguage — stats may have rendered with raw keys before en.json arrived.
+                if (_lastStatsData) renderStats(_lastStatsData);
             })
             .catch(function() {});
     }
@@ -2699,10 +2705,15 @@
         };
     }
 
+    // Cached stats response — lets loadLanguage re-render the feed after lang arrives if stats
+    // resolved first (otherwise raw `stats.*` keys show in the feed for up to ~2 minutes until
+    // the periodic re-fetch at setInterval below).
+    var _lastStatsData = null;
+
     function fetchStats() {
         fetch('/api/stats')
             .then(res => res.json())
-            .then(data => renderStats(data))
+            .then(data => { _lastStatsData = data; renderStats(data); })
             .catch(() => {
                 document.getElementById('stats-content').innerHTML =
                     '<div class="stats-error">' + t('stats.server_error') + '</div>';

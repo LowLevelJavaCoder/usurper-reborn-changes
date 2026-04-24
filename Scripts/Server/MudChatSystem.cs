@@ -341,6 +341,10 @@ public static class MudChatSystem
             $"\u001b[92m  [Gossip] {displayName}: {message}\u001b[0m",
             excludeUsername: username);
 
+        // v0.57.13: mirror to Discord #in-game-gossip if the bridge is configured.
+        // No-op if DiscordBridge wasn't initialized (non-online modes, missing DB path).
+        UsurperRemake.Systems.DiscordBridge.QueueOutbound(displayName, message);
+
         return true;
     }
 

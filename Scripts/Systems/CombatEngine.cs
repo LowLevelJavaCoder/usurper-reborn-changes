@@ -3296,9 +3296,18 @@ public partial class CombatEngine
         ApplyPostHitEnchantments(attacker, target, actualDamage, result);
 
         // Mystic Shaman weapon enchantment bonus damage
+        // v0.57.13: was `actualDamage * ShamanEnchantPower / 100.0`, which scaled the FINAL attack
+        // damage (weapon + STR + crit + passives + buffs + rolls) by `ShamanEnchantPower` =
+        // `20 + INT*3`. At endgame INT (500-1000) that's a 15-30× multiplier on every hit,
+        // producing 400k-800k elemental procs per swing and one-shotting Old Gods (Rozro report).
+        // Now scales the ENCHANT RIDER off raw weapon power of the hitting hand — matches what
+        // "+3% elemental damage per INT point" was always meant to mean (a rider on weapon power,
+        // not a multiplier of the whole attack).
         if (attacker.ShamanEnchantType > 0 && attacker.ShamanEnchantRounds > 0)
         {
-            long enchantDamage = (long)(actualDamage * attacker.ShamanEnchantPower / 100.0);
+            var shamanWeapon = attacker.GetEquipment(isOffHandAttack ? EquipmentSlot.OffHand : EquipmentSlot.MainHand);
+            long shamanWeapPow = shamanWeapon?.WeaponPower ?? 0;
+            long enchantDamage = (long)(shamanWeapPow * attacker.ShamanEnchantPower / 100.0);
             enchantDamage = Math.Max(1, enchantDamage);
             target.HP = Math.Max(0, target.HP - enchantDamage);
             result.TotalDamageDealt += enchantDamage;
@@ -7827,6 +7836,16 @@ public partial class CombatEngine
                         else
                             terminal.WriteLine(equipMsg);
                     }
+
+                    // v0.57.13: sync wrapper changes back to the underlying Companion. Without this,
+                    // the combat-loot [E] equip-on-companion path updated only the transient wrapper
+                    // from GetCompanionsAsCharacters — on the next wrapper regeneration (e.g.,
+                    // re-entering the dungeon, save/load), companion.EquippedItems still held the
+                    // original recruit-time starting gear, so the companion visibly reverted. The
+                    // Home/Inn/TeamCorner manual-equip flows already call SyncCompanionEquipment
+                    // (v0.57.7 fix for Lyris); the combat-loot manual path was missing it.
+                    if (isCompanionEquip && player.IsCompanion)
+                        CompanionSystem.Instance?.SyncCompanionEquipment(player);
                 }
                 else
                 {
@@ -11320,9 +11339,14 @@ public partial class CombatEngine
                         ApplyPostHitEnchantments(player, target, damage, result);
 
                         // Mystic Shaman weapon enchantment bonus damage
+                        // v0.57.13: same fix as single-monster path at ~line 3299 — scale off raw
+                        // weapon power of the hitting hand, not the final post-multiplier damage,
+                        // so "+3% per INT" produces a rider bonus instead of a 30× attack multiplier.
                         if (player.ShamanEnchantType > 0 && player.ShamanEnchantRounds > 0)
                         {
-                            long enchantDamage = (long)(damage * player.ShamanEnchantPower / 100.0);
+                            var shamanWeaponMM = player.GetEquipment(isOffHandAttack ? EquipmentSlot.OffHand : EquipmentSlot.MainHand);
+                            long shamanWeapPowMM = shamanWeaponMM?.WeaponPower ?? 0;
+                            long enchantDamage = (long)(shamanWeapPowMM * player.ShamanEnchantPower / 100.0);
                             enchantDamage = Math.Max(1, enchantDamage);
                             target.HP -= (int)enchantDamage;
                             result.TotalDamageDealt += enchantDamage;

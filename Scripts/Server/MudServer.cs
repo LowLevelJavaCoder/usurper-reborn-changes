@@ -118,6 +118,13 @@ public class MudServer
         var adminPollerTask = Task.Run(() => AdminCommandPollerAsync(_cts.Token));
         Console.Error.WriteLine("[MUD] Admin command queue poller started (3s interval)");
 
+        // v0.57.13: Discord bridge — ensure schema exists, then start the inbound poller.
+        // The game side has no Discord secrets; the Node bot (ssh-proxy.js) handles the
+        // actual Discord API connection. We communicate via the shared SQLite `discord_gossip` table.
+        UsurperRemake.Systems.DiscordBridge.Initialize(_databasePath);
+        var discordBridgeTask = Task.Run(() => DiscordBridgePollerAsync(_cts.Token));
+        Console.Error.WriteLine("[MUD] Discord bridge poller started (250ms interval)");
+
         // Start listening
         _listener = new TcpListener(IPAddress.Any, _port);
         _listener.Start();
@@ -1087,6 +1094,41 @@ public class MudServer
             catch (Exception ex)
             {
                 Console.Error.WriteLine($"[MUD] Admin command poller error: {ex.Message}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// v0.57.13: poll the Discord bridge inbound queue every 2 seconds. Any messages the Node
+    /// bot has written from the #in-game-gossip channel get re-broadcast through the same
+    /// global gossip channel everyone else sees. Authors arrive tagged like "Rage (Discord)".
+    /// </summary>
+    private async Task DiscordBridgePollerAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                // v0.57.13: 2s → 250ms for near-real-time gossip bridge
+                await Task.Delay(TimeSpan.FromMilliseconds(250), ct);
+            }
+            catch (OperationCanceledException) { break; }
+
+            try
+            {
+                var messages = UsurperRemake.Systems.DiscordBridge.DrainInbound();
+                foreach (var msg in messages)
+                {
+                    // Match the format used by HandleGossip so Discord-originated lines look
+                    // identical to in-game /gos in everyone's scroll (author already has the
+                    // "(Discord)" suffix applied by the Node bot).
+                    RoomRegistry.Instance?.BroadcastGlobal(
+                        $"[92m  [Gossip] {msg.Author}: {msg.Message}[0m");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[MUD] Discord bridge poller error: {ex.Message}");
             }
         }
     }

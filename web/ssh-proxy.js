@@ -2824,6 +2824,213 @@ function handleHttpRequest(req, res) {
   }
 }
 
+// --- Discord Gossip Bridge (v0.57.13) ---
+// Bidirectional bridge between in-game /gos and a Discord channel, via the shared SQLite DB.
+// Config via env vars:
+//   DISCORD_BOT_TOKEN           — bot token from Discord Developer Portal
+//   DISCORD_GOSSIP_CHANNEL_ID   — target channel ID (Developer Mode → Copy Channel ID)
+// If either is missing, the bridge is skipped silently and the rest of the web proxy runs normally.
+//
+// Game → Discord: C# DiscordBridge.QueueOutbound writes `to_discord` rows. We poll every 2s
+//   and post to the Discord channel, then mark processed.
+// Discord → Game: discord.js `messageCreate` handler filters to the configured channel,
+//   rate-limits (1 msg / 3s per Discord user, 200-char cap), sanitizes mentions, writes a
+//   `from_discord` row. The C# MudServer.DiscordBridgePollerAsync picks it up and broadcasts.
+const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN || '';
+const DISCORD_GOSSIP_CHANNEL_ID = process.env.DISCORD_GOSSIP_CHANNEL_ID || '';
+const DISCORD_RATE_LIMIT_MS = 3000;
+const DISCORD_MAX_MESSAGE_LENGTH = 200;
+const DISCORD_POLL_INTERVAL_MS = 250; // v0.57.13: 2000→250 for near-real-time feel. SQLite handles it easily; indexed query on empty poll ~microseconds.
+const DISCORD_CLEANUP_INTERVAL_MS = 60 * 60 * 1000; // 1h
+const DISCORD_CLEANUP_RETENTION_MS = 7 * 24 * 60 * 60 * 1000; // 7d
+
+let discordClient = null;
+let discordGossipChannel = null;
+const discordRateLimitMap = new Map(); // Discord userId -> last-message-timestamp
+
+function ensureDiscordBridgeSchema() {
+  if (!dbWrite) return false;
+  try {
+    dbWrite.exec(`
+      CREATE TABLE IF NOT EXISTS discord_gossip (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        direction TEXT NOT NULL CHECK(direction IN ('to_discord', 'from_discord')),
+        author TEXT NOT NULL,
+        message TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        processed INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE INDEX IF NOT EXISTS idx_discord_gossip_pending
+        ON discord_gossip(direction, processed, id);
+    `);
+    return true;
+  } catch (err) {
+    console.error('[Discord] Schema init failed:', err.message);
+    return false;
+  }
+}
+
+function sanitizeDiscordMessage(content) {
+  let text = String(content || '').slice(0, DISCORD_MAX_MESSAGE_LENGTH);
+  // Block @everyone / @here even if allowedMentions wasn't honored downstream.
+  text = text.replace(/@(everyone|here)/gi, '@​$1');
+  // Strip control chars except regular whitespace.
+  text = text.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '');
+  return text.trim();
+}
+
+function insertDiscordInbound(author, message) {
+  if (!dbWrite) return;
+  try {
+    dbWrite.prepare(`
+      INSERT INTO discord_gossip (direction, author, message, created_at, processed)
+      VALUES ('from_discord', ?, ?, ?, 0)
+    `).run(author, message, Date.now());
+  } catch (err) {
+    console.error('[Discord] Inbound insert failed:', err.message);
+  }
+}
+
+// Re-entrant guard: setInterval fires every 250ms, but Discord channel.send() can take 100-200ms
+// per message. Without this guard, a poll tick can start before the previous one finishes marking
+// rows processed, causing the same rows to be re-read and re-sent (each message ends up posted
+// 10+ times). v0.57.13 shipped initially with this bug — fixed by (1) this guard and (2) atomic
+// claim: mark rows processed inside the same transaction as the SELECT, so overlapping invocations
+// (or a process restart mid-poll) can never see the same un-processed row twice.
+let _discordPollInFlight = false;
+
+async function pollDiscordOutbound() {
+  if (!dbWrite || !discordGossipChannel) return;
+  if (_discordPollInFlight) return;
+  _discordPollInFlight = true;
+  try {
+    let rows;
+    try {
+      const claim = dbWrite.transaction(() => {
+        const r = dbWrite.prepare(`
+          SELECT id, author, message FROM discord_gossip
+          WHERE direction = 'to_discord' AND processed = 0
+          ORDER BY id LIMIT 20
+        `).all();
+        if (r.length > 0) {
+          const maxId = r[r.length - 1].id;
+          dbWrite.prepare(`
+            UPDATE discord_gossip SET processed = 1
+            WHERE direction = 'to_discord' AND processed = 0 AND id <= ?
+          `).run(maxId);
+        }
+        return r;
+      });
+      rows = claim();
+    } catch (err) {
+      console.error('[Discord] Outbound claim failed:', err.message);
+      return;
+    }
+
+    for (const row of rows) {
+      const body = `**${row.author}** *(in-game)*: ${row.message}`;
+      try {
+        await discordGossipChannel.send({
+          content: body,
+          allowedMentions: { parse: [] } // never ping anyone in Discord from an in-game message
+        });
+      } catch (err) {
+        // Row is already marked processed (we claimed it atomically). Send failure drops the
+        // message rather than looping forever — acceptable tradeoff for gossip chatter.
+        console.error(`[Discord] Send failed for row ${row.id}:`, err.message);
+      }
+    }
+  } finally {
+    _discordPollInFlight = false;
+  }
+}
+
+function cleanupDiscordBridge() {
+  if (!dbWrite) return;
+  try {
+    const cutoff = Date.now() - DISCORD_CLEANUP_RETENTION_MS;
+    dbWrite.prepare(`DELETE FROM discord_gossip WHERE processed = 1 AND created_at < ?`).run(cutoff);
+  } catch (err) {
+    console.error('[Discord] Cleanup failed:', err.message);
+  }
+}
+
+function startDiscordBridge() {
+  if (!DISCORD_BOT_TOKEN || !DISCORD_GOSSIP_CHANNEL_ID) {
+    console.log('[Discord] Bridge not configured (missing DISCORD_BOT_TOKEN and/or DISCORD_GOSSIP_CHANNEL_ID) — skipping');
+    return;
+  }
+  if (!ensureDiscordBridgeSchema()) {
+    console.error('[Discord] Bridge disabled: could not create schema');
+    return;
+  }
+
+  let discord;
+  try {
+    discord = require('discord.js');
+  } catch (err) {
+    console.error('[Discord] discord.js package not installed — bridge disabled. Run: npm install discord.js');
+    return;
+  }
+
+  const { Client, GatewayIntentBits, Events } = discord;
+  discordClient = new Client({
+    intents: [
+      GatewayIntentBits.Guilds,
+      GatewayIntentBits.GuildMessages,
+      GatewayIntentBits.MessageContent
+    ]
+  });
+
+  discordClient.once(Events.ClientReady, c => {
+    console.log(`[Discord] Bridge logged in as ${c.user.tag}`);
+    const ch = c.channels.cache.get(DISCORD_GOSSIP_CHANNEL_ID);
+    if (!ch) {
+      console.error(`[Discord] Channel ${DISCORD_GOSSIP_CHANNEL_ID} not found — bot may not be in that server, or channel ID wrong`);
+      return;
+    }
+    discordGossipChannel = ch;
+    console.log(`[Discord] Watching channel #${ch.name} in ${ch.guild ? ch.guild.name : '?'}`);
+
+    setInterval(pollDiscordOutbound, DISCORD_POLL_INTERVAL_MS);
+    setInterval(cleanupDiscordBridge, DISCORD_CLEANUP_INTERVAL_MS);
+  });
+
+  discordClient.on(Events.MessageCreate, message => {
+    if (message.author.bot) return;
+    if (message.channelId !== DISCORD_GOSSIP_CHANNEL_ID) return;
+
+    const clean = sanitizeDiscordMessage(message.content);
+    if (!clean) return;
+
+    // Per-user rate limit
+    const userId = message.author.id;
+    const now = Date.now();
+    const last = discordRateLimitMap.get(userId) || 0;
+    if (now - last < DISCORD_RATE_LIMIT_MS) {
+      message.react('⏳').catch(() => {}); // hourglass
+      return;
+    }
+    discordRateLimitMap.set(userId, now);
+
+    // Prefer the server display name if available; fall back to username.
+    const displayName = message.member && message.member.displayName
+      ? message.member.displayName
+      : message.author.username;
+    const author = `${displayName} (Discord)`;
+
+    insertDiscordInbound(author, clean);
+  });
+
+  discordClient.on(Events.Error, err => {
+    console.error('[Discord] Client error:', err.message);
+  });
+
+  discordClient.login(DISCORD_BOT_TOKEN).catch(err => {
+    console.error('[Discord] Login failed:', err.message);
+  });
+}
+
 // --- HTTP + WebSocket Server ---
 const httpServer = http.createServer(handleHttpRequest);
 const wss = new Server({ server: httpServer });
@@ -2831,6 +3038,9 @@ const wss = new Server({ server: httpServer });
 httpServer.listen(WS_PORT, () => {
   console.log(`[usurper-web] HTTP + WebSocket server listening on port ${WS_PORT}`);
   console.log(`[usurper-web] Stats API: http://127.0.0.1:${WS_PORT}/api/stats`);
+
+  // v0.57.13: start Discord gossip bridge (no-op if env vars not set)
+  startDiscordBridge();
   console.log(`[usurper-web] Dashboard API: http://127.0.0.1:${WS_PORT}/api/dash/*`);
   console.log(`[usurper-web] Balance API: http://127.0.0.1:${WS_PORT}/api/balance/*`);
   console.log(`[usurper-web] Admin API: http://127.0.0.1:${WS_PORT}/api/admin/*`);
