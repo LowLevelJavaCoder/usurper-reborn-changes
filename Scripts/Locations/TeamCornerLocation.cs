@@ -711,6 +711,20 @@ public class TeamCornerLocation : BaseLocation
     /// </summary>
     private async Task CreateTeam()
     {
+        // v0.57.13: kings are forced out of their team on throne ascension; this block prevents
+        // them from rejoining or forming a new one while wearing the crown. Previously an ex-team-
+        // member king could just walk back to Team Corner and re-form, making the ascension-eviction
+        // pointless.
+        if (currentPlayer.King)
+        {
+            terminal.WriteLine("");
+            terminal.SetColor("red");
+            terminal.WriteLine(Loc.Get("team.king_cannot_join"));
+            terminal.WriteLine("");
+            await Task.Delay(2000);
+            return;
+        }
+
         if (!string.IsNullOrEmpty(currentPlayer.Team))
         {
             terminal.WriteLine("");
@@ -838,6 +852,17 @@ public class TeamCornerLocation : BaseLocation
     /// </summary>
     private async Task JoinTeam()
     {
+        // v0.57.13: kings cannot join teams — see CreateTeam for the rationale.
+        if (currentPlayer.King)
+        {
+            terminal.WriteLine("");
+            terminal.SetColor("red");
+            terminal.WriteLine(Loc.Get("team.king_cannot_join"));
+            terminal.WriteLine("");
+            await Task.Delay(2000);
+            return;
+        }
+
         if (!string.IsNullOrEmpty(currentPlayer.Team))
         {
             terminal.WriteLine("");

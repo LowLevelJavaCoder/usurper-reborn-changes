@@ -18308,5 +18308,6 @@
   "combat.rage_challenge_regen": "  Le Defi Enrage regenere {1} PV sur {0} !",
   "combat.tidesworn_weaken_bonus": "  Le {0} affaibli ne peut resister a la fureur de la maree !",
   "combat.ability_maelstrom_faithful": "  Le maelstrom affaiblit tous les ennemis pris dans son courant !",
-  "combat.shaman_windfury_proc": "Totem de Furie du Vent ! Une rafale guide votre lame — frappe principale supplémentaire !"
+  "combat.shaman_windfury_proc": "Totem de Furie du Vent ! Une rafale guide votre lame — frappe principale supplémentaire !",
+  "team.king_cannot_join": "Un roi ne peut ni rejoindre ni former un gang. La couronne reste seule."
 }

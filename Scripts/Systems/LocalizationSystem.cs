@@ -18,7 +18,8 @@ namespace UsurperRemake.Systems
     public static class Loc
     {
         private static readonly Dictionary<string, Dictionary<string, string>> _languages = new();
-        private static bool _loaded = false;
+        private static readonly object _initLock = new object();
+        private static volatile bool _loaded = false;
         private static (string Code, string Name)[] _availableLanguages = Array.Empty<(string, string)>();
 
         /// <summary>
@@ -60,7 +61,16 @@ namespace UsurperRemake.Systems
         public static void Initialize()
         {
             if (_loaded) return;
+            lock (_initLock)
+            {
+                if (_loaded) return;
+                InitializeLocked();
+                _loaded = true;
+            }
+        }
 
+        private static void InitializeLocked()
+        {
             // Look for Localization directory relative to the executable
             var exeDir = AppDomain.CurrentDomain.BaseDirectory;
             var searchPaths = new[]
@@ -85,7 +95,6 @@ namespace UsurperRemake.Systems
                 DebugLogger.Instance?.LogWarning("LOC", "Localization directory not found, using built-in English fallback");
                 _languages["en"] = GetBuiltInEnglish();
                 _availableLanguages = new[] { ("en", "English") };
-                _loaded = true;
                 return;
             }
 
@@ -126,8 +135,6 @@ namespace UsurperRemake.Systems
                 return string.Compare(a.Name, b.Name, StringComparison.Ordinal);
             });
             _availableLanguages = langList.ToArray();
-
-            _loaded = true;
         }
 
         /// <summary>

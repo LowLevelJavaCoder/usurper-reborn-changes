@@ -73,6 +73,14 @@ The title-screen banner (shown below the ASCII art) has been updated to announce
 
 Five localization keys updated across all 5 languages (en/es/fr/it/hu): `engine.alpha_compact`, `engine.alpha_sr`, `engine.alpha_wipe`, `engine.alpha_box_title`, `engine.alpha_box_wipe`. Box title padded to exactly 71 chars and wipe line to exactly 72 chars in every language so the English box aligns cleanly; non-English translations run long and overflow the right edge (pre-existing behavior, not worsened by this change). The "Report bugs / join Discord" lines (`alpha_report` / `alpha_box_report`) and `GameConfig.DiscordInvite` URL row are deliberately kept unchanged.
 
+## Kings Blocked from Joining Teams
+
+Player report: a king who ascended while on a team was forced out on ascension (existing behavior) but could then just walk to Team Corner and re-join or form a new one, nullifying the whole eviction.
+
+Root cause: `TeamCornerLocation.CreateTeam()` and `TeamCornerLocation.JoinTeam()` only checked `!string.IsNullOrEmpty(currentPlayer.Team)` as a gate — they didn't check `currentPlayer.King`. The "Apply" menu option at line 299 routes into `JoinTeam()` so it shared the same hole.
+
+Fix: added an early-exit king check to both entry points, message *"A king cannot join or form a gang. The crown stands alone."* New loc key `team.king_cannot_join` in all 5 languages. NPC recruitment INTO the king's own team is still allowed — that's the king wielding power, not joining.
+
 ## History / Story Screens — Double "Press to continue" Prompt
 
 `UsurperHistorySystem` was writing a hardcoded `[Press Enter to continue]` line in 5 places right before calling `terminal.WaitForKey()`, which itself renders `Press any key to continue...` — so the player saw both prompts stacked. Hardcoded lines removed; `WaitForKey` is the only prompt now.
@@ -98,6 +106,8 @@ Deployed Apr 24 01:19 UTC. No game restart required — nginx serves the static 
 - `web/package.json` — added `"discord.js": "^14.16.0"` dependency.
 - `web/index.html` — `_lastStatsData` cache + re-render hook on language load to fix the i18n race on the stats feed.
 - `Scripts/Systems/UsurperHistorySystem.cs` — removed 5 hardcoded `[Press Enter to continue]` lines; `WaitForKey()` (which already renders "Press any key to continue...") is now the single prompt.
+- `Scripts/Locations/TeamCornerLocation.cs` — `CreateTeam()` and `JoinTeam()` now early-exit with a localized message when `currentPlayer.King == true`, closing the hole where an ascended king could walk back to Team Corner and re-join a gang after the ascension-eviction had already fired.
+- `Localization/en.json`, `es.json`, `fr.json`, `it.json`, `hu.json` — new loc key `team.king_cannot_join` in all 5 languages.
 - `Localization/en.json`, `es.json`, `fr.json`, `it.json`, `hu.json` — `engine.alpha_compact` / `alpha_sr` / `alpha_wipe` / `alpha_box_title` / `alpha_box_wipe` updated with Beta-launch announcement. Box title padded to 71 chars, wipe to 72 chars for clean English box alignment.
 
 ## Deploy Notes

@@ -18308,5 +18308,6 @@
   "combat.rage_challenge_regen": "  Rage Challenge regenerates {1} HP on {0}!",
   "combat.tidesworn_weaken_bonus": "  The weakened {0} cannot withstand the tide's wrath!",
   "combat.ability_maelstrom_faithful": "  The maelstrom weakens all foes caught in its pull!",
-  "combat.shaman_windfury_proc": "Windfury Totem! A gust guides your blade — extra main-hand strike!"
+  "combat.shaman_windfury_proc": "Windfury Totem! A gust guides your blade — extra main-hand strike!",
+  "team.king_cannot_join": "A king cannot join or form a gang. The crown stands alone."
 }

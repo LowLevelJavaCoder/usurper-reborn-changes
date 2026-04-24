@@ -18308,5 +18308,6 @@
   "combat.rage_challenge_regen": "  La Sfida Rabbiosa rigenera {1} PS su {0}!",
   "combat.tidesworn_weaken_bonus": "  L'indebolito {0} non può resistere all'ira della marea!",
   "combat.ability_maelstrom_faithful": "  Il maelstrom indebolisce tutti i nemici presi nella sua corrente!",
-  "combat.shaman_windfury_proc": "Totem della Furia del Vento! Una raffica guida la tua lama: colpo extra con la mano principale!"
+  "combat.shaman_windfury_proc": "Totem della Furia del Vento! Una raffica guida la tua lama: colpo extra con la mano principale!",
+  "team.king_cannot_join": "Un re non puo unirsi a o fondare una banda. La corona resta sola."
 }
