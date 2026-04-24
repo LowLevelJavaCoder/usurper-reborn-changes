@@ -484,11 +484,15 @@ public static class TrainingSystem
 
         if (currentProgress >= requiredPoints)
         {
-            // Level up!
-            currentProgress -= requiredPoints;
+            // Level up! v0.57.13: discard overflow instead of carrying it into the next tier.
+            // Overflow was paid at the OLD tier's training-point rate but would be refunded by
+            // CalculateTotalPointsInvested at the NEW tier's (higher) rate on respec, inflating
+            // the refund. No current caller produces overflow (TrainSkill caps progressToAdd at
+            // progressToNextLevel; TryImproveFromUse adds 1), so this is purely a latent-bug
+            // guard — observable behavior is unchanged.
             var newLevel = (ProficiencyLevel)((int)currentLevel + 1);
             SetSkillProficiency(character, skillId, newLevel);
-            character.SkillTrainingProgress[skillId] = currentProgress;
+            character.SkillTrainingProgress[skillId] = 0;
             return true;
         }
 

@@ -85,6 +85,22 @@ public static class DiscordBridge
         }
     }
 
+    /// <summary>
+    /// Sentinel "author" used for system events (login/logout, server announcements).
+    /// The Node-side bot recognises this and renders the message as an italicised
+    /// system line instead of a normal gossip post.
+    /// </summary>
+    public const string SystemAuthor = "__SYSTEM__";
+
+    /// <summary>
+    /// Queue a system event (login, logout, ...) for Discord. The Node bot formats
+    /// these differently from regular gossip. Fire-and-forget.
+    /// </summary>
+    public static void QueueSystemEvent(string message)
+    {
+        QueueOutbound(SystemAuthor, message);
+    }
+
     public record InboundMessage(long Id, string Author, string Message);
 
     /// <summary>

@@ -40,6 +40,7 @@ namespace UsurperRemake.Systems
         private bool isDisposed = false;
         private int cachedOnlinePlayerCount = 1; // Default to 1 (self)
         private long lastSeenMessageId = 0; // Track last processed message to avoid re-fetching broadcasts
+        private string? cachedDisplayName; // Last display name registered, used for Discord logout message
 
         /// <summary>
         /// Connection type saved at auth time, used by GameEngine.LoadSaveByFileName()
@@ -896,6 +897,10 @@ namespace UsurperRemake.Systems
             await backend.RegisterOnline(username, displayName, currentLocation, connectionType, ipAddress);
             await backend.UpdatePlayerSession(username, isLogin: true);
 
+            // v0.57.13: announce arrival to Discord gossip channel (no-op if bridge disabled)
+            cachedDisplayName = displayName;
+            try { DiscordBridge.QueueSystemEvent($"{displayName} has entered the world."); } catch { }
+
             // Initialize message watermark to current max ID so we don't replay old broadcasts
             try { lastSeenMessageId = await backend.GetMaxMessageId(); }
             catch { lastSeenMessageId = 0; }
@@ -1108,6 +1113,11 @@ namespace UsurperRemake.Systems
             {
                 await backend.UnregisterOnline(username);
                 await backend.UpdatePlayerSession(username, isLogin: false);
+
+                // v0.57.13: announce departure to Discord gossip channel (no-op if bridge disabled)
+                var departName = cachedDisplayName ?? username;
+                try { DiscordBridge.QueueSystemEvent($"{departName} has left the world."); } catch { }
+
                 DebugLogger.Instance.LogInfo("ONLINE", $"Online tracking stopped for '{username}'");
             }
             catch (Exception ex)

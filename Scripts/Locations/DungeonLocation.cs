@@ -4361,9 +4361,6 @@ public class DungeonLocation : BaseLocation
                 {
                     await DisplayDungeonVision(vision);
                 }
-
-                // Check for companion personal quest encounters
-                await CheckCompanionQuestEncounters(player, targetRoom);
             }
             else
             {
@@ -4371,6 +4368,21 @@ public class DungeonLocation : BaseLocation
                 // knows where they are (especially important for screen reader users)
                 terminal.SetColor("gray");
                 terminal.WriteLine(Loc.Get("dungeon.you_return_room", targetRoom.Name));
+            }
+
+            // v0.57.13 (Lumina report — Lv.100 Magician who recruited Melodia after
+            // clearing floors 50-60): companion personal-quest encounters now run on
+            // every room entry, not just first visits. Before this change, a player
+            // who cleared a quest's floor range before recruiting the companion (or
+            // before the companion hit the loyalty threshold to start the quest) was
+            // permanently locked out — the 15%/room chance never got a shot. Each
+            // quest has its own one-shot story-flag guard (melodia_quest_opus_found,
+            // lyris_quest_artifact_found, aldric_quest_demon_confronted,
+            // mira_quest_choice_made), so firing on re-entry can't double-trigger.
+            // Vex is unaffected (no floor range, can trigger anywhere).
+            if (player != null)
+            {
+                await CheckCompanionQuestEncounters(player, targetRoom);
             }
 
             // 15% chance: companion idle comment while exploring

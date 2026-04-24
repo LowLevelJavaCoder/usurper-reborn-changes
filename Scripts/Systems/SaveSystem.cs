@@ -276,6 +276,22 @@ namespace UsurperRemake.Systems
         }
 
         /// <summary>
+        /// v0.57.14: Load-path resilience — returns the save data or a specific
+        /// error message so the caller can show meaningful diagnostics to the player
+        /// instead of "corrupted". Only supported on file backends; online (SQL)
+        /// backend falls back to the nullable return with a generic error.
+        /// </summary>
+        public async Task<(SaveGameData? Data, string? Error)> LoadSaveByFileNameWithError(string fileName)
+        {
+            if (backend is FileSaveBackend fileBackend)
+            {
+                return await fileBackend.ReadGameDataByFileNameWithError(fileName);
+            }
+            var data = await backend.ReadGameDataByFileName(fileName);
+            return (data, data == null ? $"Could not read save: {fileName}" : null);
+        }
+
+        /// <summary>
         /// Get list of all unique player names that have saves
         /// </summary>
         public List<string> GetAllPlayerNames()

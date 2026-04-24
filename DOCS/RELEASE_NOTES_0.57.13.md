@@ -89,6 +89,26 @@ Root cause: the save-load equipment migration at `GameEngine.cs:4320` was introd
 
 Fix: migration now detects shields up front via `ShieldBonus > 0 || BlockChance > 0 || WeaponType ∈ {Shield, Buckler, TowerShield}` and skips the weapon-infer path for them. For shields that previously got mangled by a prior load, a heal branch resets `Handedness = OffHandOnly` and re-infers the shield sub-type via `InferShieldType`, so affected saves self-repair on next login. Both migration sites updated. Tests: 641/641 pass under invariant globalization (matches CI).
 
+## Companion Quest Encounters Locked Out After First-Clearing the Floor Range
+
+Lumina report (Lv.100 Elf Magician, online): visited floors 50 and 60 looking for Melodia's "The Lost Opus" quest encounter, saw "Fully Cleared" everywhere, couldn't interact with anything beyond examining scenery. *"Did I lock myself out from Melodia's quest?"*
+
+Yes — and it wasn't just Melodia. All four floor-ranged companion quests (Aldric 55-65, Mira 40-50, Lyris 80-90, Melodia 50-60) had the same shape: `CheckCompanionQuestEncounters` was called inside the `if (!targetRoom.IsExplored)` block in `MoveToRoom`, so the per-room 15% chance only ever rolled on the room's FIRST visit. Once every room in the quest's floor range was explored, the trigger window was permanently gone. A player who cleared a range before recruiting the companion (or before loyalty hit the 50 threshold needed to start the quest at the Inn) was silently locked out with no signal. Vex is unaffected — his quest has no floor range and already got a parallel late-game gate in v0.57.10.
+
+This stacks with how each companion is gated into the game: Melodia recruits at the Music Shop at Lv.20+, but her quest floor range is 50-60 — an end-game player who recruited her at Lv.20, played happily up through the dungeon, THEN hit the loyalty-50 threshold to start her quest, was past the window by the time they could activate it. Lumina's case exactly.
+
+Fix: moved `CheckCompanionQuestEncounters` out of the first-visit-only block. It now fires on every room entry. Safe because each quest already has a one-shot story-flag guard (`melodia_quest_opus_found`, `lyris_quest_artifact_found`, `aldric_quest_demon_confronted`, `mira_quest_choice_made`) that bails out after the encounter has happened once, so re-visiting doesn't re-trigger.
+
+For Lumina specifically: she can go back to floors 50-60 with Melodia active and the quest will now have a chance to trigger on each room she re-enters.
+
+## Training-Points Respec Inflation (Latent)
+
+Community bug report from Coosh flagged a correctness issue in the training-skill respec accounting. `CalculateTotalPointsInvested` computes the refund as *(completed tier costs) + (currentProgress × currentTier cost-per-point)*, but `AddTrainingProgress` on a level-up carries overflow (`currentProgress -= requiredPoints`) forward into the new tier. Because each tier has a higher training-point cost per progress point, the overflow would be refunded at the NEW tier's rate, even though those points were actually paid at the OLD tier's rate. Example with our rates: overflow 1 at Good→Skilled transition would be refunded at Skilled's 3 pts/progress instead of Good's 2 pts/progress — +1 training point gained per respec per overflow point.
+
+In practice the bug is latent — none of the current callers produce overflow. `TrainSkill` caps `progressToAdd` at `progressToNextLevel` (exact) or `maxProgressAffordable` (always less), and `TryImproveFromUse` adds exactly 1 per combat use. So `currentProgress -= requiredPoints` always lands on 0 today. But the gap is real in code and a future caller, admin edit, or refactor could trigger it.
+
+Fix: `AddTrainingProgress` now stores 0 instead of the overflow after a level-up. Observable game behavior is unchanged (no current caller produces overflow); the refund math is now provably exact. No save migration needed — existing saves with stored overflow are rare-to-zero, and on the next level-up they'll snap to 0 cleanly.
+
 ## CI Test Failures Under Invariant Globalization
 
 CI run 24871997948 failed 48 of 641 tests with `ArgumentNullException: Value cannot be null. (Parameter 'key')` at `LocalizationSystem.cs:118`. Locally all tests passed. Reproducible locally under `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1` (which matches CI's env).

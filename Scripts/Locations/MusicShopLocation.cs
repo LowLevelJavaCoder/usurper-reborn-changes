@@ -388,11 +388,17 @@ public class MusicShopLocation : BaseLocation
 
         var instruments = EquipmentDatabase.GetShopWeapons(WeaponHandedness.OneHanded)
             .Where(w => w.WeaponType == WeaponType.Instrument)
+            .OrderBy(i => i.MinLevel)
+            .ThenBy(i => i.Value)
             .ToList();
 
-        int playerLevel = currentPlayer.Level;
-        // Show instruments within a wide range — companions may be higher level than the player
-        instruments = instruments.Where(i => i.MinLevel <= playerLevel + 30 && i.MinLevel >= Math.Max(1, playerLevel - 20)).ToList();
+        // v0.57.13 (Lumina report — Lv.100 trying to buy an Old Lute for Melodia):
+        // previous filter `MinLevel <= playerLevel + 30 && MinLevel >= playerLevel - 20`
+        // hid every low-level instrument from a high-level player, so a Lv.100 player
+        // shopping for a low-level companion literally couldn't browse to the instrument
+        // they wanted. Weapon shop shows everything from level 1 on — matching that.
+        // Display still greys out items the player can't equip / can't afford, and
+        // PurchaseInstrument enforces class + level at the point of sale.
 
         if (instruments.Count == 0)
         {
@@ -487,39 +493,62 @@ public class MusicShopLocation : BaseLocation
         terminal.WriteLine(Loc.Get("music_shop.or_quit"));
 
         string input = await GetChoice();
-        if (string.IsNullOrEmpty(input)) return;
+
+        // v0.57.13 (Lumina report — "list just returns to the shop without any
+        // announcement"): previously, pressing P on page 1 or N on the last page fell
+        // through to int.TryParse, failed to match, reset currentPage and exited to
+        // the main shop menu silently. Now boundary presses and unknown input stay on
+        // the current page so the browser is actually navigable. Only Q or a valid
+        // purchase exit (and a successful purchase resets to page 1 for the next
+        // visit).
+
+        if (string.IsNullOrEmpty(input))
+        {
+            await BuyInstruments();
+            return;
+        }
 
         string upper = input.ToUpper();
-        if (upper == "N" && currentPage < totalPages - 1)
+        if (upper == "Q")
         {
-            currentPage++;
+            currentPage = 0;
+            return;
+        }
+
+        if (upper == "N")
+        {
+            if (currentPage < totalPages - 1) currentPage++;
             await BuyInstruments();
             return;
         }
-        if (upper == "P" && currentPage > 0)
+
+        if (upper == "P")
         {
-            currentPage--;
+            if (currentPage > 0) currentPage--;
             await BuyInstruments();
             return;
         }
-        if (upper == "Q") return;
 
         if (int.TryParse(input, out int selection) && selection >= 1 && selection <= pageItems.Count)
         {
             await PurchaseInstrument(pageItems[selection - 1]);
+            currentPage = 0;
+            return;
         }
 
-        currentPage = 0;
+        // Unknown input — stay on current page
+        await BuyInstruments();
     }
 
     private async Task BuyInstrumentByNumber(int itemNum)
     {
+        // Must match the order used by BuyInstruments() so that typing a number from
+        // the visible list selects the correct instrument.
         var instruments = EquipmentDatabase.GetShopWeapons(WeaponHandedness.OneHanded)
             .Where(w => w.WeaponType == WeaponType.Instrument)
+            .OrderBy(i => i.MinLevel)
+            .ThenBy(i => i.Value)
             .ToList();
-        int playerLevel = currentPlayer.Level;
-        // Show instruments within a wide range — companions may be higher level than the player
-        instruments = instruments.Where(i => i.MinLevel <= playerLevel + 30 && i.MinLevel >= Math.Max(1, playerLevel - 20)).ToList();
 
         if (itemNum > instruments.Count) return;
         await PurchaseInstrument(instruments[itemNum - 1]);

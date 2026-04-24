@@ -2838,11 +2838,14 @@ function handleHttpRequest(req, res) {
 //   `from_discord` row. The C# MudServer.DiscordBridgePollerAsync picks it up and broadcasts.
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN || '';
 const DISCORD_GOSSIP_CHANNEL_ID = process.env.DISCORD_GOSSIP_CHANNEL_ID || '';
+const DISCORD_STATS_CHANNEL_ID = process.env.DISCORD_STATS_CHANNEL_ID || ''; // v0.57.13: live stats embed channel
 const DISCORD_RATE_LIMIT_MS = 3000;
 const DISCORD_MAX_MESSAGE_LENGTH = 200;
 const DISCORD_POLL_INTERVAL_MS = 250; // v0.57.13: 2000→250 for near-real-time feel. SQLite handles it easily; indexed query on empty poll ~microseconds.
 const DISCORD_CLEANUP_INTERVAL_MS = 60 * 60 * 1000; // 1h
 const DISCORD_CLEANUP_RETENTION_MS = 7 * 24 * 60 * 60 * 1000; // 7d
+const DISCORD_STATS_UPDATE_INTERVAL_MS = 60 * 1000; // 60s — well under Discord's per-channel edit rate limit
+const DISCORD_STATS_ONLINE_MAX_LINES = 20; // cap visible players to keep the embed under Discord's 4096 field-value limit
 
 let discordClient = null;
 let discordGossipChannel = null;
@@ -2877,6 +2880,52 @@ function sanitizeDiscordMessage(content) {
   // Strip control chars except regular whitespace.
   text = text.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '');
   return text.trim();
+}
+
+// v0.57.13: Build the response body for Discord's `!who` command.
+// Queries the shared online_players table directly — no round-trip to the game.
+// Uses the same CLASS_NAMES array + immortal handling as the stats API so the
+// output matches what the website shows.
+function buildWhoResponse() {
+  if (!db) {
+    return 'The tavern\'s register is unreadable right now. Try again in a moment.';
+  }
+  try {
+    const rows = db.prepare(`
+      SELECT op.username, op.display_name, op.location, op.connection_type,
+             json_extract(p.player_data, '$.player.level') as level,
+             json_extract(p.player_data, '$.player.class') as class_id,
+             json_extract(p.player_data, '$.player.isImmortal') as is_immortal,
+             json_extract(p.player_data, '$.player.godLevel') as god_level,
+             json_extract(p.player_data, '$.player.nobleTitle') as noble_title
+      FROM online_players op
+      LEFT JOIN players p ON LOWER(op.username) = LOWER(p.username)
+      WHERE op.last_heartbeat >= datetime('now', '-120 seconds')
+      ORDER BY op.display_name
+    `).all();
+
+    if (rows.length === 0) {
+      return '*The tavern is quiet. No adventurers are currently in-game.*';
+    }
+
+    const lines = rows.map(row => {
+      const isImmortal = row.is_immortal === 1 || row.is_immortal === true;
+      const rawName = row.display_name || row.username;
+      const name = row.noble_title ? `${row.noble_title} ${rawName}` : rawName;
+      const level = isImmortal ? (row.god_level || 1) : (row.level || 1);
+      const className = isImmortal ? 'Immortal' : (CLASS_NAMES[row.class_id] || 'Unknown');
+      const location = row.location || 'Unknown';
+      return `- **${name}** — Lv.${level} ${className} at ${location}`;
+    });
+
+    const header = rows.length === 1
+      ? '**1 adventurer in-game:**'
+      : `**${rows.length} adventurers in-game:**`;
+    return `${header}\n${lines.join('\n')}`;
+  } catch (err) {
+    console.error('[Discord] buildWhoResponse failed:', err.message);
+    return 'The tavern\'s register is unreadable right now. Try again in a moment.';
+  }
 }
 
 function insertDiscordInbound(author, message) {
@@ -2928,7 +2977,12 @@ async function pollDiscordOutbound() {
     }
 
     for (const row of rows) {
-      const body = `**${row.author}** *(in-game)*: ${row.message}`;
+      // v0.57.13: system events (login, logout, etc) use the sentinel author
+      // `__SYSTEM__` and render as italic, no author bold, no "(in-game):" suffix.
+      const isSystem = row.author === '__SYSTEM__';
+      const body = isSystem
+        ? `*${row.message}*`
+        : `**${row.author}** *(in-game)*: ${row.message}`;
       try {
         await discordGossipChannel.send({
           content: body,
@@ -2952,6 +3006,173 @@ function cleanupDiscordBridge() {
     dbWrite.prepare(`DELETE FROM discord_gossip WHERE processed = 1 AND created_at < ?`).run(cutoff);
   } catch (err) {
     console.error('[Discord] Cleanup failed:', err.message);
+  }
+}
+
+// ---- v0.57.13: Live stats channel ----
+// Designated stats channel shows a single embed that we edit in place every minute
+// with current online list, aggregate server stats, highlights, game-server uptime,
+// and connect instructions. Single message — not spam.
+
+let _discordStatsChannel = null;
+let _discordStatsMessageId = null;
+let _discordStatsUpdateInFlight = false;
+
+// Read the game server's start time from systemd. No sudo needed for read-only
+// systemctl queries. Returns a Date or null.
+function getGameServerStart() {
+  try {
+    const out = require('child_process')
+      .execSync('systemctl show --value -p ActiveEnterTimestamp usurper-mud', {
+        timeout: 2000,
+        encoding: 'utf8'
+      })
+      .trim();
+    if (!out) return null;
+    const d = new Date(out);
+    return isNaN(d.getTime()) ? null : d;
+  } catch (err) {
+    return null;
+  }
+}
+
+function formatUptime(startDate) {
+  if (!startDate) return 'Unknown';
+  const ms = Date.now() - startDate.getTime();
+  if (ms < 0) return 'Unknown';
+  const days = Math.floor(ms / 86400000);
+  const hours = Math.floor((ms % 86400000) / 3600000);
+  const mins = Math.floor((ms % 3600000) / 60000);
+  if (days > 0) return `${days}d ${hours}h ${mins}m`;
+  if (hours > 0) return `${hours}h ${mins}m`;
+  return `${mins}m`;
+}
+
+function truncate(str, max) {
+  if (!str) return '';
+  return str.length > max ? str.slice(0, max - 1) + '…' : str;
+}
+
+// Build the stats embed object. Reuses getStats() which is already cached (30s).
+function buildStatsEmbed() {
+  const stats = getStats();
+
+  // Online list — truncate to DISCORD_STATS_ONLINE_MAX_LINES to stay under
+  // Discord's 4096-char-per-field limit. With ~80 chars per line we have plenty
+  // of headroom, but cap anyway for sanity.
+  const online = stats.online || [];
+  const onlineHeader = online.length === 0
+    ? 'Nobody is currently adventuring.'
+    : online.length === 1 ? '1 adventurer in-game:' : `${online.length} adventurers in-game:`;
+  const visible = online.slice(0, DISCORD_STATS_ONLINE_MAX_LINES);
+  const onlineBody = visible.map(p =>
+    `• **${p.name}** — Lv.${p.level} ${p.className} @ ${p.location}`
+  ).join('\n');
+  const hiddenCount = online.length - visible.length;
+  const onlineFooter = hiddenCount > 0 ? `\n*...and ${hiddenCount} more*` : '';
+  const onlineValue = onlineBody
+    ? `${onlineHeader}\n${onlineBody}${onlineFooter}`
+    : onlineHeader;
+
+  // Aggregate stats
+  const agg = stats.stats || {};
+  const worldTotalsLines = [
+    `**Registered players:** ${agg.totalPlayers || 0}`,
+    `**Total monsters slain:** ${(agg.totalKills || 0).toLocaleString()}`,
+    `**Average level:** ${agg.avgLevel || 0}`,
+    `**Highest level:** ${agg.maxLevel || 0}`,
+    `**Deepest floor reached:** ${agg.deepestFloor || 0}`
+  ];
+
+  // Highlights. Note: getStats() returns `king` and `popularClass` as plain strings
+  // (not objects). `topPlayer` IS an object ({name, level, className}).
+  const hi = stats.highlights || {};
+  const highlightLines = [];
+  if (hi.topPlayer) highlightLines.push(`**Top player:** ${hi.topPlayer.name} (Lv.${hi.topPlayer.level} ${hi.topPlayer.className})`);
+  if (hi.king) highlightLines.push(`**Current king:** ${hi.king}`);
+  if (hi.popularClass) highlightLines.push(`**Popular class:** ${hi.popularClass}`);
+  const highlightsValue = highlightLines.length > 0
+    ? highlightLines.join('\n')
+    : '*No highlights yet.*';
+
+  // Server uptime
+  const serverStart = getGameServerStart();
+  const uptimeValue = serverStart
+    ? `**Running for:** ${formatUptime(serverStart)}\n**Since:** <t:${Math.floor(serverStart.getTime() / 1000)}:f>`
+    : '*Uptime unavailable.*';
+
+  // Connection instructions
+  const connectValue =
+    '**Direct SSH:**\n```\nssh usurper@play.usurper-reborn.net -p 4000\n```' +
+    '**Web terminal:**\nhttps://usurper-reborn.net\n' +
+    '**BBS doors:** see bbs list on the website';
+
+  return {
+    title: 'Usurper Reborn — Live Server Status',
+    color: 0x4a90e2,
+    fields: [
+      { name: `👥 Online (${online.length})`, value: truncate(onlineValue, 1024), inline: false },
+      { name: '⚔️ World Totals', value: truncate(worldTotalsLines.join('\n'), 1024), inline: true },
+      { name: '✨ Highlights', value: truncate(highlightsValue, 1024), inline: true },
+      { name: '🕐 Server', value: truncate(uptimeValue, 1024), inline: false },
+      { name: '🔌 How to Connect', value: truncate(connectValue, 1024), inline: false }
+    ],
+    footer: { text: 'Auto-updates every minute' },
+    timestamp: new Date().toISOString()
+  };
+}
+
+// Find the bot's existing stats message in the channel, or post a new one.
+// Called once on bot ready. Keeps _discordStatsMessageId set so subsequent
+// updates edit-in-place rather than post-and-spam.
+async function initStatsMessage() {
+  if (!_discordStatsChannel || !discordClient) return;
+  try {
+    const messages = await _discordStatsChannel.messages.fetch({ limit: 50 });
+    const mine = messages.find(m => m.author.id === discordClient.user.id);
+    if (mine) {
+      _discordStatsMessageId = mine.id;
+      console.log(`[Discord] Stats: reusing existing message ${mine.id}`);
+      return;
+    }
+    // No existing — post fresh
+    const msg = await _discordStatsChannel.send({ embeds: [buildStatsEmbed()] });
+    _discordStatsMessageId = msg.id;
+    console.log(`[Discord] Stats: posted new message ${msg.id}`);
+  } catch (err) {
+    console.error('[Discord] Stats init failed:', err.message);
+  }
+}
+
+async function updateStatsChannel() {
+  if (!_discordStatsChannel) return;
+  if (_discordStatsUpdateInFlight) return;
+  _discordStatsUpdateInFlight = true;
+  try {
+    const embed = buildStatsEmbed();
+
+    if (_discordStatsMessageId) {
+      try {
+        const msg = await _discordStatsChannel.messages.fetch(_discordStatsMessageId);
+        await msg.edit({ embeds: [embed] });
+        return;
+      } catch (err) {
+        // Message likely deleted — fall through to repost
+        console.warn('[Discord] Stats: edit failed, will repost:', err.message);
+        _discordStatsMessageId = null;
+      }
+    }
+
+    // Either no message ID yet or the edit failed — post fresh
+    try {
+      const msg = await _discordStatsChannel.send({ embeds: [embed] });
+      _discordStatsMessageId = msg.id;
+      console.log(`[Discord] Stats: posted replacement message ${msg.id}`);
+    } catch (err) {
+      console.error('[Discord] Stats post failed:', err.message);
+    }
+  } finally {
+    _discordStatsUpdateInFlight = false;
   }
 }
 
@@ -2982,7 +3203,7 @@ function startDiscordBridge() {
     ]
   });
 
-  discordClient.once(Events.ClientReady, c => {
+  discordClient.once(Events.ClientReady, async c => {
     console.log(`[Discord] Bridge logged in as ${c.user.tag}`);
     const ch = c.channels.cache.get(DISCORD_GOSSIP_CHANNEL_ID);
     if (!ch) {
@@ -2994,11 +3215,70 @@ function startDiscordBridge() {
 
     setInterval(pollDiscordOutbound, DISCORD_POLL_INTERVAL_MS);
     setInterval(cleanupDiscordBridge, DISCORD_CLEANUP_INTERVAL_MS);
+
+    // v0.57.13: optional live stats channel (separate from gossip)
+    if (DISCORD_STATS_CHANNEL_ID) {
+      const statsCh = c.channels.cache.get(DISCORD_STATS_CHANNEL_ID);
+      if (!statsCh) {
+        console.error(`[Discord] Stats channel ${DISCORD_STATS_CHANNEL_ID} not found — skipping live stats`);
+      } else {
+        _discordStatsChannel = statsCh;
+        console.log(`[Discord] Stats channel: #${statsCh.name} (type=${statsCh.type}, guild=${statsCh.guild ? statsCh.guild.name : '?'})`);
+
+        // Diagnostic: dump the bot's actual permissions on this channel so we can
+        // see what's denied if the init fails with "Missing Permissions".
+        try {
+          const me = statsCh.guild ? statsCh.guild.members.me : null;
+          if (me) {
+            const perms = statsCh.permissionsFor(me);
+            const needed = ['ViewChannel', 'SendMessages', 'EmbedLinks', 'ReadMessageHistory'];
+            const report = needed.map(p => `${p}=${perms.has(p) ? 'yes' : 'NO'}`).join(', ');
+            console.log(`[Discord] Stats channel perms: ${report}`);
+          } else {
+            console.log('[Discord] Stats channel perms: could not resolve guild member object');
+          }
+        } catch (err) {
+          console.error('[Discord] Perm check failed:', err.message);
+        }
+
+        await initStatsMessage();
+        // First refresh after 5s (so the initial post has correct stats), then on interval
+        setTimeout(updateStatsChannel, 5000);
+        setInterval(updateStatsChannel, DISCORD_STATS_UPDATE_INTERVAL_MS);
+      }
+    } else {
+      console.log('[Discord] Stats channel not configured (DISCORD_STATS_CHANNEL_ID missing) — skipping live stats');
+    }
   });
 
-  discordClient.on(Events.MessageCreate, message => {
+  discordClient.on(Events.MessageCreate, async message => {
     if (message.author.bot) return;
     if (message.channelId !== DISCORD_GOSSIP_CHANNEL_ID) return;
+
+    // v0.57.13: intercept Discord-side commands (prefixed with `!`) BEFORE the
+    // gossip relay path. Commands are not relayed into the game, are not rate-
+    // limited with the gossip rate limit, and respond directly in the channel.
+    const trimmed = (message.content || '').trim();
+    if (trimmed === '!who' || trimmed === '!online') {
+      try {
+        const body = buildWhoResponse();
+        await message.channel.send({ content: body, allowedMentions: { parse: [] } });
+      } catch (err) {
+        console.error('[Discord] !who failed:', err.message);
+      }
+      return;
+    }
+    if (trimmed === '!help') {
+      try {
+        await message.channel.send({
+          content: '**In-game bridge commands:**\n`!who` — list players currently in-game\n`!help` — this message\nAny other message is relayed to the in-game `/gos` channel.',
+          allowedMentions: { parse: [] }
+        });
+      } catch (err) {
+        console.error('[Discord] !help failed:', err.message);
+      }
+      return;
+    }
 
     const clean = sanitizeDiscordMessage(message.content);
     if (!clean) return;

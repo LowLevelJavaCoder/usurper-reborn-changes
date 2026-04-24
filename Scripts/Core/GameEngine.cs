@@ -2360,27 +2360,23 @@ public partial class GameEngine
         {
             terminal.WriteLine(Loc.Get("engine.loading_save"), "yellow");
 
-            var saveData = await SaveSystem.Instance.LoadSaveByFileName(fileName);
+            // v0.57.14: use the error-reporting load path so we can show the player
+            // what actually went wrong (missing file, disk error, malformed JSON,
+            // OOM on a bloated save) instead of a generic "corrupted" line. The old
+            // path silently returned null on any exception, which made it look like
+            // the save had vanished even when the file was intact on disk.
+            var (saveData, loadError) = await SaveSystem.Instance.LoadSaveByFileNameWithError(fileName);
             if (saveData == null)
             {
-                terminal.WriteLine(Loc.Get("engine.load_failed"), "red");
-                terminal.WriteLine(Loc.Get("engine.load_corrupted"), "yellow");
-                await Task.Delay(2000);
-                // In online/door mode, offer to create a new character instead of just exiting
-                if (UsurperRemake.BBS.DoorMode.IsInDoorMode || UsurperRemake.BBS.DoorMode.IsOnlineMode)
-                {
-                    terminal.WriteLine(Loc.Get("engine.starting_new_instead"), "yellow");
-                    await Task.Delay(1000);
-                    await CreateNewGame(fileName);
-                }
+                await ShowLoadFailureWithRecovery(fileName, loadError ?? "Unknown error — save file could not be parsed.");
                 return;
             }
 
             // Validate save data
             if (saveData.Player == null)
             {
-                terminal.WriteLine(Loc.Get("engine.missing_player_data"), "red");
-                await Task.Delay(3000);
+                // v0.57.14: no player data — treat like a failed load and show recovery
+                await ShowLoadFailureWithRecovery(fileName, "Save file parsed successfully but contains no player data. The save may have been written incompletely.");
                 return;
             }
 
@@ -2889,6 +2885,166 @@ public partial class GameEngine
             UsurperRemake.Systems.DebugLogger.Instance.Flush();
             await Task.Delay(3000);
         }
+    }
+
+    /// <summary>
+    /// v0.57.14: Show a detailed load-failure report and offer recovery options.
+    /// Displays the specific error (from FileSaveBackend.ReadGameDataByFileNameWithError),
+    /// the full path to the save file, and any recovery files that exist alongside it
+    /// (<name>_backup.json, emergency_autosave.json, timestamped autosaves). The player
+    /// can choose to load the backup, start a new character (single-player wipes the
+    /// broken save when they do), or return to the main menu and manually investigate.
+    /// Goal: never make a player think their saves silently disappeared.
+    /// </summary>
+    private async Task ShowLoadFailureWithRecovery(string fileName, string errorMessage)
+    {
+        terminal.WriteLine("");
+        terminal.WriteLine("========================================================================", "red");
+        terminal.WriteLine("  SAVE LOAD FAILED", "bright_red");
+        terminal.WriteLine("========================================================================", "red");
+        terminal.WriteLine("");
+        terminal.WriteLine("The game could not load your save. Your save file is still on disk —", "yellow");
+        terminal.WriteLine("it was NOT deleted. Details below so you can recover it.", "yellow");
+        terminal.WriteLine("");
+
+        terminal.WriteLine("Error:", "bright_white");
+        terminal.WriteLine($"  {errorMessage}", "red");
+        terminal.WriteLine("");
+
+        // Discover recovery files
+        string saveDir = "";
+        try { saveDir = SaveSystem.Instance.GetSaveDirectory(); } catch { }
+
+        string baseName = System.IO.Path.GetFileNameWithoutExtension(fileName);
+        var recoveryOptions = new List<(string label, string path)>();
+
+        if (!string.IsNullOrEmpty(saveDir) && System.IO.Directory.Exists(saveDir))
+        {
+            terminal.WriteLine("Save folder:", "bright_white");
+            terminal.WriteLine($"  {saveDir}", "cyan");
+            terminal.WriteLine("");
+
+            // Primary backup
+            string backupPath = System.IO.Path.Combine(saveDir, $"{baseName}_backup.json");
+            if (System.IO.File.Exists(backupPath))
+            {
+                var info = new System.IO.FileInfo(backupPath);
+                recoveryOptions.Add(($"Backup from {info.LastWriteTime:yyyy-MM-dd HH:mm}", backupPath));
+            }
+
+            // Timestamped autosaves (most recent first)
+            try
+            {
+                var autosaves = System.IO.Directory.GetFiles(saveDir, $"{baseName}_autosave_*.json")
+                    .Select(p => new System.IO.FileInfo(p))
+                    .OrderByDescending(fi => fi.LastWriteTime)
+                    .Take(3)
+                    .ToList();
+                foreach (var fi in autosaves)
+                {
+                    recoveryOptions.Add(($"Autosave from {fi.LastWriteTime:yyyy-MM-dd HH:mm}", fi.FullName));
+                }
+            }
+            catch { }
+
+            // Emergency autosave (not tied to this character name, but worth mentioning)
+            string emergencyPath = System.IO.Path.Combine(saveDir, "emergency_autosave.json");
+            if (System.IO.File.Exists(emergencyPath))
+            {
+                var info = new System.IO.FileInfo(emergencyPath);
+                recoveryOptions.Add(($"Emergency autosave from {info.LastWriteTime:yyyy-MM-dd HH:mm}", emergencyPath));
+            }
+        }
+
+        if (recoveryOptions.Count > 0)
+        {
+            terminal.WriteLine("Recovery files found:", "bright_white");
+            for (int i = 0; i < recoveryOptions.Count; i++)
+            {
+                terminal.WriteLine($"  [{i + 1}] {recoveryOptions[i].label}", "bright_cyan");
+                terminal.WriteLine($"      {recoveryOptions[i].path}", "dark_gray");
+            }
+            terminal.WriteLine("");
+            terminal.WriteLine("Options:", "bright_white");
+            terminal.WriteLine("  [1-" + recoveryOptions.Count + "] Try to load a recovery file", "yellow");
+            terminal.WriteLine("  [N]    Start a NEW character (will overwrite the broken save)", "yellow");
+            terminal.WriteLine("  [Q]    Return to main menu without loading", "yellow");
+        }
+        else
+        {
+            terminal.WriteLine("No backup or autosave files were found alongside the save.", "yellow");
+            terminal.WriteLine("");
+            terminal.WriteLine("Manual recovery steps:", "bright_white");
+            terminal.WriteLine("  1. Open the save folder above in a file browser", "gray");
+            terminal.WriteLine("  2. Open the save file in a text editor (e.g. Notepad, VS Code)", "gray");
+            terminal.WriteLine("  3. The JSON at the top of the file contains your character data", "gray");
+            terminal.WriteLine("");
+            terminal.WriteLine("Options:", "bright_white");
+            terminal.WriteLine("  [N]    Start a NEW character (will overwrite the broken save)", "yellow");
+            terminal.WriteLine("  [Q]    Return to main menu without loading", "yellow");
+        }
+        terminal.WriteLine("");
+
+        var choice = (await terminal.GetInput("Your choice: ")).Trim().ToUpperInvariant();
+
+        if (choice == "Q" || string.IsNullOrEmpty(choice))
+        {
+            return;
+        }
+
+        if (choice == "N")
+        {
+            terminal.WriteLine("");
+            terminal.WriteLine("Starting new character...", "yellow");
+            await Task.Delay(800);
+            await CreateNewGame(fileName);
+            return;
+        }
+
+        if (int.TryParse(choice, out int recoveryIndex) &&
+            recoveryIndex >= 1 && recoveryIndex <= recoveryOptions.Count)
+        {
+            var (label, path) = recoveryOptions[recoveryIndex - 1];
+            terminal.WriteLine("");
+            terminal.WriteLine($"Attempting to load {label}...", "yellow");
+            await Task.Delay(800);
+
+            // Use the filename (not full path) — SaveSystem loads from SaveDirectory.
+            string recoveryFileName = System.IO.Path.GetFileName(path);
+            var (recoveryData, recoveryError) = await SaveSystem.Instance.LoadSaveByFileNameWithError(recoveryFileName);
+
+            if (recoveryData?.Player == null)
+            {
+                terminal.WriteLine("");
+                terminal.WriteLine("That recovery file also failed to load.", "red");
+                terminal.WriteLine($"  {recoveryError ?? "Missing player data"}", "red");
+                terminal.WriteLine("");
+                await terminal.PressAnyKey();
+                // Re-enter the recovery menu so the player can pick a different file
+                await ShowLoadFailureWithRecovery(fileName, errorMessage);
+                return;
+            }
+
+            // Recovery file parsed — copy it over the primary and reload through the
+            // normal path so all the post-load restoration runs.
+            try
+            {
+                string primaryPath = System.IO.Path.Combine(saveDir, fileName);
+                System.IO.File.Copy(path, primaryPath, overwrite: true);
+                terminal.WriteLine("Recovery file restored as primary save.", "bright_green");
+                terminal.WriteLine("");
+                await Task.Delay(1000);
+                await LoadSaveByFileName(fileName);
+            }
+            catch (Exception ex)
+            {
+                terminal.WriteLine($"Could not copy recovery file: {ex.Message}", "red");
+                await Task.Delay(3000);
+            }
+            return;
+        }
+
+        // Unknown input — return to menu
     }
 
     /// <summary>
