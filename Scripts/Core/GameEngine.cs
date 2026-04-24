@@ -4320,7 +4320,14 @@ public partial class GameEngine
                 // Migration: loot items may have wrong WeaponType — either None (legacy) or
                 // Sword (multi-monster equip path defaulted to Sword instead of inferring).
                 // Re-infer from name on load so weapon requirements work correctly.
-                if (equipment.Slot == EquipmentSlot.MainHand || equipment.Slot == EquipmentSlot.OffHand)
+                // v0.57.13: skip shields — they live in OffHand with ShieldBonus/BlockChance set,
+                // and InferWeaponType has no shield keywords so it would rewrite them to Sword +
+                // OneHanded, letting IsDualWielding fire an off-hand strike with the shield.
+                bool isShield = equipment.ShieldBonus > 0 || equipment.BlockChance > 0
+                    || equipment.WeaponType == WeaponType.Shield
+                    || equipment.WeaponType == WeaponType.Buckler
+                    || equipment.WeaponType == WeaponType.TowerShield;
+                if ((equipment.Slot == EquipmentSlot.MainHand || equipment.Slot == EquipmentSlot.OffHand) && !isShield)
                 {
                     var inferred = ShopItemGenerator.InferWeaponType(equipment.Name);
                     if (equipment.WeaponType != inferred)
@@ -4328,6 +4335,17 @@ public partial class GameEngine
                         equipment.WeaponType = inferred;
                         equipment.Handedness = ShopItemGenerator.InferHandedness(inferred);
                     }
+                }
+                else if (isShield && equipment.Slot == EquipmentSlot.OffHand)
+                {
+                    // Heal legacy shields that were mangled by a prior load
+                    if (equipment.WeaponType != WeaponType.Shield
+                        && equipment.WeaponType != WeaponType.Buckler
+                        && equipment.WeaponType != WeaponType.TowerShield)
+                    {
+                        equipment.WeaponType = ShopItemGenerator.InferShieldType(equipment.Name);
+                    }
+                    equipment.Handedness = WeaponHandedness.OffHandOnly;
                 }
 
                 if (UsurperRemake.BBS.DoorMode.IsOnlineMode)
@@ -5486,8 +5504,14 @@ public partial class GameEngine
                     };
 
                     // Migration: re-infer weapon type from name (fixes multi-monster equip
-                    // path that defaulted to Sword instead of inferring)
-                    if (equipment.Slot == EquipmentSlot.MainHand || equipment.Slot == EquipmentSlot.OffHand)
+                    // path that defaulted to Sword instead of inferring). v0.57.13: skip shields —
+                    // InferWeaponType has no shield keywords and would rewrite them to Sword +
+                    // OneHanded, letting IsDualWielding fire an off-hand strike with the shield.
+                    bool isShieldNpc = equipment.ShieldBonus > 0 || equipment.BlockChance > 0
+                        || equipment.WeaponType == WeaponType.Shield
+                        || equipment.WeaponType == WeaponType.Buckler
+                        || equipment.WeaponType == WeaponType.TowerShield;
+                    if ((equipment.Slot == EquipmentSlot.MainHand || equipment.Slot == EquipmentSlot.OffHand) && !isShieldNpc)
                     {
                         var inferred = ShopItemGenerator.InferWeaponType(equipment.Name);
                         if (equipment.WeaponType != inferred)
@@ -5495,6 +5519,16 @@ public partial class GameEngine
                             equipment.WeaponType = inferred;
                             equipment.Handedness = ShopItemGenerator.InferHandedness(inferred);
                         }
+                    }
+                    else if (isShieldNpc && equipment.Slot == EquipmentSlot.OffHand)
+                    {
+                        if (equipment.WeaponType != WeaponType.Shield
+                            && equipment.WeaponType != WeaponType.Buckler
+                            && equipment.WeaponType != WeaponType.TowerShield)
+                        {
+                            equipment.WeaponType = ShopItemGenerator.InferShieldType(equipment.Name);
+                        }
+                        equipment.Handedness = WeaponHandedness.OffHandOnly;
                     }
 
                     // Register and get the new ID (may differ from saved ID)

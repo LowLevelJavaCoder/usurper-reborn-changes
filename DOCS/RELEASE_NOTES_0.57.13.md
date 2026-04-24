@@ -81,6 +81,22 @@ Root cause: `TeamCornerLocation.CreateTeam()` and `TeamCornerLocation.JoinTeam()
 
 Fix: added an early-exit king check to both entry points, message *"A king cannot join or form a gang. The crown stands alone."* New loc key `team.king_cannot_join` in all 5 languages. NPC recruitment INTO the king's own team is still allowed — that's the king wielding power, not joining.
 
+## Shield-Turned-Sword on Save Reload
+
+Player-visible bug: equipping a shield and then reloading the save produced a dual-wield pattern — a normal main-hand swing followed by an "Off-hand strike" for ~50% damage, with the shield acting as the off-hand weapon.
+
+Root cause: the save-load equipment migration at `GameEngine.cs:4320` was introduced to re-infer `WeaponType` and `Handedness` for legacy items whose fields had been written as `None` or defaulted to `Sword`. It ran on any item in `MainHand` or `OffHand`, called `ShopItemGenerator.InferWeaponType(name)`, and overwrote both fields with the inferred result. `InferWeaponType` has no shield keywords and falls through to `WeaponType.Sword`; `InferHandedness(Sword)` returns `OneHanded`. So on every reload a shield became `WeaponType = Sword, Handedness = OneHanded`. `HasShieldEquipped` (keyed on `WeaponType`) then returned false, `IsDualWielding` passed all four checks, and the combat loop fired off-hand strikes. Same migration duplicated in the `LoadSaveByFileName` online-mode branch at `GameEngine.cs:5510`.
+
+Fix: migration now detects shields up front via `ShieldBonus > 0 || BlockChance > 0 || WeaponType ∈ {Shield, Buckler, TowerShield}` and skips the weapon-infer path for them. For shields that previously got mangled by a prior load, a heal branch resets `Handedness = OffHandOnly` and re-infers the shield sub-type via `InferShieldType`, so affected saves self-repair on next login. Both migration sites updated. Tests: 641/641 pass under invariant globalization (matches CI).
+
+## CI Test Failures Under Invariant Globalization
+
+CI run 24871997948 failed 48 of 641 tests with `ArgumentNullException: Value cannot be null. (Parameter 'key')` at `LocalizationSystem.cs:118`. Locally all tests passed. Reproducible locally under `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1` (which matches CI's env).
+
+Root cause: `Loc.Initialize()` was not thread-safe. xUnit runs test classes in parallel, so two test threads racing through `Loc.Get("item.foo")` could both pass the `if (_loaded) return;` guard. Thread A populated `_languages[langCode] = dict` while Thread B concurrently enumerated `_languages.Keys.OrderBy(k => k)` at line 116 — concurrent `Dictionary<TKey,TValue>` modification during enumeration is undefined behavior, and in this case the enumerator yielded a null `code` which then hit `KnownLanguageNames.TryGetValue(code, …)` and threw. Invariant mode exposed the race because it removes the one-time culture-data-loading delay that was incidentally serializing the first few `Loc.Get` calls on the normal path.
+
+Fix: double-checked locking around `Initialize()`. Added `_initLock` and `volatile bool _loaded`, extracted the body to `InitializeLocked()`, and routed the public entry through `lock (_initLock) { if (_loaded) return; InitializeLocked(); _loaded = true; }`. Interior `_loaded = true` assignments removed (the lock block is now the only writer).
+
 ## History / Story Screens — Double "Press to continue" Prompt
 
 `UsurperHistorySystem` was writing a hardcoded `[Press Enter to continue]` line in 5 places right before calling `terminal.WaitForKey()`, which itself renders `Press any key to continue...` — so the player saw both prompts stacked. Hardcoded lines removed; `WaitForKey` is the only prompt now.
