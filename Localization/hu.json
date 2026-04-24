@@ -18307,5 +18307,6 @@
   "combat.rage_challenge_buff": "  {0} kihívó bömbölést hallat, testét dühtől duzzasztja! Regeneráció +{1}% MaxHP/kör.",
   "combat.rage_challenge_regen": "  A Düh Kihívása {1} HP-t regenerál {0} számára!",
   "combat.tidesworn_weaken_bonus": "  A legyengült {0} nem állhat ellen az ár haragjának!",
-  "combat.ability_maelstrom_faithful": "  A forgatag meggyengíti az összes áramába kerülő ellenséget!"
+  "combat.ability_maelstrom_faithful": "  A forgatag meggyengíti az összes áramába kerülő ellenséget!",
+  "combat.shaman_windfury_proc": "Szélvihar Totem! Széllökés irányítja pengédet — plusz fő-kéz csapás!"
 }

@@ -18307,5 +18307,6 @@
   "combat.rage_challenge_buff": "  {0} rugit un defi, son corps gonfle de rage ! Regen +{1}% PV Max/tour.",
   "combat.rage_challenge_regen": "  Le Defi Enrage regenere {1} PV sur {0} !",
   "combat.tidesworn_weaken_bonus": "  Le {0} affaibli ne peut resister a la fureur de la maree !",
-  "combat.ability_maelstrom_faithful": "  Le maelstrom affaiblit tous les ennemis pris dans son courant !"
+  "combat.ability_maelstrom_faithful": "  Le maelstrom affaiblit tous les ennemis pris dans son courant !",
+  "combat.shaman_windfury_proc": "Totem de Furie du Vent ! Une rafale guide votre lame — frappe principale supplémentaire !"
 }

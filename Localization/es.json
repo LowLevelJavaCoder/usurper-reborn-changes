@@ -18307,5 +18307,6 @@
   "combat.rage_challenge_buff": "  ¡{0} ruge un desafío, su cuerpo hinchándose de furia! Regeneración +{1}% PV máx/ronda.",
   "combat.rage_challenge_regen": "  ¡El Desafío de Furia regenera {1} PV a {0}!",
   "combat.tidesworn_weaken_bonus": "  ¡El debilitado {0} no puede resistir la ira de la marea!",
-  "combat.ability_maelstrom_faithful": "  ¡La vorágine debilita a todos los enemigos atrapados en su corriente!"
+  "combat.ability_maelstrom_faithful": "  ¡La vorágine debilita a todos los enemigos atrapados en su corriente!",
+  "combat.shaman_windfury_proc": "¡Tótem de Furia del Viento! Una rafaga guia tu hoja: ¡ataque extra con la mano principal!"
 }

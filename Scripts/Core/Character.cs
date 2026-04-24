@@ -1930,6 +1930,11 @@ public class Character
             CharacterClass.Barbarian => new CombatModifiers { DamageReduction = 2, RageAvailable = true },
             CharacterClass.Paladin => new CombatModifiers { SmiteCharges = 1 + Level / 10, AuraBonus = 2 },
             CharacterClass.Ranger => new CombatModifiers { RangedBonus = 4, Tracking = true },
+            // v0.57.13: Shaman was the only class with no intrinsic combat modifier — totems and
+            // weapon enchants were treated as "the kit". After the Tier A enchant nerfs, adding a
+            // small +2 flat damage reduction (matches Barbarian's value) keeps the class viable as
+            // a melee-caster hybrid and rewards the armor-restriction tradeoff (medium, not light).
+            CharacterClass.MysticShaman => new CombatModifiers { DamageReduction = 2 },
             _ => new CombatModifiers()
         };
     }

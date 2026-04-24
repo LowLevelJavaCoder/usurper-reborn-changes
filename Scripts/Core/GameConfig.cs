@@ -1009,9 +1009,36 @@ public static partial class GameConfig
     public const int ShamanTotemBaseDuration = 4;          // Base totem duration in rounds
     public const float ShamanEnchantBaseDamage = 0.20f;    // Base 20% bonus elemental damage from weapon enchants
     public const int ShamanEnchantDuration = 5;            // Weapon enchant lasts 5 rounds
-    public const float ShamanTotemHealPercent = 0.10f;     // Healing totem: 10% MaxHP per round
+    public const float ShamanTotemHealPercent = 0.10f;     // Healing totem: 10% MaxHP per round (solo)
+    // v0.57.13: Healing Totem in a group party heals each ally at 5% MaxHP/round instead of the solo 10%.
+    // Was uncapped 10% per ally, which at 4-member party meant 40% total group healing/round and trivialized
+    // group PvE content. Solo Shaman keeps the full 10% rate — no nerf to lone-wolf play.
+    public const float ShamanTotemHealPercentGroup = 0.05f;
     public const float ShamanSpiritLinkPercent = 0.15f;    // Spirit Link redistributes 15% HP
-    public const float ShamanElementalMastery = 0.03f;     // +3% elemental damage per INT point
+    // v0.57.13: was 0.03 per INT — at INT 500 that's +1500% rider, at INT 1000 it's +2920%, no cap.
+    // Reduced to 1% per INT to match Sage's WIS scaling tier. Combined with the hard cap below (`ShamanEnchantPowerCap`),
+    // a dedicated INT Shaman still reaches the ceiling; casual INT builds scale more smoothly up to cap.
+    public const float ShamanElementalMastery = 0.01f;
+    // v0.57.13: hard cap on ShamanEnchantPower (was uncapped). 250 = max 2.5× weapon-power rider per hit.
+    // Parallel to Magician's spell-damage 8× hard ceiling at StatEffectsSystem.cs:190. Prevents endgame
+    // INT investment from turning basic attacks into 30× weapon riders.
+    public const int ShamanEnchantPowerCap = 250;
+    // v0.57.13: Windfury proc chance bumped 30% → 40% to compensate for the Tier A nerfs above
+    // (enchant cap + mastery rate reduction) without reverting them.
+    public const int ShamanWindfuryProcChance = 40;
+
+    /// <summary>
+    /// v0.57.13: single source of truth for Shaman weapon-enchant power. Previously the formula
+    /// was inlined at 8 different set sites and an equal number of display sites, making it easy
+    /// to miss one when rebalancing (the v0.57.13 `actualDamage`→`weaponPower` fix only touched
+    /// the read sites). Now the cap + formula live here.
+    /// Formula: 20% base + (INT × mastery_rate), hard-capped at `ShamanEnchantPowerCap`.
+    /// </summary>
+    public static int GetShamanEnchantPower(long intelligence)
+    {
+        int raw = (int)(ShamanEnchantBaseDamage * 100 + intelligence * ShamanElementalMastery * 100);
+        return Math.Min(ShamanEnchantPowerCap, raw);
+    }
     // Jester Trickster's Luck
     public const int JesterTrickstersLuckChance = 20;        // Jester: 20% chance per attack to proc random bonus
     public const float JesterLuckBonusDamage = 0.50f;        // +50% bonus damage on lucky proc

@@ -2779,8 +2779,11 @@ public partial class CombatEngine
     /// </summary>
     private async Task ExecuteAttack(Character attacker, Monster target, CombatResult result)
     {
-        int swings = GetAttackCount(attacker);
-        int baseSwings = 1 + attacker.GetClassCombatModifiers().ExtraAttacks;
+        var (swings, windfuryProc) = GetAttackCount(attacker);
+        // v0.57.13: extend baseSwings by the Windfury proc so the bonus swing lands on MAIN-HAND
+        // rather than being treated as an off-hand tail. Dual-wielding Shaman was getting an off-hand
+        // Windfury bonus (weaker weapon); now it amplifies the main-hand.
+        int baseSwings = 1 + attacker.GetClassCombatModifiers().ExtraAttacks + (windfuryProc ? 1 : 0);
 
         for (int s = 0; s < swings && target.HP > 0; s++)
         {
@@ -5700,8 +5703,8 @@ public partial class CombatEngine
         if (abilityAction) return;
 
         // Otherwise, basic attack
-        int swings = GetAttackCount(teammate);
-        int baseSwings = 1 + teammate.GetClassCombatModifiers().ExtraAttacks;
+        var (swings, windfuryProc) = GetAttackCount(teammate);
+        int baseSwings = 1 + teammate.GetClassCombatModifiers().ExtraAttacks + (windfuryProc ? 1 : 0);
 
         for (int s = 0; s < swings && monster.IsAlive; s++)
         {
@@ -11089,8 +11092,9 @@ public partial class CombatEngine
                 if (target != null && target.IsAlive)
                 {
                     // Get attack count (includes dual-wield bonus)
-                    int swings = GetAttackCount(player);
-                    int baseSwings = 1 + player.GetClassCombatModifiers().ExtraAttacks;
+                    var (swings, windfuryProc) = GetAttackCount(player);
+                    // v0.57.13: route Windfury bonus to main-hand (see ExecuteAttack comment)
+                    int baseSwings = 1 + player.GetClassCombatModifiers().ExtraAttacks + (windfuryProc ? 1 : 0);
 
                     for (int s = 0; s < swings && target.IsAlive; s++)
                     {
@@ -14219,13 +14223,13 @@ public partial class CombatEngine
             case "shaman_enchant_fire":
                 player.ShamanEnchantType = 1;
                 player.ShamanEnchantRounds = GameConfig.ShamanEnchantDuration;
-                player.ShamanEnchantPower = (int)(GameConfig.ShamanEnchantBaseDamage * 100 + player.Intelligence * GameConfig.ShamanElementalMastery * 100);
+                player.ShamanEnchantPower = GameConfig.GetShamanEnchantPower(player.Intelligence);
                 // Flametongue: +15% ATK bonus for the enchant duration (mirrors Rockbiter's +DEF)
                 {
                     int fireAtkBonus = Math.Max(1, (int)(player.Strength * 0.15));
                     player.TempAttackBonus += fireAtkBonus;
                     player.TempAttackBonusDuration = Math.Max(player.TempAttackBonusDuration, GameConfig.ShamanEnchantDuration);
-                    terminal.WriteLine(Loc.Get("combat.shaman_enchant_fire", (int)(GameConfig.ShamanEnchantBaseDamage * 100 + player.Intelligence * GameConfig.ShamanElementalMastery * 100), GameConfig.ShamanEnchantDuration), "bright_red");
+                    terminal.WriteLine(Loc.Get("combat.shaman_enchant_fire", GameConfig.GetShamanEnchantPower(player.Intelligence), GameConfig.ShamanEnchantDuration), "bright_red");
                     terminal.WriteLine(Loc.Get("combat.attack_power_increased", fireAtkBonus), "bright_red");
                 }
                 break;
@@ -14233,24 +14237,24 @@ public partial class CombatEngine
             case "shaman_enchant_frost":
                 player.ShamanEnchantType = 2;
                 player.ShamanEnchantRounds = GameConfig.ShamanEnchantDuration;
-                player.ShamanEnchantPower = (int)(GameConfig.ShamanEnchantBaseDamage * 100 + player.Intelligence * GameConfig.ShamanElementalMastery * 100);
-                terminal.WriteLine(Loc.Get("combat.shaman_enchant_frost", (int)(GameConfig.ShamanEnchantBaseDamage * 100 + player.Intelligence * GameConfig.ShamanElementalMastery * 100), GameConfig.ShamanEnchantDuration), "bright_cyan");
+                player.ShamanEnchantPower = GameConfig.GetShamanEnchantPower(player.Intelligence);
+                terminal.WriteLine(Loc.Get("combat.shaman_enchant_frost", GameConfig.GetShamanEnchantPower(player.Intelligence), GameConfig.ShamanEnchantDuration), "bright_cyan");
                 break;
 
             case "shaman_enchant_earth":
                 player.ShamanEnchantType = 3;
                 player.ShamanEnchantRounds = GameConfig.ShamanEnchantDuration;
-                player.ShamanEnchantPower = (int)(GameConfig.ShamanEnchantBaseDamage * 100 + player.Intelligence * GameConfig.ShamanElementalMastery * 100);
+                player.ShamanEnchantPower = GameConfig.GetShamanEnchantPower(player.Intelligence);
                 player.TempDefenseBonus += abilityResult.DefenseBonus;
                 player.TempDefenseBonusDuration = Math.Max(player.TempDefenseBonusDuration, GameConfig.ShamanEnchantDuration);
-                terminal.WriteLine(Loc.Get("combat.shaman_enchant_earth", (int)(GameConfig.ShamanEnchantBaseDamage * 100 + player.Intelligence * GameConfig.ShamanElementalMastery * 100), abilityResult.DefenseBonus, GameConfig.ShamanEnchantDuration), "bright_green");
+                terminal.WriteLine(Loc.Get("combat.shaman_enchant_earth", GameConfig.GetShamanEnchantPower(player.Intelligence), abilityResult.DefenseBonus, GameConfig.ShamanEnchantDuration), "bright_green");
                 break;
 
             case "shaman_enchant_storm":
                 player.ShamanEnchantType = 4;
                 player.ShamanEnchantRounds = GameConfig.ShamanEnchantDuration;
-                player.ShamanEnchantPower = (int)(GameConfig.ShamanEnchantBaseDamage * 100 + player.Intelligence * GameConfig.ShamanElementalMastery * 100);
-                terminal.WriteLine(Loc.Get("combat.shaman_enchant_storm", (int)(GameConfig.ShamanEnchantBaseDamage * 100 + player.Intelligence * GameConfig.ShamanElementalMastery * 100), GameConfig.ShamanEnchantDuration), "bright_yellow");
+                player.ShamanEnchantPower = GameConfig.GetShamanEnchantPower(player.Intelligence);
+                terminal.WriteLine(Loc.Get("combat.shaman_enchant_storm", GameConfig.GetShamanEnchantPower(player.Intelligence), GameConfig.ShamanEnchantDuration), "bright_yellow");
                 break;
 
             case "shaman_totem_healing":
@@ -14277,7 +14281,7 @@ public partial class CombatEngine
             case "shaman_totem_windfury":
                 player.ActiveTotemType = 4;
                 player.ActiveTotemRounds = GameConfig.ShamanTotemBaseDuration;
-                player.ActiveTotemPower = 30; // 30% chance for extra attack
+                player.ActiveTotemPower = GameConfig.ShamanWindfuryProcChance; // v0.57.13: 30 → 40 (compensates Tier A enchant nerf + mastery rate cut)
                 terminal.WriteLine(Loc.Get("combat.shaman_totem_windfury_summon", GameConfig.ShamanTotemBaseDuration), "bright_cyan");
                 break;
 
@@ -15823,8 +15827,8 @@ public partial class CombatEngine
         if (weakestMonster != null)
         {
             // Loop through all attacks (dual-wield, extra attacks, etc.)
-            int swings = GetAttackCount(teammate);
-            int baseSwings = 1 + teammate.GetClassCombatModifiers().ExtraAttacks;
+            var (swings, windfuryProc) = GetAttackCount(teammate);
+            int baseSwings = 1 + teammate.GetClassCombatModifiers().ExtraAttacks + (windfuryProc ? 1 : 0);
             var target = weakestMonster;
 
             for (int s = 0; s < swings && target != null && target.IsAlive; s++)
@@ -18922,7 +18926,7 @@ public partial class CombatEngine
             terminal.WriteLine(GameConfig.ScreenReaderMode ? $"RAGE ROUND {round}:" : $"═══ RAGE ROUND {round} ═══");
 
             // Player attacks with berserker fury (doubled damage, more attacks)
-            int rageAttacks = Math.Max(2, GetAttackCount(player) + 1); // At least 2 attacks, +1 bonus
+            int rageAttacks = Math.Max(2, GetAttackCount(player).attacks + 1); // At least 2 attacks, +1 bonus
 
             for (int i = 0; i < rageAttacks && monster.HP > 0; i++)
             {
@@ -21279,13 +21283,13 @@ public partial class CombatEngine
             case "shaman_enchant_fire":
                 player.ShamanEnchantType = 1;
                 player.ShamanEnchantRounds = GameConfig.ShamanEnchantDuration;
-                player.ShamanEnchantPower = (int)(GameConfig.ShamanEnchantBaseDamage * 100 + player.Intelligence * GameConfig.ShamanElementalMastery * 100);
+                player.ShamanEnchantPower = GameConfig.GetShamanEnchantPower(player.Intelligence);
                 // Flametongue: +15% ATK bonus for the enchant duration (mirrors Rockbiter's +DEF)
                 {
                     int fireAtkBonus = Math.Max(1, (int)(player.Strength * 0.15));
                     player.TempAttackBonus += fireAtkBonus;
                     player.TempAttackBonusDuration = Math.Max(player.TempAttackBonusDuration, GameConfig.ShamanEnchantDuration);
-                    terminal.WriteLine(Loc.Get("combat.shaman_enchant_fire", (int)(GameConfig.ShamanEnchantBaseDamage * 100 + player.Intelligence * GameConfig.ShamanElementalMastery * 100), GameConfig.ShamanEnchantDuration), "bright_red");
+                    terminal.WriteLine(Loc.Get("combat.shaman_enchant_fire", GameConfig.GetShamanEnchantPower(player.Intelligence), GameConfig.ShamanEnchantDuration), "bright_red");
                     terminal.WriteLine(Loc.Get("combat.attack_power_increased", fireAtkBonus), "bright_red");
                 }
                 break;
@@ -21293,24 +21297,24 @@ public partial class CombatEngine
             case "shaman_enchant_frost":
                 player.ShamanEnchantType = 2;
                 player.ShamanEnchantRounds = GameConfig.ShamanEnchantDuration;
-                player.ShamanEnchantPower = (int)(GameConfig.ShamanEnchantBaseDamage * 100 + player.Intelligence * GameConfig.ShamanElementalMastery * 100);
-                terminal.WriteLine(Loc.Get("combat.shaman_enchant_frost", (int)(GameConfig.ShamanEnchantBaseDamage * 100 + player.Intelligence * GameConfig.ShamanElementalMastery * 100), GameConfig.ShamanEnchantDuration), "bright_cyan");
+                player.ShamanEnchantPower = GameConfig.GetShamanEnchantPower(player.Intelligence);
+                terminal.WriteLine(Loc.Get("combat.shaman_enchant_frost", GameConfig.GetShamanEnchantPower(player.Intelligence), GameConfig.ShamanEnchantDuration), "bright_cyan");
                 break;
 
             case "shaman_enchant_earth":
                 player.ShamanEnchantType = 3;
                 player.ShamanEnchantRounds = GameConfig.ShamanEnchantDuration;
-                player.ShamanEnchantPower = (int)(GameConfig.ShamanEnchantBaseDamage * 100 + player.Intelligence * GameConfig.ShamanElementalMastery * 100);
+                player.ShamanEnchantPower = GameConfig.GetShamanEnchantPower(player.Intelligence);
                 player.TempDefenseBonus += abilityResult.DefenseBonus;
                 player.TempDefenseBonusDuration = Math.Max(player.TempDefenseBonusDuration, GameConfig.ShamanEnchantDuration);
-                terminal.WriteLine(Loc.Get("combat.shaman_enchant_earth", (int)(GameConfig.ShamanEnchantBaseDamage * 100 + player.Intelligence * GameConfig.ShamanElementalMastery * 100), abilityResult.DefenseBonus, GameConfig.ShamanEnchantDuration), "bright_green");
+                terminal.WriteLine(Loc.Get("combat.shaman_enchant_earth", GameConfig.GetShamanEnchantPower(player.Intelligence), abilityResult.DefenseBonus, GameConfig.ShamanEnchantDuration), "bright_green");
                 break;
 
             case "shaman_enchant_storm":
                 player.ShamanEnchantType = 4;
                 player.ShamanEnchantRounds = GameConfig.ShamanEnchantDuration;
-                player.ShamanEnchantPower = (int)(GameConfig.ShamanEnchantBaseDamage * 100 + player.Intelligence * GameConfig.ShamanElementalMastery * 100);
-                terminal.WriteLine(Loc.Get("combat.shaman_enchant_storm", (int)(GameConfig.ShamanEnchantBaseDamage * 100 + player.Intelligence * GameConfig.ShamanElementalMastery * 100), GameConfig.ShamanEnchantDuration), "bright_yellow");
+                player.ShamanEnchantPower = GameConfig.GetShamanEnchantPower(player.Intelligence);
+                terminal.WriteLine(Loc.Get("combat.shaman_enchant_storm", GameConfig.GetShamanEnchantPower(player.Intelligence), GameConfig.ShamanEnchantDuration), "bright_yellow");
                 break;
 
             case "shaman_totem_healing":
@@ -21337,7 +21341,7 @@ public partial class CombatEngine
             case "shaman_totem_windfury":
                 player.ActiveTotemType = 4;
                 player.ActiveTotemRounds = GameConfig.ShamanTotemBaseDuration;
-                player.ActiveTotemPower = 30; // 30% chance for extra attack
+                player.ActiveTotemPower = GameConfig.ShamanWindfuryProcChance; // v0.57.13: 30 → 40 (compensates Tier A enchant nerf + mastery rate cut)
                 terminal.WriteLine(Loc.Get("combat.shaman_totem_windfury_summon", GameConfig.ShamanTotemBaseDuration), "bright_cyan");
                 break;
 
@@ -21609,20 +21613,32 @@ public partial class CombatEngine
         {
             case 1: // Healing Totem — heals player AND all alive companions/teammates
             {
+                // v0.57.13: split heal rates by party state. Solo Shaman heals self at the full 10% rate
+                // (ShamanTotemHealPercent). In a group (any living teammate), the rate drops to 5% per
+                // tick for EVERYONE including the caster (ShamanTotemHealPercentGroup). Pre-v0.57.13 the
+                // totem healed 10% of each member's MaxHP every round regardless of party size — at a
+                // 4-member party that's 40% total group healing/round and trivialized group PvE.
+                bool hasLivingTeammate = result.Teammates != null
+                    && result.Teammates.Any(t => t.IsAlive);
+                float rate = hasLivingTeammate
+                    ? GameConfig.ShamanTotemHealPercentGroup
+                    : GameConfig.ShamanTotemHealPercent;
+
                 long totalHealed = 0;
-                // Heal player
-                long playerHeal = Math.Min(player.ActiveTotemPower, player.MaxHP - player.HP);
+                // Heal player at the party-state-appropriate rate
+                long playerHealPower = (long)(player.MaxHP * rate);
+                long playerHeal = Math.Min(playerHealPower, player.MaxHP - player.HP);
                 if (playerHeal > 0)
                 {
                     player.HP += playerHeal;
                     totalHealed += playerHeal;
                 }
-                // Heal teammates/companions
+                // Heal teammates/companions at the same rate
                 if (result.Teammates != null)
                 {
                     foreach (var tm in result.Teammates.Where(t => t.IsAlive))
                     {
-                        long tmPower = (long)(tm.MaxHP * GameConfig.ShamanTotemHealPercent);
+                        long tmPower = (long)(tm.MaxHP * rate);
                         long tmHeal = Math.Min(tmPower, tm.MaxHP - tm.HP);
                         if (tmHeal > 0)
                         {
@@ -24066,15 +24082,20 @@ public partial class CombatEngine
         return exp;
     }
 
-    private int GetAttackCount(Character attacker)
+    // v0.57.13: returns (totalSwings, windfuryProcced). Callers that route main-hand/off-hand
+    // (ExecuteAttack + the multi-monster basic-attack path) extend baseSwings by +1 when windfury
+    // procced so the bonus swing lands on main-hand instead of being counted as an off-hand tail.
+    // Callers that just want the total (teammate-attack paths, rage multiplier) can ignore the bool.
+    private (int attacks, bool windfuryProcced) GetAttackCount(Character attacker)
     {
         int attacks = 1;
+        bool windfuryProcced = false;
 
         // No weapon equipped — only 1 basic attack (no bonus swings/procs)
         // Mercenaries (royal bodyguards) use WeapPow directly without EquippedItems
         bool hasWeapon = attacker.EquippedItems.TryGetValue(EquipmentSlot.MainHand, out var mainHandId) && mainHandId > 0;
         if (!hasWeapon && !(attacker.IsMercenary && attacker.WeapPow > 0))
-            return 1;
+            return (1, false);
 
         // Warrior extra swings
         var mods = attacker.GetClassCombatModifiers();
@@ -24101,10 +24122,19 @@ public partial class CombatEngine
             attacks += attacker.HerbExtraAttacks;
 
         // Mystic Shaman Windfury Totem: chance for extra attack
+        // v0.57.13: was silent — now emits a flavor line on proc so the player can see it fire,
+        // and sets windfuryProcced so the caller routes the bonus swing to main-hand instead of
+        // off-hand tail (Rozro report: "Doesn't look like it does much, not even an extra
+        // mainhand attack"). Message is suppressed for teammates so it doesn't spam.
         if (attacker.ActiveTotemType == 4 && attacker.ActiveTotemRounds > 0)
         {
             if (Random.Shared.Next(100) < attacker.ActiveTotemPower)
+            {
                 attacks++;
+                windfuryProcced = true;
+                if (attacker == currentPlayer)
+                    terminal?.WriteLine($"  {Loc.Get("combat.shaman_windfury_proc")}", "bright_cyan");
+            }
         }
 
         // Speed penalty from drugs
@@ -24122,7 +24152,7 @@ public partial class CombatEngine
         // Hard cap: no more than 8 attacks per round regardless of stacking
         attacks = Math.Min(attacks, 8);
 
-        return attacks;
+        return (attacks, windfuryProcced);
     }
 
     /// <summary>
