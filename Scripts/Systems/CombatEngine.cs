@@ -6330,7 +6330,7 @@ public partial class CombatEngine
 
         // Calculate costs (scales with level)
         int healCostPerPotion = 50 + (player.Level * 10);
-        int manaCostPerPotion = GameConfig.ManaPotionBaseCost + (player.Level * GameConfig.ManaPotionLevelMultiplier);
+        int manaCostPerPotion = (int)GameConfig.GetManaPotionCost(player.Level);
 
         // Show what's available
         if (canBuyHealing && canBuyMana)

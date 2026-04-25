@@ -560,7 +560,7 @@ public partial class MagicShopLocation : BaseLocation
         DisplayMessage("");
 
         // Calculate potion price with all modifiers (alignment, world events, faction, city, loyalty)
-        long potionPrice = ApplyAllPriceModifiers(GameConfig.HealingPotionBaseCost + player.Level * GameConfig.HealingPotionLevelMultiplier, player);
+        long potionPrice = ApplyAllPriceModifiers(GameConfig.GetHealingPotionCost(player.Level), player);
         var (_, _, hpPotionUnitWithTax) = CityControlSystem.CalculateTaxedPrice(potionPrice);
         int maxPotionsCanBuy = hpPotionUnitWithTax > 0 ? (int)(player.Gold / hpPotionUnitWithTax) : 0;
         int maxPotionsCanCarry = player.MaxPotions - (int)player.Healing;
@@ -3428,7 +3428,7 @@ public partial class MagicShopLocation : BaseLocation
         WriteSectionHeader(Loc.Get("magic_shop.mana_potions"), "blue");
         DisplayMessage("");
 
-        int potionPrice = (int)ApplyAllPriceModifiers(GameConfig.ManaPotionBaseCost + player.Level * GameConfig.ManaPotionLevelMultiplier, player);
+        int potionPrice = (int)ApplyAllPriceModifiers(GameConfig.GetManaPotionCost(player.Level), player);
         var (_, _, mpPotionUnitWithTax) = CityControlSystem.CalculateTaxedPrice(potionPrice);
         int maxCanBuy = mpPotionUnitWithTax > 0 ? (int)(player.Gold / mpPotionUnitWithTax) : 0;
         int maxCanCarry = player.MaxManaPotions - (int)player.ManaPotions;

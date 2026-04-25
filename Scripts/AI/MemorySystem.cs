@@ -5,7 +5,11 @@ using System.Linq;
 
 public partial class MemorySystem
 {
-    private const int MAX_MEMORIES = 100;
+    // v0.57.15: lowered 100 → 30. With 130 NPCs in a single-player save, 100/NPC was
+    // up to 13k memories at ~200 bytes each = ~2.6 MB just for memory data. 30/NPC
+    // caps that at ~780 KB while preserving the most-important narrative beats. Trim
+    // is by ascending importance + age, so the keepers are always the meaningful ones.
+    private const int MAX_MEMORIES = 30;
     private const int MEMORY_DECAY_DAYS = 7;
     
     private List<MemoryEvent> memories = new List<MemoryEvent>();
@@ -19,17 +23,22 @@ public partial class MemorySystem
     {
         memoryEvent.Timestamp = DateTime.Now;
         memories.Add(memoryEvent);
-        
-        // Maintain memory limit
+
+        // v0.57.15: STRICT memory cap. Previously the trim only removed memories
+        // older than MEMORY_DECAY_DAYS/2 (3.5 days), so during an active play
+        // session NO memory was old enough — the cap was wishful and `memories`
+        // grew unboundedly. Across 130 NPCs in single-player that bloated saves
+        // by ~10 KB/min (Xander report: 312 KB fresh save → 1615 KB after 30 min
+        // of dungeon play). Now: when over the cap, drop the lowest-importance
+        // and oldest memories regardless of age so the cap actually fires.
         if (memories.Count > MAX_MEMORIES)
         {
-            // Remove least important old memories
             var toRemove = memories
-                .Where(m => m.GetAge().TotalDays > MEMORY_DECAY_DAYS / 2)
                 .OrderBy(m => m.Importance)
+                .ThenBy(m => m.Timestamp)
                 .Take(memories.Count - MAX_MEMORIES)
                 .ToList();
-            
+
             foreach (var memory in toRemove)
             {
                 memories.Remove(memory);

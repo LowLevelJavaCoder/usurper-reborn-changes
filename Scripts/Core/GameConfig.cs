@@ -9,7 +9,7 @@ using System.Collections.Generic;
 public static partial class GameConfig
 {
     // Version information
-    public const string Version = "0.57.15";
+    public const string Version = "0.57.16";
     public const string VersionName = "Alignment and Shields";
 
     // v0.57.12: Alignment scale cap. Character.Chivalry and Character.Darkness setters clamp to [0, AlignmentCap]
@@ -549,15 +549,42 @@ public static partial class GameConfig
     // Magic shop constants
     public const string DefaultMagicShopOwner = "Ravanella"; // Default gnome owner
     public const int DefaultIdentificationCost = 1500;
-    // v0.56.1: doubled to make potions a real gold sink at high levels.
-    // Was 50+(5*level) healing / 75+(5*level) mana; now 100+(10*level) / 150+(10*level).
-    public const int HealingPotionBaseCost = 100;      // Base potion cost (before level scaling)
-    public const int HealingPotionLevelMultiplier = 10; // Additional cost per player level
-    public const int MaxHealingPotions = 50; // Maximum potions player can carry
+
+    // v0.57.16: potion cost rescaled from linear (100+10*L, 150+10*L) to quadratic
+    // (100 + L²/2, 150 + L²/2). The old curve couldn't keep up with how fast gold
+    // grows at endgame — Lv 100 paid 1,100g/potion while sitting on millions in
+    // bank, so potions were trivially affordable and players stockpiled. The new
+    // curve is slightly cheaper than the old one through Lv ~20, breaks even
+    // around Lv 25, and gets steeper from there. At Lv 100 a healing potion
+    // costs 5,100g, ~4.6x the old price. Designed to push endgame players toward
+    // Cleric/Paladin/Sage/Bard heals instead of stockpile-and-chug.
+    // Also: max carried 50 → 20. Caps stockpiling regardless of how rich you are.
+    public const int HealingPotionBaseCost = 100;      // Flat cost component
+    public const double HealingPotionQuadraticFactor = 0.5; // L² × this added on top
+    public const int MaxHealingPotions = 20; // Maximum potions player can carry
 
     // Mana potion constants
-    public const int ManaPotionBaseCost = 150;         // Base mana potion cost (before level scaling)
-    public const int ManaPotionLevelMultiplier = 10;    // Additional cost per player level
+    public const int ManaPotionBaseCost = 150;         // Flat cost component
+    public const double ManaPotionQuadraticFactor = 0.5; // L² × this added on top
+
+    /// <summary>
+    /// v0.57.16: healing potion cost = base + L² × factor. Quadratic curve targets
+    /// endgame gold abundance without punishing low-level players.
+    /// </summary>
+    public static long GetHealingPotionCost(int level)
+    {
+        long sq = (long)level * level;
+        return HealingPotionBaseCost + (long)(sq * HealingPotionQuadraticFactor);
+    }
+
+    /// <summary>
+    /// v0.57.16: mana potion cost = base + L² × factor. Same shape as healing.
+    /// </summary>
+    public static long GetManaPotionCost(int level)
+    {
+        long sq = (long)level * level;
+        return ManaPotionBaseCost + (long)(sq * ManaPotionQuadraticFactor);
+    }
 
     // Reforging constants (endgame gold sink)
     public const int ReforgeCostMultiplier = 50;       // Cost = level * level * this

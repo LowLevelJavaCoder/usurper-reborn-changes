@@ -8607,9 +8607,9 @@ public class DungeonLocation : BaseLocation
 
     private async Task MerchantTradeMenu(Character player)
     {
-        // v0.56.1: dungeon merchant now uses GameConfig potion constants with a small dungeon-deep discount
-        // (floor 1: ~85g, floor 50: ~535g vs shop's 550g, floor 100: ~1035g vs shop's 1050g)
-        int potionPrice = (GameConfig.HealingPotionBaseCost - 15) + (currentDungeonLevel * GameConfig.HealingPotionLevelMultiplier);
+        // v0.57.16: dungeon merchant uses the quadratic potion cost formula with a small flat
+        // discount (15g cheaper than shop). At floor 1 ~86g, floor 50 ~1335g, floor 100 ~5085g.
+        int potionPrice = (int)GameConfig.GetHealingPotionCost(currentDungeonLevel) - 15;
         int megaPotionPrice = currentDungeonLevel * 100;
         int antidotePrice = 75;
 
@@ -10723,7 +10723,7 @@ public class DungeonLocation : BaseLocation
                     WriteSRMenuOption("U", Loc.Get("dungeon.use_potion_self", healAmount));
                 else
                     WriteSRMenuOption("U", Loc.Get("dungeon.no_potions"));
-                WriteSRMenuOption("B", Loc.Get("dungeon.buy_potions_monk", costPerPotion, GameConfig.ManaPotionBaseCost + player.Level * GameConfig.ManaPotionLevelMultiplier));
+                WriteSRMenuOption("B", Loc.Get("dungeon.buy_potions_monk", costPerPotion, GameConfig.GetManaPotionCost(player.Level)));
                 if (player.Healing > 0 && player.HP < player.MaxHP)
                     WriteSRMenuOption("H", Loc.Get("dungeon.heal_full"));
                 if (allPartyMembers.Count > 0 && player.Healing > 0)
@@ -10778,7 +10778,7 @@ public class DungeonLocation : BaseLocation
                 terminal.SetColor("darkgray");
                 terminal.Write("] ");
                 terminal.SetColor("white");
-                terminal.WriteLine(Loc.Get("dungeon.buy_potions_monk", costPerPotion, GameConfig.ManaPotionBaseCost + player.Level * GameConfig.ManaPotionLevelMultiplier));
+                terminal.WriteLine(Loc.Get("dungeon.buy_potions_monk", costPerPotion, GameConfig.GetManaPotionCost(player.Level)));
 
                 // Quick heal - use potions until full
                 if (player.Healing > 0 && player.HP < player.MaxHP)
@@ -11537,7 +11537,7 @@ public class DungeonLocation : BaseLocation
 
         // Calculate costs
         int healCost = 50 + (player.Level * 10);
-        int manaCost = GameConfig.ManaPotionBaseCost + (player.Level * GameConfig.ManaPotionLevelMultiplier);
+        int manaCost = (int)GameConfig.GetManaPotionCost(player.Level);
 
         terminal.SetColor("yellow");
         terminal.WriteLine(Loc.Get("dungeon.monk_your_gold", player.Gold));

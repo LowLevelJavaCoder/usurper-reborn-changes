@@ -1579,7 +1579,19 @@ namespace UsurperRemake.Systems
         {
             if (memory == null) return new List<MemoryData>();
 
-            return memory.AllMemories.Select(m => new MemoryData
+            // v0.57.15: defensive cap at serialization time — keep top 30 by importance
+            // so a pre-fix save (where memories grew unboundedly because the cap-by-age
+            // never fired) self-heals on next save. Mirrors MemorySystem.MAX_MEMORIES.
+            const int MaxMemoriesToSerialize = 30;
+            var top = memory.AllMemories.Count <= MaxMemoriesToSerialize
+                ? memory.AllMemories
+                : memory.AllMemories
+                    .OrderByDescending(m => m.Importance)
+                    .ThenByDescending(m => m.Timestamp)
+                    .Take(MaxMemoriesToSerialize)
+                    .ToList();
+
+            return top.Select(m => new MemoryData
             {
                 Type = m.Type.ToString(),
                 Description = m.Description,
