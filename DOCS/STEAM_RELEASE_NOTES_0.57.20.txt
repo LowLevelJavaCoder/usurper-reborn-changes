@@ -1,0 +1,35 @@
+[h1]Usurper Reborn v0.57.20 - Save Repair Visibility (Hotfix)[/h1]
+
+[b]Hotfix for v0.57.19.[/b] The auto-repair option added in v0.57.19 wasn't actually appearing for some affected players. The repair code worked, but the menu logic that decides when to show the [b][R][/b] option missed several common error paths, so players never got the chance to use it.
+
+[h2]What was wrong[/h2]
+
+The recovery menu only showed [b][R] Auto-repair[/b] when the load failure error message contained specific phrases like "Not enough memory" or "too large." But three of the most common ways a player ends up at the recovery menu produced different error text:
+
+[list]
+[*]Clicking a save tagged [b][RECOVERY][/b] in the load list (the most common path for affected players) used a generic "failed to parse during listing" message that didn't trigger detection.
+[*]After picking a recovery file that ALSO failed, the menu re-rendered with the ORIGINAL error message instead of the new failure - so even if the recovery file OOMed, the menu didn't update its option list.
+[*]Pure string matching is fragile - any error path that didn't use the exact magic words slipped through.
+[/list]
+
+[h2]What's fixed[/h2]
+
+Three layers of defense so [b][R][/b] reliably appears whenever it could possibly help:
+
+[list]
+[*][b]Synthetic short-circuit messages now include OOM-detection keywords[/b] so clicking a [RECOVERY]-tagged save shows [R] on the first menu entry, not after one futile recovery attempt.
+[*][b]Recovery-file failures now propagate the new error[/b] when the menu re-renders. If your backup OOMs after your primary failed for a different reason, [R] now appears.
+[*][b]File-size fallback[/b] - if no error string matches, the menu now also scans the primary save and every recovery candidate file. Anything over 10 MB triggers [R] regardless of the error text. This catches every future case where a new error path doesn't use the exact magic phrasing.
+[/list]
+
+[h2]If you tried v0.57.19 and didn't see the repair option[/h2]
+
+Launch v0.57.20, go to Load Game, click your character. The recovery menu now shows [b][R] Auto-repair the bloated save file (recommended)[/b] right away. Press [b]R[/b] and it will walk through your backup, autosaves, and emergency saves, trimming each one down until one loads cleanly.
+
+[h2]Tests[/h2]
+
+All 12 save-repair tests from v0.57.19 still pass. Full project suite: 653 tests, all green.
+
+[hr][/hr]
+
+[i]As always, please report any issues with these changes via the in-game [!] Bug Report option or in our Discord.[/i]

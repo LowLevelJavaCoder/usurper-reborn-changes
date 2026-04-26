@@ -2346,9 +2346,18 @@ public partial class GameEngine
                 // step for the player and shows the recovery options immediately.
                 if (selectedSave.IsRecovered)
                 {
+                    // v0.57.20: include "Not enough memory" / "too large" tokens in
+                    // the synthetic reason for non-emergency recovery slots so
+                    // ShowLoadFailureWithRecovery's bloat-detector matches and
+                    // surfaces the [R] auto-repair option. Pre-fix, this short-circuit
+                    // path never showed [R] because the reason text didn't contain
+                    // any of the OOM-detection keywords. Slots get tagged
+                    // IsRecovered when GetAllSaves' deserialize throws — almost
+                    // always OOM on a bloated save — so it's correct to assume
+                    // bloat here.
                     string reason = selectedSave.IsEmergency
                         ? "This is an emergency save (Ctrl+C dump). The regular save for this character was lost or never written."
-                        : "Save file failed to parse during listing — likely bloated or truncated. Recovery options below.";
+                        : "Save file failed to parse during listing — the save is likely bloated or too large. Not enough memory to load it normally. Recovery options below.";
                     await ShowLoadFailureWithRecovery(selectedSave.FileName, reason);
                     return;
                 }
@@ -3009,10 +3018,49 @@ public partial class GameEngine
         // file becomes loadable. ALL recovery files are typically also bloated
         // for affected players, so offering repair on the primary AND each
         // recovery slot is the only way out.
+        //
+        // v0.57.20: also detect bloat by file size. Some load failure paths pass
+        // through generic error strings that don't contain OOM keywords (e.g. the
+        // [RECOVERY]-tagged short-circuit, or load failures that trigger before
+        // the deserialize step). If the primary save OR ANY recovery candidate is
+        // over the bloat threshold (~10 MB — well under the 5 MB SAVE_AUDIT
+        // warning ceiling but a realistic upper bound for healthy saves), assume
+        // bloat and offer [R] regardless of the error text.
         bool isBloatError = errorMessage != null && (
             errorMessage.Contains("Not enough memory", StringComparison.OrdinalIgnoreCase) ||
             errorMessage.Contains("too large", StringComparison.OrdinalIgnoreCase) ||
-            errorMessage.Contains("more data than", StringComparison.OrdinalIgnoreCase));
+            errorMessage.Contains("more data than", StringComparison.OrdinalIgnoreCase) ||
+            errorMessage.Contains("bloated", StringComparison.OrdinalIgnoreCase));
+
+        // File-size fallback: scan primary + all recovery candidates. Anything
+        // over BloatDetectionBytes is suspicious. Cheap (FileInfo.Length is an
+        // OS-level metadata read, no file content access).
+        if (!isBloatError)
+        {
+            try
+            {
+                long bloatThreshold = 10L * 1024 * 1024; // 10 MB
+                string primaryPath = System.IO.Path.Combine(saveDir ?? "", fileName);
+                if (System.IO.File.Exists(primaryPath))
+                {
+                    var pi = new System.IO.FileInfo(primaryPath);
+                    if (pi.Length > bloatThreshold) isBloatError = true;
+                }
+                if (!isBloatError)
+                {
+                    foreach (var (_, p) in recoveryOptions)
+                    {
+                        try
+                        {
+                            var ri = new System.IO.FileInfo(p);
+                            if (ri.Length > bloatThreshold) { isBloatError = true; break; }
+                        }
+                        catch { }
+                    }
+                }
+            }
+            catch { }
+        }
 
         if (recoveryOptions.Count > 0)
         {
@@ -3092,8 +3140,12 @@ public partial class GameEngine
                 terminal.WriteLine($"  {recoveryError ?? "Missing player data"}", "red");
                 terminal.WriteLine("");
                 await terminal.PressAnyKey();
-                // Re-enter the recovery menu so the player can pick a different file
-                await ShowLoadFailureWithRecovery(fileName, errorMessage);
+                // Re-enter the recovery menu so the player can pick a different file.
+                // v0.57.20: pass the FRESH recoveryError, not the stale original
+                // errorMessage. Pre-fix, if the primary failed for a non-OOM reason
+                // but a recovery file OOMed, the re-entered menu still showed the
+                // primary's error and never offered [R] auto-repair.
+                await ShowLoadFailureWithRecovery(fileName, recoveryError ?? errorMessage);
                 return;
             }
 
