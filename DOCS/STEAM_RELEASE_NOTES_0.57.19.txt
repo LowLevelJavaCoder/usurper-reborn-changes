@@ -1,0 +1,44 @@
+[h1]Usurper Reborn v0.57.19 - Save File Repair (Hotfix)[/h1]
+
+[b]Hotfix for v0.57.18.[/b] Some players whose entire backup chain (primary save, backup, autosaves, and emergency dumps) was already too bloated to load found themselves unable to recover their character. The size caps in v0.57.18 prevent saves from growing further but only kick in on the next save - and you can't trigger a save if you can't load the file first. v0.57.19 adds an automatic repair pass that breaks the chicken-and-egg problem.
+
+[h2]If your save still won't load after v0.57.18[/h2]
+
+[b]Launch v0.57.19, go to Load Game, click your character.[/b] When the load fails, the recovery menu now shows a new option:
+
+[code][R]    Auto-repair the bloated save file (recommended)[/code]
+
+Press [b]R[/b] and the game will:
+
+[olist]
+[*]Read your save file using a low-memory parser that can handle even very large files
+[*]Trim any oversized lists down to safe sizes (NPC memories, royal court records, encounter history, etc.)
+[*]Write a repaired version back to disk using the same atomic write pattern as normal saves
+[*]If the primary save can't be repaired, walk through your backup, autosaves, and emergency saves automatically
+[*]Load the first one that comes back clean
+[/olist]
+
+Your character, level, gold, inventory, equipment, quests, achievements, companions, and party state are all preserved. Some NPC history (old memories of past events, court members from previous reigns, encounter logs) gets discarded since that's where the bloat lives. Your character is back, and from this point forward the new size caps keep the file from growing out of control again.
+
+[h2]How the repair works[/h2]
+
+The technical reason your save couldn't load: a 71 MB JSON file expands to roughly 700 MB to 1 GB in working memory once the game tries to build C# objects from it. That hit a hard memory limit and the load died.
+
+The repair uses a different parser ([i]JsonDocument[/i]) that holds the file in a more compact form (around 200 MB for a 71 MB file). It walks through the file and clips the oversized arrays directly in JSON, then writes a smaller file back. Once the file is under the limit, the normal load process works again.
+
+[h2]Safety[/h2]
+
+[list]
+[*]The repair only runs when you press [b]R[/b]. Nothing happens automatically.
+[*]Repaired files are written via the same atomic temp-and-rename pattern as normal saves. If the repair gets interrupted partway through (Ctrl+C, power loss, etc.), your original file is untouched and you can try again.
+[*]The repair walks every recovery candidate in order. If your primary save can't be repaired for some non-bloat reason, it tries your backup. If that fails too, it tries each of your autosaves. Whichever one repairs and loads successfully becomes your new primary.
+[*]If every candidate fails, the game tells you so explicitly with instructions for reporting the issue. No silent fallback to "create a new character."
+[/list]
+
+[h2]Tested[/h2]
+
+12 new automated tests cover the repair logic across every type of bloated field (NPC memories, royal court collections, romance encounters, conversation states, dialogue tracking, affairs, dictionary fields, deeply-nested per-NPC lists). All 653 tests in the project pass on this build.
+
+[hr][/hr]
+
+[i]As always, please report any issues with these changes via the in-game [!] Bug Report option or in our Discord. If your save still won't repair, attach your save folder ([i]C:\Users\<you>\AppData\Roaming\UsurperReloaded\saves\[/i] on Windows) so we can investigate.[/i]

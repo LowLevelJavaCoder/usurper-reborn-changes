@@ -3003,6 +3003,17 @@ public partial class GameEngine
             }
         }
 
+        // v0.57.19: detect OOM-class errors. When the failure is "save too big to
+        // fit in memory" rather than corrupted-JSON, offer the automatic repair
+        // path. The repair clips bloated arrays in-place via JsonDocument so the
+        // file becomes loadable. ALL recovery files are typically also bloated
+        // for affected players, so offering repair on the primary AND each
+        // recovery slot is the only way out.
+        bool isBloatError = errorMessage != null && (
+            errorMessage.Contains("Not enough memory", StringComparison.OrdinalIgnoreCase) ||
+            errorMessage.Contains("too large", StringComparison.OrdinalIgnoreCase) ||
+            errorMessage.Contains("more data than", StringComparison.OrdinalIgnoreCase));
+
         if (recoveryOptions.Count > 0)
         {
             terminal.WriteLine("Recovery files found:", "bright_white");
@@ -3014,6 +3025,10 @@ public partial class GameEngine
             terminal.WriteLine("");
             terminal.WriteLine("Options:", "bright_white");
             terminal.WriteLine("  [1-" + recoveryOptions.Count + "] Try to load a recovery file", "yellow");
+            if (isBloatError)
+            {
+                terminal.WriteLine("  [R]    Auto-repair the bloated save file (recommended)", "bright_green");
+            }
             terminal.WriteLine("  [N]    Start a NEW character (will overwrite the broken save)", "yellow");
             terminal.WriteLine("  [Q]    Return to main menu without loading", "yellow");
         }
@@ -3027,6 +3042,10 @@ public partial class GameEngine
             terminal.WriteLine("  3. The JSON at the top of the file contains your character data", "gray");
             terminal.WriteLine("");
             terminal.WriteLine("Options:", "bright_white");
+            if (isBloatError)
+            {
+                terminal.WriteLine("  [R]    Auto-repair the bloated save file (recommended)", "bright_green");
+            }
             terminal.WriteLine("  [N]    Start a NEW character (will overwrite the broken save)", "yellow");
             terminal.WriteLine("  [Q]    Return to main menu without loading", "yellow");
         }
@@ -3036,6 +3055,12 @@ public partial class GameEngine
 
         if (choice == "Q" || string.IsNullOrEmpty(choice))
         {
+            return;
+        }
+
+        if (choice == "R" && isBloatError)
+        {
+            await RunSaveRepair(fileName, errorMessage);
             return;
         }
 
@@ -3092,6 +3117,164 @@ public partial class GameEngine
         }
 
         // Unknown input — return to menu
+    }
+
+    /// <summary>
+    /// v0.57.19: emergency repair flow for the "save too bloated to load" case.
+    /// Tries the primary file first, then walks the same recovery chain as
+    /// ShowLoadFailureWithRecovery (backup, autosaves, emergency). On any
+    /// successful repair+load the character is restored. The repair is
+    /// in-place — repaired files are written back to their original paths so
+    /// future loads get the trimmed version.
+    /// </summary>
+    private async Task RunSaveRepair(string fileName, string originalError)
+    {
+        terminal.WriteLine("");
+        terminal.WriteLine("========================================================================", "bright_green");
+        terminal.WriteLine("  AUTOMATIC SAVE REPAIR", "bright_green");
+        terminal.WriteLine("========================================================================", "bright_green");
+        terminal.WriteLine("");
+        terminal.WriteLine("This will read the bloated save and write a trimmed version", "yellow");
+        terminal.WriteLine("with oversized lists clipped down to safe limits. Your character,", "yellow");
+        terminal.WriteLine("inventory, level, gold, and quests are preserved. Some NPC history", "yellow");
+        terminal.WriteLine("(old memories, prisoners, encounters) will be discarded.", "yellow");
+        terminal.WriteLine("");
+
+        string saveDir;
+        try { saveDir = SaveSystem.Instance.GetSaveDirectory(); }
+        catch (Exception ex)
+        {
+            terminal.WriteLine($"Could not access save folder: {ex.Message}", "red");
+            await terminal.PressAnyKey();
+            return;
+        }
+
+        // Build the same candidate list as ShowLoadFailureWithRecovery: primary
+        // first, then backup, then most-recent 3 autosaves, then emergency files
+        // for this character. Try each in order until one repairs+loads.
+        var candidates = new List<(string label, string path)>();
+
+        string primaryPath = System.IO.Path.Combine(saveDir, fileName);
+        if (System.IO.File.Exists(primaryPath))
+            candidates.Add(("Primary save", primaryPath));
+
+        string baseName = System.IO.Path.GetFileNameWithoutExtension(fileName);
+
+        string backupPath = System.IO.Path.Combine(saveDir, $"{baseName}_backup.json");
+        if (System.IO.File.Exists(backupPath))
+            candidates.Add(("Backup", backupPath));
+
+        try
+        {
+            var autosaves = System.IO.Directory.GetFiles(saveDir, $"{baseName}_autosave_*.json")
+                .Select(p => new System.IO.FileInfo(p))
+                .OrderByDescending(fi => fi.LastWriteTime)
+                .Take(3);
+            foreach (var fi in autosaves)
+                candidates.Add(($"Autosave {fi.LastWriteTime:yyyy-MM-dd HH:mm}", fi.FullName));
+        }
+        catch { }
+
+        try
+        {
+            var sanitized = string.Join("_", baseName.Split(System.IO.Path.GetInvalidFileNameChars()));
+            var emergencies = System.IO.Directory.GetFiles(saveDir, $"emergency_{sanitized}_*.json")
+                .Select(p => new System.IO.FileInfo(p))
+                .OrderByDescending(fi => fi.LastWriteTime);
+            foreach (var fi in emergencies)
+                candidates.Add(($"Emergency {fi.LastWriteTime:yyyy-MM-dd HH:mm}", fi.FullName));
+        }
+        catch { }
+
+        // Legacy single-file emergency fallback.
+        string legacyEmergency = System.IO.Path.Combine(saveDir, "emergency_autosave.json");
+        if (System.IO.File.Exists(legacyEmergency))
+            candidates.Add(("Legacy emergency", legacyEmergency));
+
+        if (candidates.Count == 0)
+        {
+            terminal.WriteLine("No save files found to repair.", "red");
+            await terminal.PressAnyKey();
+            return;
+        }
+
+        // The repair writes via Utf8JsonWriter — pick up the indented setting from
+        // the file backend so repaired files match the format of normal saves.
+        var writeOpts = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
+
+        foreach (var (label, path) in candidates)
+        {
+            terminal.WriteLine($"Repairing: {label}...", "yellow");
+            terminal.WriteLine($"  {path}", "dark_gray");
+
+            UsurperRemake.Systems.SaveFileRepair.RepairResult result;
+            try
+            {
+                result = UsurperRemake.Systems.SaveFileRepair.RepairInPlace(path, writeOpts);
+            }
+            catch (Exception ex)
+            {
+                terminal.WriteLine($"  Repair threw: {ex.GetType().Name}: {ex.Message}", "red");
+                continue;
+            }
+
+            if (!result.Success)
+            {
+                terminal.WriteLine($"  Repair failed: {result.ErrorMessage}", "red");
+                continue;
+            }
+
+            long origMB = result.OriginalSizeBytes / (1024 * 1024);
+            long newMB = result.RepairedSizeBytes / (1024 * 1024);
+            string sizeChange = origMB > 0
+                ? $"{origMB} MB -> {newMB} MB"
+                : $"{result.OriginalSizeBytes / 1024} KB -> {result.RepairedSizeBytes / 1024} KB";
+            terminal.WriteLine($"  Repair complete: {sizeChange}, {result.TrimmedFields.Count} field(s) trimmed.", "bright_green");
+
+            // If the repaired file isn't already the primary, copy it over.
+            if (!string.Equals(path, primaryPath, StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    System.IO.File.Copy(path, primaryPath, overwrite: true);
+                    terminal.WriteLine($"  Restored {label} as primary save.", "bright_green");
+                }
+                catch (Exception ex)
+                {
+                    terminal.WriteLine($"  Could not copy repaired file to primary: {ex.Message}", "red");
+                    continue;
+                }
+            }
+
+            terminal.WriteLine("");
+            terminal.WriteLine("Attempting to load the repaired save...", "yellow");
+            await Task.Delay(800);
+
+            // Verify it loads. LoadSaveByFileName runs the full restoration pipeline.
+            // If the repaired file STILL fails (unrecognized bloat surface, malformed
+            // JSON in a non-bloat field, etc.), control returns to the load failure
+            // handler which will re-show this menu.
+            var (verifyData, verifyError) = await SaveSystem.Instance.LoadSaveByFileNameWithError(fileName);
+            if (verifyData?.Player != null)
+            {
+                terminal.WriteLine("Repair succeeded — loading character now.", "bright_green");
+                terminal.WriteLine("");
+                await Task.Delay(1000);
+                await LoadSaveByFileName(fileName);
+                return;
+            }
+
+            terminal.WriteLine($"  Repair completed but load still failed: {verifyError}", "red");
+            terminal.WriteLine("  Trying next candidate...", "yellow");
+            terminal.WriteLine("");
+        }
+
+        terminal.WriteLine("");
+        terminal.WriteLine("All repair attempts failed. The save may have damage beyond bloat", "red");
+        terminal.WriteLine("(corrupt JSON, version mismatch, etc.). Please report this with your", "red");
+        terminal.WriteLine("save folder so we can investigate.", "red");
+        terminal.WriteLine("");
+        await terminal.PressAnyKey();
     }
 
     /// <summary>
