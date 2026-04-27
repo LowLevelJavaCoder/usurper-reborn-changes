@@ -200,6 +200,15 @@ namespace UsurperRemake.Systems
         {
             OnEndingTriggered?.Invoke(ending);
 
+            // Phase 7: emit a graphical end card up front so the JS overlay shows
+            // immediately. The per-ending text below still flows through (acceptable
+            // bleed for a one-shot terminal narrative — the overlay sits on top and
+            // self-dismisses on the final NG+/ascension prompt).
+            if (GameConfig.ElectronMode)
+            {
+                ElectronBridge.EmitEnding(BuildEndingScreenData(player, ending));
+            }
+
             switch (ending)
             {
                 case EndingType.Usurper:
@@ -1320,6 +1329,32 @@ namespace UsurperRemake.Systems
 
         private async Task<bool> OfferImmortality(Character player, EndingType ending, TerminalEmulator terminal)
         {
+            // Phase 7: emit graphical immortality offer overlay. Y/N flows back
+            // through the existing GetInputAsync so the parser is unchanged.
+            if (GameConfig.ElectronMode)
+            {
+                ElectronBridge.EmitImmortalAscension(new ElectronBridge.ImmortalAscensionData
+                {
+                    PromptStage = "offer",
+                    CharacterName = player.Name2 ?? player.Name1 ?? "",
+                    ClassName = player.ClassName,
+                    ManweDialogue = new List<string>
+                    {
+                        Loc.Get("ending.immortal_manwe_1"),
+                        Loc.Get("ending.immortal_manwe_2"),
+                        Loc.Get("ending.immortal_manwe_3")
+                    },
+                    Benefits = new List<string>
+                    {
+                        Loc.Get("ending.immortal_benefit_1"),
+                        Loc.Get("ending.immortal_benefit_2"),
+                        Loc.Get("ending.immortal_benefit_3"),
+                        Loc.Get("ending.immortal_benefit_4")
+                    },
+                    IsKing = player.King
+                });
+            }
+
             terminal.Clear();
             terminal.WriteLine("");
             terminal.SetColor("bright_yellow");
@@ -1486,6 +1521,22 @@ namespace UsurperRemake.Systems
 
         private async Task<bool> OfferNewGamePlus(Character player, EndingType ending, TerminalEmulator terminal)
         {
+            // Phase 7: emit graphical NG+ prompt. Y/N flows through existing input.
+            if (GameConfig.ElectronMode)
+            {
+                var cycleNum = StoryProgressionSystem.Instance.CurrentCycle;
+                ElectronBridge.EmitNewGamePlusPrompt(
+                    currentCycle: cycleNum,
+                    nextCycle: cycleNum + 1,
+                    carryoverBonuses: new List<string>
+                    {
+                        Loc.Get("ending.ngplus_bonus_stats"),
+                        Loc.Get("ending.ngplus_again_1"),
+                        Loc.Get("ending.ngplus_again_2"),
+                        Loc.Get("ending.ngplus_again_3")
+                    });
+            }
+
             terminal.Clear();
             terminal.WriteLine("");
             if (!GameConfig.ScreenReaderMode)
@@ -1577,6 +1628,50 @@ namespace UsurperRemake.Systems
             }
 
             return false;
+        }
+
+        #endregion
+
+        #region Electron Bridge Helpers
+
+        /// <summary>
+        /// Build the structured ending screen payload for the Electron client.
+        /// Emitted at the top of TriggerEnding so the JS overlay shows the end
+        /// card cinematic while the per-ending text path scrolls behind it.
+        /// </summary>
+        private ElectronBridge.EndingScreenData BuildEndingScreenData(Character player, EndingType ending)
+        {
+            string title = ending switch
+            {
+                EndingType.Usurper => Loc.Get("ending.usurper_header"),
+                EndingType.Savior => Loc.Get("ending.savior_header"),
+                EndingType.Defiant => Loc.Get("ending.defiant_header"),
+                EndingType.TrueEnding => Loc.Get("ending.true_header"),
+                EndingType.Secret => Loc.Get("ending.dissolution_header"),
+                _ => ending.ToString()
+            };
+
+            // Defiant ends mortally; Usurper/Savior/TrueEnding offer immortality.
+            // Dissolution returns early in TriggerEnding before we'd reach the loop.
+            bool offerImmortal = ending != EndingType.Secret && ending != EndingType.Defiant;
+            bool offerNgPlus = ending != EndingType.Secret;
+
+            return new ElectronBridge.EndingScreenData
+            {
+                EndingType = ending.ToString(),
+                Title = title,
+                Subtitle = "",
+                Credits = new List<string>(),
+                Epilogue = new List<string>(),
+                FinalLevel = player.Level,
+                TotalKills = player.Statistics?.TotalMonstersKilled ?? 0,
+                TotalGold = player.Gold,
+                FameFinal = (int)player.Fame,
+                CycleNumber = StoryProgressionSystem.Instance.CurrentCycle,
+                PlayTimeSeconds = (long)(player.Statistics?.TotalPlayTime.TotalSeconds ?? 0),
+                ImmortalityOffered = offerImmortal,
+                NgPlusOffered = offerNgPlus
+            };
         }
 
         #endregion

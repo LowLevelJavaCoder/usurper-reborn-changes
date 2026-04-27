@@ -150,6 +150,13 @@ public class LoveStreetLocation : BaseLocation
 
         terminal.ClearScreen();
 
+        // Phase 5: Electron mode emits Love Street menu state. Pattern B.
+        if (GameConfig.ElectronMode)
+        {
+            EmitElectronEvents();
+            return;
+        }
+
         WriteBoxHeader(Loc.Get("love_street.header_visual"), "bright_magenta", 77);
         terminal.WriteLine("");
 
@@ -2461,6 +2468,44 @@ public class LoveStreetLocation : BaseLocation
     }
 
     #endregion
+
+    /// <summary>
+    /// Phase 5: emit Love Street menu state for the Electron client. Pattern B.
+    /// </summary>
+    private void EmitElectronEvents()
+    {
+        var player = GetCurrentPlayer();
+        if (player == null) return;
+
+        ElectronBridge.EmitLocation(
+            name: Loc.Get("love_street.header_visual"),
+            description: Loc.Get("love_street.desc1"),
+            timeOfDay: "");
+
+        bool isManaClass = player is Player p && p.IsManaClass;
+        ElectronBridge.EmitStats(
+            hp: player.HP, maxHp: player.MaxHP,
+            mana: isManaClass ? player.Mana : 0, maxMana: isManaClass ? player.MaxMana : 0,
+            stamina: isManaClass ? 0 : player.Stamina, maxStamina: isManaClass ? 0 : player.BaseStamina,
+            gold: player.Gold, level: player.Level,
+            className: player.ClassName, raceName: player.Race.ToString(),
+            playerName: player.DisplayName);
+
+        var menu = new List<ElectronBridge.MenuItemData>
+        {
+            new() { Key = "1", Label = "Beauty Nest", Category = "shop", Icon = "love" },
+            new() { Key = "2", Label = "Hall of Dreams", Category = "shop", Icon = "love" },
+            new() { Key = "M", Label = "Mingle with NPCs", Category = "social", Icon = "mingle" },
+            new() { Key = "D", Label = "Date Someone", Category = "social", Icon = "date" },
+            new() { Key = "G", Label = "Gift Shop", Category = "shop", Icon = "gift" },
+            new() { Key = "V", Label = "Gossip", Category = "social", Icon = "gossip" },
+            new() { Key = "L", Label = "Love Potions", Category = "shop", Icon = "potion" },
+            new() { Key = "R", Label = Loc.Get("ui.return"), Category = "navigate", Icon = "back" },
+        };
+        ElectronBridge.EmitMenu(menu);
+
+        EmitNPCsInLocationToElectron();
+    }
 }
 
 #region Data Classes

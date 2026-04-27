@@ -1553,6 +1553,26 @@ public partial class CombatEngine
     /// </summary>
     private async Task ShowCombatIntroduction(Character player, Monster monster, CombatResult result)
     {
+        // Always emit so the graphical client renders the combat scene.
+        // The CombatLog entry runs unconditionally too — save/replay needs it.
+        ElectronBridge.Emit("combat_start", new
+        {
+            monsterName = monster.Name,
+            monsterLevel = monster.Level,
+            monsterHp = monster.HP,
+            monsterMaxHp = monster.MaxHP,
+            isBoss = monster.IsBoss || monster.IsMiniBoss,
+            family = monster.FamilyName ?? ""
+        });
+        result.CombatLog.Add($"Combat begins against {monster.Name}!");
+
+        // Phase 2: in Electron mode the graphical combat view replaces the text
+        // intro entirely. Skip the entire text-rendering block (which otherwise
+        // bleeds underneath the graphical overlay) and let the action loop
+        // proceed straight to GetPlayerAction.
+        if (GameConfig.ElectronMode)
+            return;
+
         terminal.ClearScreen();
         terminal.SetColor("bright_red");
         // Screen reader friendly header
@@ -1600,8 +1620,6 @@ public partial class CombatEngine
         terminal.WriteLine("");
         await Task.Delay(GetCombatDelay(2000));
 
-        result.CombatLog.Add($"Combat begins against {monster.Name}!");
-
         // Show grief status at combat start with companion-specific message
         if (GriefSystem.Instance.IsGrieving)
         {
@@ -1620,17 +1638,6 @@ public partial class CombatEngine
                     terminal.WriteLine(Loc.Get("combat.grief_penalty", $"{totalPenalty * 100:0}"));
             }
         }
-
-        // Electron graphical client — emit combat start
-        ElectronBridge.Emit("combat_start", new
-        {
-            monsterName = monster.Name,
-            monsterLevel = monster.Level,
-            monsterHp = monster.HP,
-            monsterMaxHp = monster.MaxHP,
-            isBoss = monster.IsBoss || monster.IsMiniBoss,
-            family = monster.FamilyName ?? ""
-        });
     }
 
     /// <summary>
@@ -1668,8 +1675,15 @@ public partial class CombatEngine
                 return new CombatAction { Type = CombatActionType.Status };
             }
 
-            // Display combat menu
-            if (DoorMode.IsInDoorMode || GameConfig.CompactMode)
+            // Display combat menu. Phase 2: Electron mode emits the structured
+            // menu state for the graphical client to render and SKIPS the text
+            // menu entirely — the buttons are graphical, no need for keys
+            // listed in the terminal pane underneath.
+            if (GameConfig.ElectronMode)
+            {
+                EmitCombatMenu(player, monster, pvpOpponent, isPvP);
+            }
+            else if (DoorMode.IsInDoorMode || GameConfig.CompactMode)
             {
                 ShowCombatMenuBBS(player, monster, pvpOpponent, isPvP);
             }
@@ -1680,20 +1694,16 @@ public partial class CombatEngine
             else
             {
                 ShowCombatMenuStandard(player, monster, pvpOpponent, isPvP);
-            }
-
-            // Show combat tip occasionally (skip in compact mode to save lines)
-            if (!DoorMode.IsInDoorMode && !GameConfig.CompactMode)
+                // Combat tip is visual-only (clutters BBS/SR/graphical clients).
                 ShowCombatTipIfNeeded(player);
-
-            // Electron graphical client — emit full combat menu
-            if (GameConfig.ElectronMode)
-            {
-                EmitCombatMenu(player, monster, pvpOpponent, isPvP);
             }
 
-            terminal.SetColor("white");
-            terminal.Write(Loc.Get("combat.choose_action"));
+            // Prompt text only when terminal is the user's primary surface.
+            if (!GameConfig.ElectronMode)
+            {
+                terminal.SetColor("white");
+                terminal.Write(Loc.Get("combat.choose_action"));
+            }
 
             var choice = await terminal.GetInput("");
             var upperChoice = choice.Trim().ToUpper();
@@ -8053,7 +8063,38 @@ public partial class CombatEngine
     {
         var rarity = LootGenerator.GetItemRarity(lootItem);
         string rarityColor = LootGenerator.GetRarityColor(rarity);
-        
+
+        // Phase 2: emit early so the graphical overlay appears before any text
+        // rendering. Loot drops are transient (~2s of decision time) and the
+        // graphical overlay sits on top of the terminal pane, so the brief
+        // text bleed underneath is acceptable for now. Full text-suppression
+        // refactor deferred — text + broadcast buffer building are deeply
+        // interleaved here and a clean split is bigger than Phase 2 scope.
+        if (GameConfig.ElectronMode)
+        {
+            var bonusStats = new Dictionary<string, int>();
+            if (lootItem.Strength != 0) bonusStats["STR"] = lootItem.Strength;
+            if (lootItem.Dexterity != 0) bonusStats["DEX"] = lootItem.Dexterity;
+            if (lootItem.Wisdom != 0) bonusStats["WIS"] = lootItem.Wisdom;
+            if (lootItem.Defence != 0) bonusStats["DEF"] = lootItem.Defence;
+            if (lootItem.Charisma != 0) bonusStats["CHA"] = lootItem.Charisma;
+            if (lootItem.Agility != 0) bonusStats["AGI"] = lootItem.Agility;
+            ElectronBridge.EmitLootItem(
+                lootItem.Name,
+                lootItem.Type.ToString(),
+                lootItem.Attack,
+                lootItem.Armor,
+                bonusStats.Count > 0 ? bonusStats : null,
+                rarity.ToString(),
+                lootItem.IsIdentified,
+                new List<ElectronBridge.ChoiceOption>
+                {
+                    new() { Key = "E", Label = "Equip", Style = "treasure" },
+                    new() { Key = "T", Label = "Take", Style = "info" },
+                    new() { Key = "P", Label = "Pass", Style = "info" },
+                });
+        }
+
         terminal.WriteLine("");
         terminal.SetColor("bright_yellow");
 
@@ -8193,33 +8234,7 @@ public partial class CombatEngine
         }
 
         terminal.WriteLine("");
-
-        // Electron client — emit loot item for graphical display
-        if (GameConfig.ElectronMode)
-        {
-            var bonusStats = new Dictionary<string, int>();
-            if (lootItem.Strength != 0) bonusStats["STR"] = lootItem.Strength;
-            if (lootItem.Dexterity != 0) bonusStats["DEX"] = lootItem.Dexterity;
-            if (lootItem.Wisdom != 0) bonusStats["WIS"] = lootItem.Wisdom;
-            if (lootItem.Defence != 0) bonusStats["DEF"] = lootItem.Defence;
-            if (lootItem.Charisma != 0) bonusStats["CHA"] = lootItem.Charisma;
-            if (lootItem.Agility != 0) bonusStats["AGI"] = lootItem.Agility;
-
-            ElectronBridge.EmitLootItem(
-                lootItem.Name,
-                lootItem.Type.ToString(),
-                lootItem.Attack,
-                lootItem.Armor,
-                bonusStats.Count > 0 ? bonusStats : null,
-                rarity.ToString(),
-                lootItem.IsIdentified,
-                new List<ElectronBridge.ChoiceOption>
-                {
-                    new() { Key = "E", Label = "Equip", Style = "treasure" },
-                    new() { Key = "T", Label = "Take", Style = "info" },
-                    new() { Key = "P", Label = "Pass", Style = "info" },
-                });
-        }
+        // Loot emit was hoisted to the top of this method (Phase 2 — see comment there).
     }
 
     /// <summary>
@@ -9972,6 +9987,10 @@ public partial class CombatEngine
                 monsters = monsterData,
                 teammates = teammateData
             });
+            // Phase 2: graphical client renders the status pane from the emit
+            // payload above; skip the text-rendered status box that would
+            // otherwise scroll behind the graphical overlay.
+            return;
         }
 
         // Check for screen reader mode
@@ -11017,7 +11036,13 @@ public partial class CombatEngine
             bool canHealAlly = hasTeammatesNeedingAid && (player.Healing > 0 || player.ManaPotions > 0 || (ClassAbilitySystem.IsSpellcaster(player.Class) && player.Mana > 0));
             var classInfo = GetClassSpecificActions(player);
 
-            if (DoorMode.IsInDoorMode || GameConfig.CompactMode)
+            // Phase 2: Electron mode emits the structured menu state for the
+            // graphical client and skips the text menu entirely.
+            if (GameConfig.ElectronMode)
+            {
+                EmitCombatMenuMulti(player, monsters);
+            }
+            else if (DoorMode.IsInDoorMode || GameConfig.CompactMode)
             {
                 ShowDungeonCombatMenuBBS(player, hasTeammatesNeedingAid, canHealAlly, classInfo);
             }
@@ -11028,20 +11053,15 @@ public partial class CombatEngine
             else
             {
                 ShowDungeonCombatMenuStandard(player, hasTeammatesNeedingAid, canHealAlly, classInfo);
-            }
-
-            // Show combat tip occasionally (skip in compact mode to save lines)
-            if (!DoorMode.IsInDoorMode && !GameConfig.CompactMode)
+                // Combat tip is visual-only.
                 ShowCombatTipIfNeeded(player);
-
-            // Electron graphical client — emit full combat menu with monsters
-            if (GameConfig.ElectronMode)
-            {
-                EmitCombatMenuMulti(player, monsters);
             }
 
-            terminal.SetColor("white");
-            terminal.Write(Loc.Get("combat.choose_action"));
+            if (!GameConfig.ElectronMode)
+            {
+                terminal.SetColor("white");
+                terminal.Write(Loc.Get("combat.choose_action"));
+            }
 
             var input = await terminal.GetInput("");
             var action = new CombatAction();
@@ -18639,6 +18659,37 @@ public partial class CombatEngine
         }
         StrangerEncounterSystem.Instance.RecordGameEvent(StrangerContextEvent.PlayerDied);
 
+        // Phase 7: emit graphical death screen (Nightmare or normal). Text path
+        // continues to render below for terminal mode.
+        if (GameConfig.ElectronMode)
+        {
+            var farewells = new List<string>();
+            if (result.Teammates != null)
+            {
+                foreach (var t in result.Teammates)
+                {
+                    if (t is NPC tn && tn.IsAlive)
+                    {
+                        string r = tn.GetReaction(result.Player as Player, "ally_death");
+                        if (!string.IsNullOrEmpty(r)) farewells.Add($"{tn.Name2}: \"{r}\"");
+                    }
+                }
+            }
+            ElectronBridge.EmitDeath(new ElectronBridge.DeathScreenData
+            {
+                KilledBy = result.Monster?.Name ?? "unknown",
+                DeathMessage = Loc.Get("death.you_died"),
+                FameLoss = result.Player.Fame > 0 ? Math.Min((int)result.Player.Fame, 3) : 0,
+                IsPermadeath = DifficultySystem.IsPermadeath(),
+                IsNightmareMode = DifficultySystem.IsPermadeath(),
+                ResurrectionOffered = !DifficultySystem.IsPermadeath(),
+                ResurrectionPrompt = DifficultySystem.IsPermadeath() ? null : Loc.Get("death.resurrect_prompt"),
+                TeammateFarewells = farewells
+            });
+            ElectronBridge.EmitSound(
+                DifficultySystem.IsPermadeath() ? "sfx.death_permadeath" : "sfx.death");
+        }
+
         // Nightmare mode = permadeath — no resurrection, save deleted
         if (DifficultySystem.IsPermadeath())
         {
@@ -22739,11 +22790,16 @@ public partial class CombatEngine
             // Electron graphical client — emit victory
             ElectronBridge.EmitCombatEnd("Victory", xpReward, goldReward);
 
-            // Display rewards
-            terminal.WriteLine("");
-            terminal.SetColor("yellow");
-            terminal.WriteLine(Loc.Get("combat.experience_gained", $"{xpReward:N0}"));
-            terminal.WriteLine(Loc.Get("combat.gold_gained", $"{goldReward:N0}"));
+            // Display rewards. Phase 2: in Electron mode the graphical victory
+            // overlay shows xp/gold in its own panel; skip the text duplicates
+            // here so they don't bleed into the scrollback.
+            if (!GameConfig.ElectronMode)
+            {
+                terminal.WriteLine("");
+                terminal.SetColor("yellow");
+                terminal.WriteLine(Loc.Get("combat.experience_gained", $"{xpReward:N0}"));
+                terminal.WriteLine(Loc.Get("combat.gold_gained", $"{goldReward:N0}"));
+            }
 
             // === BONUS LOOT FROM NPC EQUIPMENT ===
             // Chance to salvage value from opponent's equipment
@@ -25237,11 +25293,6 @@ public partial class CombatEngine
     /// </summary>
     private async Task PlayBossPhaseTransition(BossCombatContext ctx, Monster boss, int newPhase)
     {
-        terminal.WriteLine("");
-        terminal.SetColor("bright_red");
-        terminal.WriteLine(GameConfig.ScreenReaderMode ? $"PHASE {newPhase}:" : $"═══ PHASE {newPhase} ═══");
-        terminal.WriteLine("");
-
         // Defense in depth: every BossContext SHOULD set BossData (the Noctura
         // betrayal NPE in v0.57.17 was caused by a missed initialization), but if
         // a future caller forgets, fall back to no-dialogue + Divine Strike rather
@@ -25252,6 +25303,31 @@ public partial class CombatEngine
             3 => ctx.BossData?.Phase3Dialogue ?? Array.Empty<string>(),
             _ => Array.Empty<string>()
         };
+        string flavor = newPhase == 2 ? $"{boss.Name} grows more powerful!"
+            : newPhase == 3 ? $"{boss.Name} unleashes their true form!"
+            : "";
+
+        // Phase 7: emit graphical phase-transition banner. Non-blocking — the
+        // overlay self-dismisses after a short timer so combat continues.
+        if (GameConfig.ElectronMode)
+        {
+            ElectronBridge.EmitBossPhaseTransition(
+                bossName: boss.Name,
+                newPhase: newPhase,
+                bossHp: boss.HP,
+                bossMaxHp: boss.MaxHP,
+                dialogue: new List<string>(dialogue),
+                flavorText: flavor,
+                isPhysicalImmune: ctx?.HasPhysicalImmunityPhase == true && newPhase == 2,
+                isMagicalImmune: ctx?.HasMagicalImmunityPhase == true && newPhase == 3);
+            // Phase 9.5: dramatic phase-transition stinger
+            ElectronBridge.EmitSound("sfx.boss.phase_transition");
+        }
+
+        terminal.WriteLine("");
+        terminal.SetColor("bright_red");
+        terminal.WriteLine(GameConfig.ScreenReaderMode ? $"PHASE {newPhase}:" : $"═══ PHASE {newPhase} ═══");
+        terminal.WriteLine("");
 
         foreach (var line in dialogue)
         {
@@ -25259,15 +25335,10 @@ public partial class CombatEngine
             await Task.Delay(200);
         }
 
-        if (newPhase == 2)
+        if (!string.IsNullOrEmpty(flavor))
         {
             terminal.SetColor("bright_red");
-            terminal.WriteLine($"  {boss.Name} grows more powerful!");
-        }
-        else if (newPhase == 3)
-        {
-            terminal.SetColor("bright_red");
-            terminal.WriteLine($"  {boss.Name} unleashes their true form!");
+            terminal.WriteLine($"  {flavor}");
         }
 
         // Update monster's special abilities to include new phase abilities

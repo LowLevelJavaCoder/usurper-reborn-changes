@@ -83,6 +83,15 @@ public class ArmorShopLocation : BaseLocation
             return;
         }
 
+        // Phase 4: Electron mode emits Armor Shop top-level slot picker.
+        // Sub-screens (per-slot browse list, buy, sell, auto-buy wizard) still
+        // text-mode. Pattern B for entry only.
+        if (GameConfig.ElectronMode && currentSlotCategory == null)
+        {
+            EmitElectronEvents();
+            return;
+        }
+
         WriteBoxHeader(Loc.Get("armor_shop.header"), "bright_cyan");
         terminal.WriteLine("");
         terminal.SetColor("gray");
@@ -1186,5 +1195,48 @@ public class ArmorShopLocation : BaseLocation
     private static string FormatNumber(long value)
     {
         return value.ToString("N0");
+    }
+
+    /// <summary>
+    /// Phase 4: emit Armor Shop top-level slot picker for Electron client.
+    /// 9 slot categories + Sell + Auto-Buy + Return. Sub-screens deferred.
+    /// </summary>
+    private void EmitElectronEvents()
+    {
+        var player = GetCurrentPlayer();
+        if (player == null) return;
+
+        ElectronBridge.EmitLocation(
+            name: Loc.Get("armor_shop.header"),
+            description: Loc.Get("armor_shop.run_by", shopkeeperName),
+            timeOfDay: "");
+
+        bool isManaClass = player is Player p && p.IsManaClass;
+        ElectronBridge.EmitStats(
+            hp: player.HP, maxHp: player.MaxHP,
+            mana: isManaClass ? player.Mana : 0, maxMana: isManaClass ? player.MaxMana : 0,
+            stamina: isManaClass ? 0 : player.Stamina, maxStamina: isManaClass ? 0 : player.BaseStamina,
+            gold: player.Gold, level: player.Level,
+            className: player.ClassName, raceName: player.Race.ToString(),
+            playerName: player.DisplayName);
+
+        var menu = new List<ElectronBridge.MenuItemData>
+        {
+            new() { Key = "1", Label = "Body Armor", Category = "browse", Icon = "armor-body" },
+            new() { Key = "2", Label = "Head", Category = "browse", Icon = "armor-head" },
+            new() { Key = "3", Label = "Arms", Category = "browse", Icon = "armor-arms" },
+            new() { Key = "4", Label = "Hands", Category = "browse", Icon = "armor-hands" },
+            new() { Key = "5", Label = "Legs", Category = "browse", Icon = "armor-legs" },
+            new() { Key = "6", Label = "Feet", Category = "browse", Icon = "armor-feet" },
+            new() { Key = "7", Label = "Waist", Category = "browse", Icon = "armor-waist" },
+            new() { Key = "8", Label = "Face", Category = "browse", Icon = "armor-face" },
+            new() { Key = "9", Label = "Cloak", Category = "browse", Icon = "armor-cloak" },
+            new() { Key = "S", Label = "Sell Armor", Category = "sell", Icon = "sell" },
+            new() { Key = "A", Label = "Auto-Buy Best", Category = "service", Icon = "auto-buy" },
+            new() { Key = "R", Label = Loc.Get("ui.return"), Category = "navigate", Icon = "back" },
+        };
+        ElectronBridge.EmitMenu(menu);
+
+        EmitNPCsInLocationToElectron();
     }
 }

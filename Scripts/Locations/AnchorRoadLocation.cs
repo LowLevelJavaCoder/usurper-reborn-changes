@@ -46,6 +46,13 @@ public class AnchorRoadLocation : BaseLocation
 
         terminal.ClearScreen();
 
+        // Phase 5: Electron mode emits Anchor Road menu state. Pattern B.
+        if (GameConfig.ElectronMode)
+        {
+            EmitElectronEvents();
+            return;
+        }
+
         // Header
         if (IsScreenReader)
         {
@@ -1375,4 +1382,42 @@ public class AnchorRoadLocation : BaseLocation
     }
 
     #endregion
+
+    /// <summary>
+    /// Phase 5: emit Anchor Road (challenge hub) menu for the Electron client. Pattern B.
+    /// </summary>
+    private void EmitElectronEvents()
+    {
+        var player = GetCurrentPlayer();
+        if (player == null) return;
+
+        ElectronBridge.EmitLocation(
+            name: Loc.Get("anchor_road.header_title"),
+            description: "",
+            timeOfDay: "");
+
+        bool isManaClass = player is Player p && p.IsManaClass;
+        ElectronBridge.EmitStats(
+            hp: player.HP, maxHp: player.MaxHP,
+            mana: isManaClass ? player.Mana : 0, maxMana: isManaClass ? player.MaxMana : 0,
+            stamina: isManaClass ? 0 : player.Stamina, maxStamina: isManaClass ? 0 : player.BaseStamina,
+            gold: player.Gold, level: player.Level,
+            className: player.ClassName, raceName: player.Race.ToString(),
+            playerName: player.DisplayName);
+
+        var menu = new List<ElectronBridge.MenuItemData>
+        {
+            new() { Key = "B", Label = "Bounty Hunting", Category = "combat", Icon = "bounty" },
+            new() { Key = "G", Label = "Gang War", Category = "combat", Icon = "gang" },
+            new() { Key = "T", Label = "The Gauntlet", Category = "combat", Icon = "gauntlet" },
+            new() { Key = "C", Label = "Claim Town Control", Category = "team", Icon = "control" },
+            new() { Key = "F", Label = "Flee Town Control", Category = "team", Icon = "flee" },
+            new() { Key = "S", Label = "Challenge Status", Category = "info", Icon = "info" },
+            new() { Key = "P", Label = "Prison Grounds", Category = "navigate", Icon = "prison" },
+            new() { Key = "R", Label = Loc.Get("ui.return"), Category = "navigate", Icon = "back" },
+        };
+        ElectronBridge.EmitMenu(menu);
+
+        EmitNPCsInLocationToElectron();
+    }
 }

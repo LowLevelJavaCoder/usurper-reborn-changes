@@ -36,6 +36,14 @@ public class ArenaLocation : BaseLocation
     protected override void DisplayLocation()
     {
         terminal.ClearScreen();
+
+        // Phase 5: Electron mode emits Arena menu state. Pattern B.
+        if (GameConfig.ElectronMode)
+        {
+            EmitElectronEvents();
+            return;
+        }
+
         ShowArenaBanner();
         ShowArenaMenu();
         ShowStatusLine();
@@ -650,5 +658,40 @@ public class ArenaLocation : BaseLocation
     private string GetClassName(int classId)
     {
         return classId >= 0 && classId < ClassNames.Length ? ClassNames[classId] : "Unknown";
+    }
+
+    /// <summary>
+    /// Phase 5: emit Arena menu state for the Electron client. Pattern B.
+    /// </summary>
+    private void EmitElectronEvents()
+    {
+        var player = GetCurrentPlayer();
+        if (player == null) return;
+
+        ElectronBridge.EmitLocation(
+            name: Loc.Get("arena.header"),
+            description: "",
+            timeOfDay: "");
+
+        bool isManaClass = player is Player p && p.IsManaClass;
+        ElectronBridge.EmitStats(
+            hp: player.HP, maxHp: player.MaxHP,
+            mana: isManaClass ? player.Mana : 0, maxMana: isManaClass ? player.MaxMana : 0,
+            stamina: isManaClass ? 0 : player.Stamina, maxStamina: isManaClass ? 0 : player.BaseStamina,
+            gold: player.Gold, level: player.Level,
+            className: player.ClassName, raceName: player.Race.ToString(),
+            playerName: player.DisplayName);
+
+        var menu = new List<ElectronBridge.MenuItemData>
+        {
+            new() { Key = "A", Label = "Attack Player", Category = "combat", Icon = "pvp" },
+            new() { Key = "L", Label = "Leaderboard", Category = "info", Icon = "rank" },
+            new() { Key = "H", Label = "Fight History", Category = "info", Icon = "history" },
+            new() { Key = "S", Label = "PvP Statistics", Category = "info", Icon = "stats" },
+            new() { Key = "R", Label = Loc.Get("ui.return"), Category = "navigate", Icon = "back" },
+        };
+        ElectronBridge.EmitMenu(menu);
+
+        EmitNPCsInLocationToElectron();
     }
 }

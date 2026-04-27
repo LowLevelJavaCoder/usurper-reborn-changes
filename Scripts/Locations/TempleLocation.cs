@@ -240,8 +240,17 @@ public partial class TempleLocation : BaseLocation
     private async Task DisplayMenu(bool forceDisplay)
     {
         if (!forceDisplay && currentPlayer.Expert) return;
-        
+
         terminal.ClearScreen();
+
+        // Phase 4: Electron mode emits Temple menu state. Pattern B —
+        // sub-screens (worship, desecrate, contribute, marriage, confess) still
+        // render text.
+        if (GameConfig.ElectronMode)
+        {
+            EmitElectronEvents();
+            return;
+        }
 
         // Temple header - standardized format
         WriteBoxHeader(Loc.Get("temple.header_visual"), "bright_cyan");
@@ -1377,6 +1386,16 @@ public partial class TempleLocation : BaseLocation
     private async Task ProcessGoldSacrifice(God god, bool wrongGod)
     {
         terminal.WriteLine("");
+
+        if (GameConfig.ElectronMode)
+        {
+            ElectronBridge.EmitAmountEntry(
+                title: Loc.Get("temple.sacrifice_to", god.Name),
+                prompt: Loc.Get("temple.gold_sacrifice_prompt"),
+                maxAmount: currentPlayer.Gold,
+                currency: "gold");
+        }
+
         var goldStr = await terminal.GetInputAsync(Loc.Get("temple.gold_sacrifice_prompt"));
 
         if (!long.TryParse(goldStr, out long goldAmount) || goldAmount <= 0)
@@ -3391,4 +3410,44 @@ public partial class TempleLocation : BaseLocation
     }
 
     #endregion
+
+    /// <summary>
+    /// Phase 4: emit Temple menu state for the Electron client. Top-level
+    /// menu only. Pattern B.
+    /// </summary>
+    private void EmitElectronEvents()
+    {
+        var player = GetCurrentPlayer();
+        if (player == null) return;
+
+        ElectronBridge.EmitLocation(
+            name: Loc.Get("temple.header_visual"),
+            description: Loc.Get("temple.description_line1"),
+            timeOfDay: "");
+
+        bool isManaClass = player is Player p && p.IsManaClass;
+        ElectronBridge.EmitStats(
+            hp: player.HP, maxHp: player.MaxHP,
+            mana: isManaClass ? player.Mana : 0, maxMana: isManaClass ? player.MaxMana : 0,
+            stamina: isManaClass ? 0 : player.Stamina, maxStamina: isManaClass ? 0 : player.BaseStamina,
+            gold: player.Gold, level: player.Level,
+            className: player.ClassName, raceName: player.Race.ToString(),
+            playerName: player.DisplayName);
+
+        var menu = new List<ElectronBridge.MenuItemData>
+        {
+            new() { Key = GameConfig.TempleMenuWorship, Label = "Worship", Category = "faith", Icon = "worship" },
+            new() { Key = GameConfig.TempleMenuAltars, Label = "Altars", Category = "info", Icon = "altar" },
+            new() { Key = GameConfig.TempleMenuContribute, Label = "Contribute", Category = "faith", Icon = "donate" },
+            new() { Key = GameConfig.TempleMenuDesecrate, Label = "Desecrate", Category = "evil", Icon = "desecrate" },
+            new() { Key = "F", Label = "The Faith", Category = "info", Icon = "scripture" },
+            new() { Key = "O", Label = "Confess", Category = "faith", Icon = "confess" },
+            new() { Key = "M", Label = "Mira (Bishop)", Category = "social", Icon = "bishop" },
+            new() { Key = "S", Label = "Status", Category = "info", Icon = "info" },
+            new() { Key = "R", Label = Loc.Get("ui.return"), Category = "navigate", Icon = "back" },
+        };
+        ElectronBridge.EmitMenu(menu);
+
+        EmitNPCsInLocationToElectron();
+    }
 }

@@ -48,7 +48,13 @@ public class QuestHallLocation : BaseLocation
         var activeQuests = QuestSystem.GetPlayerQuests(currentPlayer.Name2);
         var availableQuests = QuestSystem.GetAvailableQuests(currentPlayer);
 
-        if (IsScreenReader)
+        // Phase 4: Electron mode emits structured location/menu state. Pattern B
+        // — emit OR render text, both modes share GetChoice() input below.
+        if (GameConfig.ElectronMode)
+        {
+            EmitElectronEvents(activeQuests.Count, availableQuests.Count);
+        }
+        else if (IsScreenReader)
         {
             terminal.SetColor("white");
             terminal.WriteLine(Loc.Get("quest_hall.active_count", activeQuests.Count, availableQuests.Count));
@@ -148,10 +154,21 @@ public class QuestHallLocation : BaseLocation
 
     private async Task ViewAvailableQuests()
     {
+        var quests = QuestSystem.GetAvailableQuests(currentPlayer);
+
+        if (GameConfig.ElectronMode)
+        {
+            ElectronBridge.EmitQuestList(
+                listType: "available",
+                title: Loc.Get("quest.available"),
+                quests: quests.Select((q, i) => BuildQuestSummary(q, (i + 1).ToString())).ToList());
+            ElectronBridge.EmitPressAnyKey();
+            await terminal.PressAnyKey();
+            return;
+        }
+
         terminal.WriteLine("");
         WriteSectionHeader(Loc.Get("quest.available"), "bright_cyan");
-
-        var quests = QuestSystem.GetAvailableQuests(currentPlayer);
 
         if (quests.Count == 0)
         {
@@ -180,10 +197,20 @@ public class QuestHallLocation : BaseLocation
 
     private async Task ViewActiveQuests()
     {
+        var quests = QuestSystem.GetPlayerQuests(currentPlayer.Name2);
+
+        if (GameConfig.ElectronMode)
+        {
+            // Use the quest log overlay (full details with progress bars) rather
+            // than the simple list — players want to see objectives + progress here.
+            ElectronBridge.EmitQuestLog(quests.Select(q => BuildQuestDetail(q)).ToList());
+            ElectronBridge.EmitPressAnyKey();
+            await terminal.PressAnyKey();
+            return;
+        }
+
         terminal.WriteLine("");
         WriteSectionHeader(Loc.Get("quest.active"), "bright_green");
-
-        var quests = QuestSystem.GetPlayerQuests(currentPlayer.Name2);
 
         if (quests.Count == 0)
         {
@@ -203,11 +230,19 @@ public class QuestHallLocation : BaseLocation
 
     private async Task ClaimQuest()
     {
-        terminal.WriteLine("");
         var quests = QuestSystem.GetAvailableQuests(currentPlayer);
 
         if (quests.Count == 0)
         {
+            if (GameConfig.ElectronMode)
+            {
+                ElectronBridge.EmitQuestList(
+                    listType: "claim",
+                    title: Loc.Get("quest_hall.select_claim"),
+                    quests: new List<ElectronBridge.QuestSummaryData>());
+                ElectronBridge.EmitPressAnyKey();
+            }
+            terminal.WriteLine("");
             if (currentPlayer.RoyQuestsToday >= GameConfig.MaxQuestsPerDay)
             {
                 terminal.WriteLine(Loc.Get("quest_hall.daily_limit_reached"), "yellow");
@@ -221,38 +256,49 @@ public class QuestHallLocation : BaseLocation
             return;
         }
 
-        terminal.SetColor("cyan");
-        terminal.WriteLine(Loc.Get("quest_hall.select_claim"));
-        terminal.SetColor("white");
-
-        for (int i = 0; i < quests.Count; i++)
+        if (GameConfig.ElectronMode)
         {
-            var quest = quests[i];
-            var diffColor = quest.Difficulty switch
-            {
-                1 => "green",
-                2 => "yellow",
-                3 => "bright_red",
-                _ => "red"
-            };
-            if (IsScreenReader)
-            {
-                WriteSRMenuOption($"{i + 1}", $"{quest.GetDifficultyString()} - {quest.Title ?? quest.GetTargetDescription()}");
-            }
-            else
-            {
-                terminal.Write(" [", "white");
-                terminal.Write($"{i + 1}", "bright_yellow");
-                terminal.Write("] ", "white");
-                terminal.SetColor(diffColor);
-                terminal.Write($"[{quest.GetDifficultyString()}] ");
-                terminal.SetColor("white");
-                terminal.WriteLine(quest.Title ?? quest.GetTargetDescription());
-            }
+            ElectronBridge.EmitQuestList(
+                listType: "claim",
+                title: Loc.Get("quest_hall.select_claim"),
+                quests: quests.Select((q, i) => BuildQuestSummary(q, (i + 1).ToString())).ToList());
         }
+        else
+        {
+            terminal.WriteLine("");
+            terminal.SetColor("cyan");
+            terminal.WriteLine(Loc.Get("quest_hall.select_claim"));
+            terminal.SetColor("white");
 
-        WriteSRMenuOption("0", Loc.Get("ui.cancel"));
-        terminal.WriteLine("");
+            for (int i = 0; i < quests.Count; i++)
+            {
+                var quest = quests[i];
+                var diffColor = quest.Difficulty switch
+                {
+                    1 => "green",
+                    2 => "yellow",
+                    3 => "bright_red",
+                    _ => "red"
+                };
+                if (IsScreenReader)
+                {
+                    WriteSRMenuOption($"{i + 1}", $"{quest.GetDifficultyString()} - {quest.Title ?? quest.GetTargetDescription()}");
+                }
+                else
+                {
+                    terminal.Write(" [", "white");
+                    terminal.Write($"{i + 1}", "bright_yellow");
+                    terminal.Write("] ", "white");
+                    terminal.SetColor(diffColor);
+                    terminal.Write($"[{quest.GetDifficultyString()}] ");
+                    terminal.SetColor("white");
+                    terminal.WriteLine(quest.Title ?? quest.GetTargetDescription());
+                }
+            }
+
+            WriteSRMenuOption("0", Loc.Get("ui.cancel"));
+            terminal.WriteLine("");
+        }
 
         var input = await terminal.GetInput(Loc.Get("quest_hall.select_prompt"));
         if (int.TryParse(input, out int selection) && selection > 0 && selection <= quests.Count)
@@ -260,9 +306,16 @@ public class QuestHallLocation : BaseLocation
             var quest = quests[selection - 1];
 
             // Show quest details before confirming
-            terminal.WriteLine("");
-            DisplayQuestDetails(quest);
-            terminal.WriteLine("");
+            if (GameConfig.ElectronMode)
+            {
+                ElectronBridge.EmitQuestDetails(BuildQuestDetail(quest), confirmAction: "claim");
+            }
+            else
+            {
+                terminal.WriteLine("");
+                DisplayQuestDetails(quest);
+                terminal.WriteLine("");
+            }
 
             var confirm = await terminal.GetInput(Loc.Get("quest_hall.accept_prompt"));
             if (confirm.ToUpper().StartsWith("Y"))
@@ -307,29 +360,45 @@ public class QuestHallLocation : BaseLocation
 
     private async Task TurnInQuest()
     {
-        terminal.WriteLine("");
         var quests = QuestSystem.GetPlayerQuests(currentPlayer.Name2);
 
         if (quests.Count == 0)
         {
+            terminal.WriteLine("");
             terminal.WriteLine(Loc.Get("ui.no_active_quests_turn_in"), "yellow");
             await Task.Delay(1000);
             return;
         }
 
-        terminal.SetColor("cyan");
-        terminal.WriteLine(Loc.Get("quest_hall.select_turn_in"));
-        terminal.SetColor("white");
-
-        for (int i = 0; i < quests.Count; i++)
+        if (GameConfig.ElectronMode)
         {
-            var quest = quests[i];
-            var progress = QuestSystem.GetQuestProgressSummary(quest);
-            WriteSRMenuOption($"{i + 1}", $"{quest.Title ?? quest.GetTargetDescription()} - {progress}");
+            ElectronBridge.EmitQuestList(
+                listType: "turnin",
+                title: Loc.Get("quest_hall.select_turn_in"),
+                quests: quests.Select((q, i) =>
+                {
+                    var s = BuildQuestSummary(q, (i + 1).ToString());
+                    s.Progress = QuestSystem.GetQuestProgressSummary(q);
+                    return s;
+                }).ToList());
         }
+        else
+        {
+            terminal.WriteLine("");
+            terminal.SetColor("cyan");
+            terminal.WriteLine(Loc.Get("quest_hall.select_turn_in"));
+            terminal.SetColor("white");
 
-        WriteSRMenuOption("0", Loc.Get("ui.cancel"));
-        terminal.WriteLine("");
+            for (int i = 0; i < quests.Count; i++)
+            {
+                var quest = quests[i];
+                var progress = QuestSystem.GetQuestProgressSummary(quest);
+                WriteSRMenuOption($"{i + 1}", $"{quest.Title ?? quest.GetTargetDescription()} - {progress}");
+            }
+
+            WriteSRMenuOption("0", Loc.Get("ui.cancel"));
+            terminal.WriteLine("");
+        }
 
         var input = await terminal.GetInput(Loc.Get("quest_hall.select_prompt"));
         if (int.TryParse(input, out int selection) && selection > 0 && selection <= quests.Count)
@@ -356,29 +425,45 @@ public class QuestHallLocation : BaseLocation
 
     private async Task AbandonQuest()
     {
-        terminal.WriteLine("");
         var quests = QuestSystem.GetPlayerQuests(currentPlayer.Name2);
 
         if (quests.Count == 0)
         {
+            terminal.WriteLine("");
             terminal.WriteLine(Loc.Get("ui.no_active_quests_abandon"), "yellow");
             await Task.Delay(1000);
             return;
         }
 
-        terminal.SetColor("cyan");
-        terminal.WriteLine(Loc.Get("quest_hall.select_abandon"));
-        terminal.SetColor("white");
-
-        for (int i = 0; i < quests.Count; i++)
+        if (GameConfig.ElectronMode)
         {
-            var quest = quests[i];
-            var progress = QuestSystem.GetQuestProgressSummary(quest);
-            WriteSRMenuOption($"{i + 1}", $"{quest.Title ?? quest.GetTargetDescription()} - {progress}");
+            ElectronBridge.EmitQuestList(
+                listType: "abandon",
+                title: Loc.Get("quest_hall.select_abandon"),
+                quests: quests.Select((q, i) =>
+                {
+                    var s = BuildQuestSummary(q, (i + 1).ToString());
+                    s.Progress = QuestSystem.GetQuestProgressSummary(q);
+                    return s;
+                }).ToList());
         }
+        else
+        {
+            terminal.WriteLine("");
+            terminal.SetColor("cyan");
+            terminal.WriteLine(Loc.Get("quest_hall.select_abandon"));
+            terminal.SetColor("white");
 
-        WriteSRMenuOption("0", Loc.Get("ui.cancel"));
-        terminal.WriteLine("");
+            for (int i = 0; i < quests.Count; i++)
+            {
+                var quest = quests[i];
+                var progress = QuestSystem.GetQuestProgressSummary(quest);
+                WriteSRMenuOption($"{i + 1}", $"{quest.Title ?? quest.GetTargetDescription()} - {progress}");
+            }
+
+            WriteSRMenuOption("0", Loc.Get("ui.cancel"));
+            terminal.WriteLine("");
+        }
 
         var input = await terminal.GetInput(Loc.Get("quest_hall.select_prompt"));
         if (int.TryParse(input, out int selection) && selection > 0 && selection <= quests.Count)
@@ -405,11 +490,6 @@ public class QuestHallLocation : BaseLocation
 
     private async Task ViewBountyBoard()
     {
-        terminal.WriteLine("");
-        WriteSectionHeader(Loc.Get("quest.bounty_board"), "bright_red");
-        terminal.WriteLine(Loc.Get("quest_hall.bounty_desc"));
-        terminal.WriteLine("");
-
         // Get bounties from both the King and the Bounty Board
         var kingBounties = QuestSystem.GetKingBounties()
             .Where(q => string.IsNullOrEmpty(q.Occupier))
@@ -420,6 +500,22 @@ public class QuestHallLocation : BaseLocation
             .ToList();
 
         var allBounties = kingBounties.Concat(otherBounties).ToList();
+
+        if (GameConfig.ElectronMode)
+        {
+            ElectronBridge.EmitQuestList(
+                listType: "bounty",
+                title: Loc.Get("quest.bounty_board"),
+                quests: allBounties.Select((q, i) => BuildQuestSummary(q, (i + 1).ToString())).ToList());
+            ElectronBridge.EmitPressAnyKey();
+            await terminal.PressAnyKey();
+            return;
+        }
+
+        terminal.WriteLine("");
+        WriteSectionHeader(Loc.Get("quest.bounty_board"), "bright_red");
+        terminal.WriteLine(Loc.Get("quest_hall.bounty_desc"));
+        terminal.WriteLine("");
 
         if (allBounties.Count == 0)
         {
@@ -524,5 +620,134 @@ public class QuestHallLocation : BaseLocation
             terminal.WriteLine($"  {Loc.Get("quest_hall.hint_magic_shop")}");
         else if (quest.QuestTarget == QuestTarget.DefeatNPC)
             terminal.WriteLine($"  {Loc.Get("quest_hall.hint_defeat")}");
+    }
+
+    /// <summary>
+    /// Phase 4: emit Quest Hall menu state for the Electron client. Same Pattern
+    /// B as MainStreet/Healer — emit + skip text, shared GetChoice() input.
+    /// </summary>
+    private void EmitElectronEvents(int activeCount, int availableCount)
+    {
+        var player = GetCurrentPlayer();
+        if (player == null) return;
+
+        ElectronBridge.EmitLocation(
+            name: Loc.Get("quest_hall.menu_header"),
+            description: Loc.Get("quest_hall.active_count_visual", activeCount, availableCount),
+            timeOfDay: "");
+
+        bool isManaClass = player is Player p && p.IsManaClass;
+        ElectronBridge.EmitStats(
+            hp: player.HP, maxHp: player.MaxHP,
+            mana: isManaClass ? player.Mana : 0, maxMana: isManaClass ? player.MaxMana : 0,
+            stamina: isManaClass ? 0 : player.Stamina, maxStamina: isManaClass ? 0 : player.BaseStamina,
+            gold: player.Gold, level: player.Level,
+            className: player.ClassName, raceName: player.Race.ToString(),
+            playerName: player.DisplayName);
+
+        var menu = new List<ElectronBridge.MenuItemData>
+        {
+            new() { Key = "V", Label = Loc.Get("quest_hall.view"), Category = "list", Icon = "scroll" },
+            new() { Key = "A", Label = Loc.Get("quest_hall.active"), Category = "list", Icon = "active-quest" },
+            new() { Key = "C", Label = Loc.Get("quest_hall.claim"), Category = "action", Icon = "claim" },
+            new() { Key = "T", Label = Loc.Get("quest_hall.turn_in"), Category = "action", Icon = "turn-in" },
+            new() { Key = "B", Label = Loc.Get("quest_hall.bounty"), Category = "list", Icon = "bounty" },
+            new() { Key = "X", Label = Loc.Get("quest_hall.abandon"), Category = "action", Icon = "abandon" },
+            new() { Key = "R", Label = Loc.Get("shop.return"), Category = "navigate", Icon = "back" },
+        };
+        ElectronBridge.EmitMenu(menu);
+
+        EmitNPCsInLocationToElectron();
+    }
+
+    /// <summary>
+    /// Build a compact quest summary for the Electron quest list overlay.
+    /// Used by available, claim, turn-in, abandon, and bounty list emits.
+    /// </summary>
+    private ElectronBridge.QuestSummaryData BuildQuestSummary(Quest quest, string key)
+    {
+        string status = quest.IsAbandoned ? "Abandoned"
+            : quest.IsActive ? "Active"
+            : quest.IsAvailable ? "Available"
+            : "Unknown";
+
+        return new ElectronBridge.QuestSummaryData
+        {
+            Key = key,
+            Title = quest.Title ?? quest.GetTargetDescription(),
+            Description = string.IsNullOrEmpty(quest.Comment) ? null : quest.Comment,
+            Difficulty = quest.GetDifficultyString(),
+            MinLevel = quest.MinLevel,
+            MaxLevel = quest.MaxLevel,
+            Status = status,
+            Eligible = currentPlayer.Level >= quest.MinLevel && currentPlayer.Level <= quest.MaxLevel
+        };
+    }
+
+    /// <summary>
+    /// Build a full quest detail payload for the accept / log / completion modal.
+    /// Includes objectives with progress, reward breakdown, and the giver's name.
+    /// </summary>
+    private ElectronBridge.QuestDetailData BuildQuestDetail(Quest quest)
+    {
+        var objectives = new List<string>();
+        foreach (var obj in quest.Objectives)
+        {
+            string check = obj.IsComplete ? "[+]" : "[ ]";
+            objectives.Add($"{check} {obj.Description} ({obj.CurrentProgress}/{obj.RequiredProgress})");
+        }
+        if (quest.Objectives.Count == 0 && quest.Monsters.Count > 0)
+        {
+            foreach (var m in quest.Monsters)
+            {
+                objectives.Add($"Defeat {m.MonsterName} x{m.Count}");
+            }
+        }
+
+        // Quest.Reward is a byte tier (0-255) and the meaning depends on RewardType.
+        // Map the tiered reward into the appropriate QuestRewardData field; fall back
+        // to the localized description string in Extras so JS always has something to
+        // display even for novel reward types.
+        var reward = new ElectronBridge.QuestRewardData();
+        switch (quest.RewardType)
+        {
+            case QuestRewardType.Money:
+                reward.Gold = quest.BountyGold > 0 ? quest.BountyGold : (long)quest.Reward * 1000;
+                break;
+            case QuestRewardType.Experience:
+                reward.Experience = (long)quest.Reward * 1000;
+                break;
+            case QuestRewardType.Potions:
+                reward.Potions = quest.Reward;
+                break;
+            case QuestRewardType.Chivalry:
+                reward.Chivalry = quest.Reward;
+                break;
+            case QuestRewardType.Darkness:
+                reward.Darkness = quest.Reward;
+                break;
+        }
+        string rewardDesc = quest.GetRewardDescription();
+        if (!string.IsNullOrWhiteSpace(rewardDesc)) reward.Extras.Add(rewardDesc);
+
+        string status = quest.IsAbandoned ? "Abandoned"
+            : quest.IsActive ? "Active"
+            : quest.IsAvailable ? "Available"
+            : "Unknown";
+
+        return new ElectronBridge.QuestDetailData
+        {
+            Id = quest.Id,
+            Title = quest.Title ?? quest.GetTargetDescription(),
+            Description = quest.Comment ?? "",
+            Difficulty = quest.GetDifficultyString(),
+            MinLevel = quest.MinLevel,
+            MaxLevel = quest.MaxLevel,
+            Objectives = objectives,
+            Giver = quest.Initiator,
+            Status = status,
+            TimeLimit = quest.DaysToComplete > 0 ? $"{quest.DaysToComplete} days" : null,
+            Reward = reward
+        };
     }
 }

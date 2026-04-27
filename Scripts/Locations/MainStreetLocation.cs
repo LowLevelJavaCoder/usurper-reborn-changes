@@ -93,6 +93,35 @@ public class MainStreetLocation : BaseLocation
             return;
         }
 
+        // Phase 2: Electron mode short-circuits to the graphical Main Street
+        // renderer. EmitElectronEvents fires location/stats/menu/npcs events
+        // that the JS side maps to the town dock + status pane. Skip the
+        // entire text body to keep it from bleeding underneath. State
+        // mutations that need to fire on every location entry regardless of
+        // mode (Aldric quest completion gold + achievement) are preserved
+        // here without the text rendering — graphical client gets a
+        // narration event instead via Phase 6 dialogue work, for now the
+        // reward fires silently.
+        if (GameConfig.ElectronMode)
+        {
+            EmitElectronEvents();
+
+            // Aldric quest state mutations — preserve gold + achievement reward
+            // without the text body. Graphical narration deferred to Phase 6.
+            if (currentPlayer.HintsShown.Contains("aldric_quest_active")
+                && currentPlayer.HintsShown.Contains("quest_scout_enter_dungeon")
+                && currentPlayer.HintsShown.Contains("quest_scout_kill_monster")
+                && currentPlayer.HintsShown.Contains("quest_scout_find_treasure")
+                && !currentPlayer.HintsShown.Contains("quest_scout_return"))
+            {
+                currentPlayer.HintsShown.Add("quest_scout_return");
+                currentPlayer.HintsShown.Remove("aldric_quest_active");
+                currentPlayer.Gold += 500;
+                AchievementSystem.TryUnlock(currentPlayer, "first_steps");
+            }
+            return;
+        }
+
         // ASCII art header (simplified version)
         WriteBoxHeader(Loc.Get("main_street.header"), "bright_blue");
         terminal.WriteLine("");
@@ -135,8 +164,7 @@ public class MainStreetLocation : BaseLocation
         // Status line
         ShowStatusLine();
 
-        // Electron graphical client — emit structured game state
-        EmitElectronEvents();
+        // Electron emit was hoisted to the top of this method (Phase 2 — see comment there).
 
         // Captain Aldric's Mission — quest completion when returning with all objectives done
         if (currentPlayer.HintsShown.Contains("aldric_quest_active")

@@ -2222,6 +2222,18 @@ public class DungeonLocation : BaseLocation
 
         var player = GetCurrentPlayer();
 
+        // Phase 2: Electron mode short-circuits to the graphical room renderer.
+        // EmitDungeonEvents fires room/menu/stats events that the JS side maps
+        // to the dungeon room overlay + action buttons. Skip the entire text
+        // body to keep it from bleeding underneath. Cost: text-fallback users
+        // who switch graphical → terminal mid-room won't see the room until
+        // their next move. Acceptable for the hybrid model.
+        if (GameConfig.ElectronMode)
+        {
+            EmitDungeonEvents(room, player);
+            return;
+        }
+
         // Room header with theme color
         terminal.SetColor(GetThemeColor(currentFloor.Theme));
         if (GameConfig.ScreenReaderMode)
@@ -2293,8 +2305,7 @@ public class DungeonLocation : BaseLocation
         // Show level eligibility notification
         ShowLevelEligibilityMessage();
 
-        // Electron graphical client events
-        EmitDungeonEvents(room, player);
+        // Electron emit was hoisted to the top of this method (Phase 2 — see comment there).
     }
 
     /// <summary>

@@ -299,6 +299,9 @@ public static class MudChatSystem
             excludeUsername: username,
             channelKey: "shout");
 
+        // v0.57.21: GMCP fan-out
+        FanoutChannelText("shout", displayName, message, excludeUsername: username);
+
         return true;
     }
 
@@ -348,6 +351,24 @@ public static class MudChatSystem
             var targetDisplayName = GetSessionDisplayName(targetSession, targetName);
             terminal.SetColor("magenta");
             terminal.WriteLine($"  You tell {targetDisplayName}: {message}");
+
+            // v0.57.21: GMCP single-target tell to the recipient. Channel "tell"
+            // matches Achaea convention so off-the-shelf Mudlet scripts pick it up.
+            UsurperRemake.Server.GmcpBridge.EmitTo(targetSession, "Comm.Channel.Text", new
+            {
+                channel = "tell",
+                talker = displayName,
+                text = message
+            });
+
+            // Phase 8: emit chat event for local Electron client. v1 ships
+            // local-only Electron so this is dormant until Phase 9 wires online.
+            if (GameConfig.ElectronMode)
+            {
+                var targetDispNameForEmit = GetSessionDisplayName(targetSession, targetName);
+                ElectronBridge.EmitChat("tell", displayName, message,
+                    perspective: "actor", targetName: targetDispNameForEmit);
+            }
         }
         else
         {
@@ -404,11 +425,62 @@ public static class MudChatSystem
             excludeUsername: username,
             channelKey: "gossip");
 
+        // v0.57.21: GMCP Comm.Channel.Text fan-out for MUD-client chat capture panes.
+        FanoutChannelText("gossip", displayName, message, excludeUsername: username);
+
         // v0.57.13: mirror to Discord #in-game-gossip if the bridge is configured.
         // No-op if DiscordBridge wasn't initialized (non-online modes, missing DB path).
         UsurperRemake.Systems.DiscordBridge.QueueOutbound(displayName, message);
 
         return true;
+    }
+
+    /// <summary>
+    /// v0.57.21: emit Comm.Channel.Text to every active session that hasn't muted
+    /// the channel and isn't excluded. Each frame goes only to clients that
+    /// negotiated GMCP — non-MUD clients are silently skipped by EmitTo.
+    /// Payload format matches the Achaea/Iron Realms GMCP convention so off-the-shelf
+    /// Mudlet/MUSHclient chat capture scripts work without remapping.
+    /// </summary>
+    private static void FanoutChannelText(string channel, string sender, string text, string? excludeUsername = null)
+    {
+        var server = MudServer.Instance;
+        if (server == null)
+        {
+            // Local single-player Electron mode has no server — emit straight to the
+            // local OSC stream so a future online-Electron build sees the same shape.
+            if (GameConfig.ElectronMode)
+            {
+                ElectronBridge.EmitChat(channel, sender, text, perspective: "observer");
+            }
+            return;
+        }
+
+        foreach (var kvp in server.ActiveSessions)
+        {
+            var s = kvp.Value;
+            if (s == null) continue;
+            if (excludeUsername != null && string.Equals(s.Username, excludeUsername, StringComparison.OrdinalIgnoreCase))
+                continue;
+            // Honor per-channel mutes the same way the text broadcast does.
+            var p = s.Context?.Engine?.CurrentPlayer;
+            if (p != null && p.MutedChannels != null && p.MutedChannels.Contains(channel))
+                continue;
+            UsurperRemake.Server.GmcpBridge.EmitTo(s, "Comm.Channel.Text", new
+            {
+                channel,
+                talker = sender,
+                text
+            });
+        }
+
+        // Phase 8: also emit to local Electron client when running in Electron
+        // mode. v1 ships local-only so this is dormant; Phase 9's online-Electron
+        // wiring will surface it.
+        if (GameConfig.ElectronMode)
+        {
+            ElectronBridge.EmitChat(channel, sender, text, perspective: "observer");
+        }
     }
 
     private static bool HandleTitle(string username, string args, TerminalEmulator terminal)
@@ -992,6 +1064,17 @@ public static class MudChatSystem
         targetSession.EnqueueMessage(
             $"\u001b[1;33m  * Type /accept to join or /deny to refuse. ({GameConfig.GroupInviteTimeoutSeconds}s)\u001b[0m");
 
+        // Phase 8: emit graphical group-invite modal to the target's Electron
+        // client. Dormant in v1 (no online-Electron yet) but wiring is ready
+        // for Phase 9. Local single-player has no group invites.
+        if (GameConfig.ElectronMode)
+        {
+            ElectronBridge.EmitGroupInvite(myDisplayName,
+                currentSize: myGroup.MemberUsernames.Count,
+                maxSize: GameConfig.GroupMaxSize,
+                timeoutSeconds: GameConfig.GroupInviteTimeoutSeconds);
+        }
+
         terminal.SetColor("bright_cyan");
         terminal.WriteLine($"  Group invite sent to {targetDisplayName}. ({GameConfig.GroupInviteTimeoutSeconds}s to respond)");
 
@@ -1422,6 +1505,14 @@ public static class MudChatSystem
                 memberSession?.Context?.Terminal?.WriteLine($"\r\n  {chatLabel} {displayName}: {args}\r\n");
             }
             catch { }
+
+            // v0.57.21: GMCP per-recipient guild chat
+            UsurperRemake.Server.GmcpBridge.EmitTo(memberSession, "Comm.Channel.Text", new
+            {
+                channel = "guild",
+                talker = displayName,
+                text = args
+            });
         }
 
         terminal.WriteLine($"  {Systems.Loc.Get("guild.chat_you", args)}", "bright_green");

@@ -69,6 +69,16 @@ namespace UsurperRemake.Systems
             _skipMode = false;
             _terminal = terminal;
 
+            // Phase 3 (graphical client): emit a high-level "opening starting"
+            // signal. Phase 7 of the graphical roadmap (lifecycle events) will
+            // replace this with per-line emits for a proper narration renderer
+            // that mirrors the typewriter-effect pacing. For now JS just shows
+            // a generic story-unfolding overlay during the opening text.
+            ElectronBridge.EmitOpeningNarration(
+                phase: "intro",
+                text: Loc.Get("opening_story.dream_ellipsis"),
+                style: "awakening");
+
             // Show skip hint — MUD/BBS uses line input so ENTER is needed, not SPACE
             terminal.Clear();
             terminal.WriteLine("");
@@ -77,15 +87,19 @@ namespace UsurperRemake.Systems
             await SkippableDelay(2000);
 
             // Phase 1: The Awakening (mysterious dream-like intro)
+            ElectronBridge.EmitOpeningNarration(phase: "awakening", text: Loc.Get("opening_story.dream_drowning"), style: "awakening");
             await PlayAwakening(player, terminal);
 
             // Phase 2: The Dormitory Scene
+            ElectronBridge.EmitOpeningNarration(phase: "dormitory", text: Loc.Get("opening_story.the_awakening"), style: "scene");
             await PlayDormitoryScene(player, terminal);
 
             // Phase 3: The First Mystery
+            ElectronBridge.EmitOpeningNarration(phase: "mystery", text: "", style: "mystery");
             await PlayFirstMystery(player, terminal);
 
             // Phase 4: The Goal Revealed
+            ElectronBridge.EmitOpeningNarration(phase: "goal", text: "", style: "goal");
             await PlayGoalReveal(player, terminal);
 
             // Mark that player has seen the intro

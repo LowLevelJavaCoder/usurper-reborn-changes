@@ -73,6 +73,13 @@ public partial class MagicShopLocation : BaseLocation
             ShowAccessoryCategoryItems(_currentAccessoryCategory.Value);
             return;
         }
+        // Phase 4: Electron mode emits Magic Shop top-level menu.
+        // Accessory browse + identify + decurse sub-screens still text-mode.
+        if (GameConfig.ElectronMode && currentPlayer != null)
+        {
+            EmitElectronEvents();
+            return;
+        }
         if (IsScreenReader && currentPlayer != null)
         {
             DisplayLocationSR();
@@ -3697,5 +3704,44 @@ public partial class MagicShopLocation : BaseLocation
         AchievementSystem.TryUnlock(player, "corruption_fragment");
 
         await terminal.WaitForKey();
+    }
+
+    /// <summary>
+    /// Phase 4: emit Magic Shop top-level menu for Electron client.
+    /// Sub-screens (accessory browse, identify, decurse) still text-mode.
+    /// </summary>
+    private void EmitElectronEvents()
+    {
+        var player = GetCurrentPlayer();
+        if (player == null) return;
+
+        ElectronBridge.EmitLocation(
+            name: Loc.Get("magic_shop.header"),
+            description: Loc.Get("magic_shop.run_by", _ownerName),
+            timeOfDay: "");
+
+        bool isManaClass = player is Player p && p.IsManaClass;
+        ElectronBridge.EmitStats(
+            hp: player.HP, maxHp: player.MaxHP,
+            mana: isManaClass ? player.Mana : 0, maxMana: isManaClass ? player.MaxMana : 0,
+            stamina: isManaClass ? 0 : player.Stamina, maxStamina: isManaClass ? 0 : player.BaseStamina,
+            gold: player.Gold, level: player.Level,
+            className: player.ClassName, raceName: player.Race.ToString(),
+            playerName: player.DisplayName);
+
+        var menu = new List<ElectronBridge.MenuItemData>
+        {
+            new() { Key = "1", Label = "Rings", Category = "browse", Icon = "ring" },
+            new() { Key = "2", Label = "Necklaces", Category = "browse", Icon = "necklace" },
+            new() { Key = "P", Label = "Healing Potions", Category = "shop", Icon = "potion" },
+            new() { Key = "M", Label = "Mana Potions", Category = "shop", Icon = "mana-potion" },
+            new() { Key = "I", Label = "Identify Item", Category = "service", Icon = "identify" },
+            new() { Key = "C", Label = "Remove Curse", Category = "service", Icon = "decurse" },
+            new() { Key = "S", Label = "Sell Accessory", Category = "sell", Icon = "sell" },
+            new() { Key = "R", Label = Loc.Get("ui.return"), Category = "navigate", Icon = "back" },
+        };
+        ElectronBridge.EmitMenu(menu);
+
+        EmitNPCsInLocationToElectron();
     }
 } 

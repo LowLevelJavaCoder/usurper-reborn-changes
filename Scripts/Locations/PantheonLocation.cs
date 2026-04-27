@@ -43,7 +43,15 @@ public class PantheonLocation : BaseLocation
         bool exitLoop = false;
         while (!exitLoop)
         {
-            ShowPantheonMenu();
+            // Phase 5: Electron mode emits Pantheon (divine realm) menu state.
+            if (GameConfig.ElectronMode)
+            {
+                EmitElectronEvents();
+            }
+            else
+            {
+                ShowPantheonMenu();
+            }
             string input = await terminal.GetInputAsync(Loc.Get("pantheon.prompt_divine_will"));
             string choice = input.Trim().ToUpper();
 
@@ -1640,4 +1648,42 @@ public class PantheonLocation : BaseLocation
     }
 
     #endregion
+
+    /// <summary>
+    /// Phase 5: emit Pantheon (divine realm) menu state for the Electron client. Pattern B.
+    /// </summary>
+    private void EmitElectronEvents()
+    {
+        var player = currentPlayer;
+        if (player == null) return;
+
+        ElectronBridge.EmitLocation(
+            name: Loc.Get("pantheon.divine_realm"),
+            description: "",
+            timeOfDay: "");
+
+        bool isManaClass = player is Player p && p.IsManaClass;
+        ElectronBridge.EmitStats(
+            hp: player.HP, maxHp: player.MaxHP,
+            mana: isManaClass ? player.Mana : 0, maxMana: isManaClass ? player.MaxMana : 0,
+            stamina: isManaClass ? 0 : player.Stamina, maxStamina: isManaClass ? 0 : player.BaseStamina,
+            gold: player.Gold, level: player.Level,
+            className: player.ClassName, raceName: player.Race.ToString(),
+            playerName: player.DisplayName);
+
+        var menu = new List<ElectronBridge.MenuItemData>
+        {
+            new() { Key = "S", Label = "Divine Status", Category = "info", Icon = "info" },
+            new() { Key = "B", Label = "Manage Believers", Category = "divine", Icon = "believers" },
+            new() { Key = "D", Label = "Perform Divine Deeds", Category = "divine", Icon = "deed" },
+            new() { Key = "F", Label = "Configure Boons", Category = "divine", Icon = "boon" },
+            new() { Key = "I", Label = "Immortal Rankings", Category = "info", Icon = "rank" },
+            new() { Key = "N", Label = "World News", Category = "info", Icon = "news" },
+            new() { Key = "C", Label = "Send Proclamation", Category = "divine", Icon = "proclaim" },
+            new() { Key = "V", Label = "Visit Manwe", Category = "social", Icon = "manwe" },
+            new() { Key = "R", Label = "Renounce Immortality", Category = "danger", Icon = "renounce" },
+            new() { Key = "Q", Label = "Quit Realm", Category = "navigate", Icon = "back" },
+        };
+        ElectronBridge.EmitMenu(menu);
+    }
 }

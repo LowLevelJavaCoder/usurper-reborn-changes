@@ -44,6 +44,13 @@ public class CastleLocation : BaseLocation
 
         terminal.ClearScreen();
 
+        // Phase 5: Electron mode emits Castle menu state. Pattern B.
+        if (GameConfig.ElectronMode)
+        {
+            EmitElectronEvents();
+            return;
+        }
+
         if (IsBBSSession)
         {
             if (playerIsKing)
@@ -8588,6 +8595,60 @@ public class CastleLocation : BaseLocation
             PersistRoyalCourtToWorldState();
 
         await terminal.PressAnyKey();
+    }
+
+    /// <summary>
+    /// Phase 5: emit Castle menu state for the Electron client. Different
+    /// menu shape for monarch vs non-monarch entries. Pattern B.
+    /// </summary>
+    private void EmitElectronEvents()
+    {
+        var player = GetCurrentPlayer();
+        if (player == null) return;
+
+        ElectronBridge.EmitLocation(
+            name: Loc.Get("castle.header"),
+            description: playerIsKing ? "The royal halls" : "The Royal Castle",
+            timeOfDay: "");
+
+        bool isManaClass = player is Player p && p.IsManaClass;
+        ElectronBridge.EmitStats(
+            hp: player.HP, maxHp: player.MaxHP,
+            mana: isManaClass ? player.Mana : 0, maxMana: isManaClass ? player.MaxMana : 0,
+            stamina: isManaClass ? 0 : player.Stamina, maxStamina: isManaClass ? 0 : player.BaseStamina,
+            gold: player.Gold, level: player.Level,
+            className: player.ClassName, raceName: player.Race.ToString(),
+            playerName: player.DisplayName);
+
+        var menu = playerIsKing
+            ? new List<ElectronBridge.MenuItemData>
+            {
+                new() { Key = "T", Label = "Treasury", Category = "royal", Icon = "treasury" },
+                new() { Key = "G", Label = "Royal Guards", Category = "royal", Icon = "guards" },
+                new() { Key = "P", Label = "Prisoners", Category = "royal", Icon = "prison" },
+                new() { Key = "C", Label = "Royal Court", Category = "royal", Icon = "court" },
+                new() { Key = "L", Label = "Laws & Decrees", Category = "royal", Icon = "law" },
+                new() { Key = "M", Label = "Royal Mail", Category = "royal", Icon = "mail" },
+                new() { Key = "X", Label = "Tax Rate", Category = "royal", Icon = "tax" },
+                new() { Key = "Q", Label = "Establishments", Category = "royal", Icon = "establishment" },
+                new() { Key = "S", Label = "Status", Category = "info", Icon = "info" },
+                new() { Key = "R", Label = Loc.Get("ui.return"), Category = "navigate", Icon = "back" },
+            }
+            : new List<ElectronBridge.MenuItemData>
+            {
+                new() { Key = "D", Label = "Donate to King", Category = "service", Icon = "donate" },
+                new() { Key = "H", Label = "Monarch History", Category = "info", Icon = "history" },
+                new() { Key = "S", Label = "Seek Audience", Category = "social", Icon = "audience" },
+                new() { Key = "A", Label = "Apply for Royal Guard", Category = "duty", Icon = "guard" },
+                new() { Key = "I", Label = "Challenge for Throne", Category = "combat", Icon = "throne" },
+                new() { Key = "C", Label = "Claim Empty Throne", Category = "royal", Icon = "throne" },
+                new() { Key = "L", Label = "Royal Armory", Category = "shop", Icon = "armory" },
+                new() { Key = "B", Label = "Castle Siege", Category = "combat", Icon = "siege" },
+                new() { Key = "R", Label = Loc.Get("ui.return"), Category = "navigate", Icon = "back" },
+            };
+        ElectronBridge.EmitMenu(menu);
+
+        EmitNPCsInLocationToElectron();
     }
 }
 

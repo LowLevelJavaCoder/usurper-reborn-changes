@@ -169,6 +169,13 @@ namespace UsurperRemake.Locations
                 return;
             }
 
+            // Phase 4: Electron mode emits Church menu state. Pattern B.
+            if (GameConfig.ElectronMode)
+            {
+                EmitElectronEvents();
+                return;
+            }
+
             WriteBoxHeader(Loc.Get("church.header"), "bright_cyan");
             terminal.WriteLine("");
             
@@ -356,9 +363,21 @@ namespace UsurperRemake.Locations
         {
             terminal.WriteLine("");
             terminal.WriteLine("");
-            terminal.SetColor("white");
-            terminal.WriteLine(Loc.Get("church.donate_have_gold", currentPlayer.Gold.ToString("N0"), GameConfig.MoneyType));
-            terminal.WriteLine(Loc.Get("church.donate_how_much"));
+
+            if (GameConfig.ElectronMode)
+            {
+                ElectronBridge.EmitAmountEntry(
+                    title: Loc.Get("church.bbs_donate"),
+                    prompt: Loc.Get("church.donate_how_much"),
+                    maxAmount: currentPlayer.Gold,
+                    currency: GameConfig.MoneyType);
+            }
+            else
+            {
+                terminal.SetColor("white");
+                terminal.WriteLine(Loc.Get("church.donate_have_gold", currentPlayer.Gold.ToString("N0"), GameConfig.MoneyType));
+                terminal.WriteLine(Loc.Get("church.donate_how_much"));
+            }
 
             var input = await terminal.GetInput(Loc.Get("church.donate_amount_prompt"));
             if (!long.TryParse(input, out long amount))
@@ -1318,5 +1337,45 @@ namespace UsurperRemake.Locations
             {
             }
         }
+
+        /// <summary>
+        /// Phase 4: emit Church menu state for the Electron client. Top-level
+        /// only — sub-screens (donate, blessing, marriage, confession) text-mode.
+        /// Pattern B.
+        /// </summary>
+        private void EmitElectronEvents()
+        {
+            var player = GetCurrentPlayer();
+            if (player == null) return;
+
+            ElectronBridge.EmitLocation(
+                name: Loc.Get("church.header"),
+                description: Loc.Get("church.desc1"),
+                timeOfDay: "");
+
+            bool isManaClass = player is Player p && p.IsManaClass;
+            ElectronBridge.EmitStats(
+                hp: player.HP, maxHp: player.MaxHP,
+                mana: isManaClass ? player.Mana : 0, maxMana: isManaClass ? player.MaxMana : 0,
+                stamina: isManaClass ? 0 : player.Stamina, maxStamina: isManaClass ? 0 : player.BaseStamina,
+                gold: player.Gold, level: player.Level,
+                className: player.ClassName, raceName: player.Race.ToString(),
+                playerName: player.DisplayName);
+
+            var menu = new List<ElectronBridge.MenuItemData>
+            {
+                new() { Key = "C", Label = "Donate", Category = "faith", Icon = "donate" },
+                new() { Key = "B", Label = "Buy Blessing", Category = "faith", Icon = "blessing" },
+                new() { Key = "H", Label = "Healing", Category = "service", Icon = "heal" },
+                new() { Key = "M", Label = "Marriage Ceremony", Category = "social", Icon = "marriage" },
+                new() { Key = "F", Label = "Confess", Category = "faith", Icon = "confess" },
+                new() { Key = "V", Label = "Church Records", Category = "info", Icon = "records" },
+                new() { Key = "S", Label = "Speak with Bishop", Category = "social", Icon = "bishop" },
+                new() { Key = "R", Label = Loc.Get("ui.return"), Category = "navigate", Icon = "back" },
+            };
+            ElectronBridge.EmitMenu(menu);
+
+            EmitNPCsInLocationToElectron();
+        }
     }
-} 
+}

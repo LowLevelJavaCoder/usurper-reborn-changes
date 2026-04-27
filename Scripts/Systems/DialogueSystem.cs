@@ -63,13 +63,19 @@ namespace UsurperRemake.Systems
         {
             while (currentNode != null)
             {
-                // Display the node's text
-                await DisplayDialogueNode(currentNode);
-
-                // If this is an end node, we're done
+                // If this is an end node, we're done — emit final text (no choices) and finish.
                 if (currentNode.IsEndNode)
                 {
+                    if (GameConfig.ElectronMode)
+                    {
+                        EmitDialogueNode(currentNode, new List<DialogueChoice>(), endOfDialogue: true);
+                    }
+                    else
+                    {
+                        await DisplayDialogueNode(currentNode);
+                    }
                     ApplyNodeEffects(currentNode);
+                    if (GameConfig.ElectronMode) ElectronBridge.EmitDialogueClose();
                     return new DialogueResult { Completed = true, EndNode = currentNode };
                 }
 
@@ -78,7 +84,15 @@ namespace UsurperRemake.Systems
 
                 if (availableChoices.Count == 0)
                 {
-                    // No choices available, auto-proceed to next node
+                    // No choices available, render text and auto-proceed to next node
+                    if (GameConfig.ElectronMode)
+                    {
+                        EmitDialogueNode(currentNode, availableChoices, endOfDialogue: false);
+                    }
+                    else
+                    {
+                        await DisplayDialogueNode(currentNode);
+                    }
                     if (!string.IsNullOrEmpty(currentNode.NextNodeId))
                     {
                         currentNode = FindNode(currentNode.NextNodeId);
@@ -91,18 +105,37 @@ namespace UsurperRemake.Systems
                 }
                 else if (availableChoices.Count == 1 && availableChoices[0].IsAutoSelect)
                 {
-                    // Single auto-select choice, proceed automatically
+                    // Single auto-select choice, render text and proceed automatically
+                    if (GameConfig.ElectronMode)
+                    {
+                        EmitDialogueNode(currentNode, availableChoices, endOfDialogue: false);
+                    }
+                    else
+                    {
+                        await DisplayDialogueNode(currentNode);
+                    }
                     ApplyChoiceEffects(availableChoices[0]);
                     currentNode = FindNode(availableChoices[0].NextNodeId);
                     await Task.Delay(1000);
                 }
                 else
                 {
+                    // Render node text + choices together for Electron, separately for text path
+                    if (GameConfig.ElectronMode)
+                    {
+                        EmitDialogueNode(currentNode, availableChoices, endOfDialogue: false);
+                    }
+                    else
+                    {
+                        await DisplayDialogueNode(currentNode);
+                    }
+
                     // Present choices to the player
                     var selectedChoice = await PresentChoices(availableChoices);
                     if (selectedChoice == null)
                     {
                         // Player aborted dialogue
+                        if (GameConfig.ElectronMode) ElectronBridge.EmitDialogueClose();
                         return new DialogueResult { Completed = false, EndNode = null };
                     }
 
@@ -112,7 +145,58 @@ namespace UsurperRemake.Systems
                 }
             }
 
+            if (GameConfig.ElectronMode) ElectronBridge.EmitDialogueClose();
             return new DialogueResult { Completed = true, EndNode = currentNode };
+        }
+
+        /// <summary>
+        /// Emit a dialogue node + choices to the Electron client. Text rendering
+        /// is suppressed in Electron mode (DisplayDialogueNode is bypassed); the
+        /// graphical client renders speaker portrait + body text + choice buttons.
+        /// </summary>
+        private void EmitDialogueNode(DialogueNode node, List<DialogueChoice> choices, bool endOfDialogue)
+        {
+            if (node == null) return;
+
+            string body = string.Join("\n", node.Text.Select(line => ProcessDialogueVariables(line)));
+
+            var choiceList = new List<ElectronBridge.DialogueChoiceData>();
+            for (int i = 0; i < choices.Count; i++)
+            {
+                choiceList.Add(new ElectronBridge.DialogueChoiceData
+                {
+                    Key = (i + 1).ToString(),
+                    Text = choices[i].Text,
+                    Style = MapChoiceStyle(choices[i])
+                });
+            }
+            // Always offer "Say nothing" / dismiss as choice 0 unless this is an end node with no choices
+            if (!endOfDialogue)
+            {
+                choiceList.Add(new ElectronBridge.DialogueChoiceData
+                {
+                    Key = "0",
+                    Text = Loc.Get("dialogue.say_nothing_option").Trim('[', ']', '0', ' '),
+                    Style = "leave"
+                });
+            }
+
+            string? portraitKey = !string.IsNullOrEmpty(node.Speaker) ? $"npc:{node.Speaker}" : null;
+
+            ElectronBridge.EmitDialogue(
+                speaker: node.Speaker ?? "",
+                portraitKey: portraitKey,
+                text: body,
+                choices: choiceList,
+                relationLabel: null,
+                relationColor: node.TextColor,
+                mood: null);
+        }
+
+        private static string MapChoiceStyle(DialogueChoice choice)
+        {
+            // DialogueChoice doesn't expose a type; fall back to color hint if any.
+            return "normal";
         }
 
         /// <summary>
@@ -149,19 +233,23 @@ namespace UsurperRemake.Systems
         {
             if (terminal == null) return null;
 
-            terminal.WriteLine(Loc.Get("dialogue.what_do_you_say"), "cyan");
-            terminal.WriteLine("");
-
-            for (int i = 0; i < choices.Count; i++)
+            // Electron mode emitted choices via EmitDialogueNode in the caller; skip text menu.
+            if (!GameConfig.ElectronMode)
             {
-                var choice = choices[i];
-                var prefix = $"[{i + 1}]";
-                var color = GetChoiceColor(choice);
-                terminal.WriteLine($"{prefix} {choice.Text}", color);
-            }
+                terminal.WriteLine(Loc.Get("dialogue.what_do_you_say"), "cyan");
+                terminal.WriteLine("");
 
-            terminal.WriteLine(Loc.Get("dialogue.say_nothing_option"), "dark_gray");
-            terminal.WriteLine("");
+                for (int i = 0; i < choices.Count; i++)
+                {
+                    var choice = choices[i];
+                    var prefix = $"[{i + 1}]";
+                    var color = GetChoiceColor(choice);
+                    terminal.WriteLine($"{prefix} {choice.Text}", color);
+                }
+
+                terminal.WriteLine(Loc.Get("dialogue.say_nothing_option"), "dark_gray");
+                terminal.WriteLine("");
+            }
 
             while (true)
             {
@@ -177,7 +265,10 @@ namespace UsurperRemake.Systems
                     return choices[choice - 1];
                 }
 
-                terminal.WriteLine(Loc.Get("dialogue.invalid_choice"), "red");
+                if (!GameConfig.ElectronMode)
+                {
+                    terminal.WriteLine(Loc.Get("dialogue.invalid_choice"), "red");
+                }
             }
         }
 

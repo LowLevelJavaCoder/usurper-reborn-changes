@@ -3,8 +3,11 @@ dist/
 out/
 *.log
 
-# Game save data (created when running locally)
+# Game save data (created when running locally — written by spawned C# binary
+# using CWD-relative paths until we fix the spawn working dir in main.js)
 DATA/
+SCORES/
+logs/
 
 # PixelLab job tracking files (temp, regenerated as needed)
 assets/*_jobs.txt

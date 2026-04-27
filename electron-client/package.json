@@ -1,20 +1,122 @@
 {
   "name": "usurper-reborn",
-  "version": "0.53.9",
+  "version": "0.57.21",
   "description": "Usurper Reborn - A Persistent Online Text RPG with a Living World",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dev": "electron . --dev"
+    "dev": "electron . --dev",
+    "publish-game-win64": "cd .. && dotnet publish usurper-reloaded.csproj -c Release -r win-x64 --self-contained -o publish/win-x64",
+    "publish-game-mac": "cd .. && dotnet publish usurper-reloaded.csproj -c Release -r osx-x64 --self-contained -o publish/osx-x64",
+    "publish-game-linux": "cd .. && dotnet publish usurper-reloaded.csproj -c Release -r linux-x64 --self-contained -o publish/linux-x64",
+    "build:win": "npm run publish-game-win64 && electron-builder --win --dir",
+    "build:mac": "npm run publish-game-mac && electron-builder --mac --dir",
+    "build:linux": "npm run publish-game-linux && electron-builder --linux --dir",
+    "pack": "electron-builder --dir"
   },
   "dependencies": {
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/addon-web-links": "^0.11.0",
-    "@xterm/xterm": "^5.5.0"
+    "@xterm/xterm": "^5.5.0",
+    "electron-store": "^8.2.0"
   },
   "devDependencies": {
-    "electron": "^32.3.3"
+    "electron": "^32.3.3",
+    "electron-builder": "^24.13.3"
   },
   "author": "Binary Knight",
-  "license": "GPL-2.0"
+  "license": "GPL-2.0",
+  "build": {
+    "appId": "com.binaryknight.usurperreborn",
+    "productName": "Usurper Reborn",
+    "copyright": "Copyright (c) 2026 Binary Knight",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer.html",
+      "renderer.js",
+      "src/**/*",
+      "styles/**/*",
+      "assets/**/*",
+      "node_modules/**/*",
+      "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
+      "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
+      "!**/node_modules/*.d.ts",
+      "!**/node_modules/.bin",
+      "!**/.gitignore",
+      "!**/.git",
+      "!**/{*.log,*.tmp}",
+      "!DATA/**",
+      "!SCORES/**",
+      "!logs/**",
+      "!pixellab-api-docs.txt",
+      "!generate-sprites.js"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "../app.ico",
+      "extraResources": [
+        {
+          "from": "../publish/win-x64",
+          "to": "game",
+          "filter": [
+            "**/*"
+          ]
+        }
+      ]
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.role-playing-games",
+      "extraResources": [
+        {
+          "from": "../publish/osx-x64",
+          "to": "game",
+          "filter": [
+            "**/*"
+          ]
+        }
+      ]
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Game",
+      "synopsis": "A Persistent Online Text RPG with a Living World",
+      "extraResources": [
+        {
+          "from": "../publish/linux-x64",
+          "to": "game",
+          "filter": [
+            "**/*"
+          ]
+        }
+      ]
+    }
+  }
 }

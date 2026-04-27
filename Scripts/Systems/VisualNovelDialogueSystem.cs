@@ -171,6 +171,7 @@ namespace UsurperRemake.Systems
             topicsDiscussedThisSession.Clear();
             flirtCountThisSession = 0;
             complimentCountThisSession = 0;
+            _pendingNPCNarration = null;
 
             // Get or create conversation state for this NPC
             if (!npcConversationStates.ContainsKey(npc.ID))
@@ -180,10 +181,13 @@ namespace UsurperRemake.Systems
             int relationLevel = RelationshipSystem.GetRelationshipStatus(player, npc);
             var romanceType = RomanceTracker.Instance.GetRelationType(npc.ID);
 
-            // Display conversation header
-            await ShowConversationHeader(npc, relationLevel, romanceType);
+            // Display conversation header (text mode only — Electron renders portrait + name in overlay)
+            if (!GameConfig.ElectronMode)
+            {
+                await ShowConversationHeader(npc, relationLevel, romanceType);
+            }
 
-            // Show NPC's greeting based on relationship
+            // Show NPC's greeting based on relationship — captured for Electron emit
             await ShowGreeting(npc, relationLevel, romanceType);
 
             // Main conversation loop
@@ -196,7 +200,17 @@ namespace UsurperRemake.Systems
                 relationLevel = RelationshipSystem.GetRelationshipStatus(player, npc);
                 romanceType = RomanceTracker.Instance.GetRelationType(npc.ID);
             }
+
+            if (GameConfig.ElectronMode)
+            {
+                ElectronBridge.EmitDialogueClose();
+            }
         }
+
+        // Holds the NPC's last spoken text (greeting / response). Used by the
+        // Electron emit so the graphical client always renders fresh narration
+        // alongside the choice buttons. Reset at the start of each conversation.
+        private string? _pendingNPCNarration;
 
         /// <summary>
         /// Display the conversation header with NPC info
@@ -330,6 +344,14 @@ namespace UsurperRemake.Systems
         private async Task ShowGreeting(NPC npc, int relationLevel, RomanceRelationType romanceType)
         {
             string greeting = GenerateContextualGreeting(npc, relationLevel, romanceType);
+            _pendingNPCNarration = greeting;
+
+            if (GameConfig.ElectronMode)
+            {
+                // Greeting is folded into the next ShowConversationOptions emit so the
+                // Electron overlay opens with portrait + greeting + choices in one render.
+                return;
+            }
 
             terminal!.SetColor("yellow");
             terminal.WriteLine($"  {npc.Name2} says:");
@@ -483,29 +505,36 @@ namespace UsurperRemake.Systems
         {
             var options = BuildConversationOptions(npc, relationLevel, romanceType);
 
-            terminal!.SetColor("cyan");
-            terminal.WriteLine($"  {Loc.Get("dialogue.what_to_say")}");
-            terminal.WriteLine("");
-
-            for (int i = 0; i < options.Count; i++)
+            if (GameConfig.ElectronMode)
             {
-                var opt = options[i];
-                terminal.SetColor("darkgray");
-                terminal.Write($"  [");
-                terminal.SetColor(opt.Color);
-                terminal.Write($"{i + 1}");
-                terminal.SetColor("darkgray");
-                terminal.Write($"] ");
-                terminal.SetColor(opt.Color);
-                terminal.WriteLine(opt.Text);
+                EmitConversationDialogue(npc, options, relationLevel, romanceType);
+            }
+            else
+            {
+                terminal!.SetColor("cyan");
+                terminal.WriteLine($"  {Loc.Get("dialogue.what_to_say")}");
+                terminal.WriteLine("");
+
+                for (int i = 0; i < options.Count; i++)
+                {
+                    var opt = options[i];
+                    terminal.SetColor("darkgray");
+                    terminal.Write($"  [");
+                    terminal.SetColor(opt.Color);
+                    terminal.Write($"{i + 1}");
+                    terminal.SetColor("darkgray");
+                    terminal.Write($"] ");
+                    terminal.SetColor(opt.Color);
+                    terminal.WriteLine(opt.Text);
+                }
+
+                terminal.WriteLine("");
+                terminal.SetColor("gray");
+                terminal.WriteLine($"  [0] {Loc.Get("dialogue.end_conversation")}");
+                terminal.WriteLine("");
             }
 
-            terminal.WriteLine("");
-            terminal.SetColor("gray");
-            terminal.WriteLine($"  [0] {Loc.Get("dialogue.end_conversation")}");
-            terminal.WriteLine("");
-
-            string choice = await terminal.GetInput(Loc.Get("ui.your_choice"));
+            string choice = await terminal!.GetInput(Loc.Get("ui.your_choice"));
 
             if (choice == "0")
             {
@@ -519,11 +548,87 @@ namespace UsurperRemake.Systems
                 return true;
             }
 
-            terminal.SetColor("gray");
-            terminal.WriteLine($"  {Loc.Get("dialogue.not_understood")}");
+            if (!GameConfig.ElectronMode)
+            {
+                terminal.SetColor("gray");
+                terminal.WriteLine($"  {Loc.Get("dialogue.not_understood")}");
+            }
             await Task.Delay(1000);
             return true;
         }
+
+        /// <summary>
+        /// Emit the current NPC dialogue state to the Electron overlay: speaker
+        /// portrait, last narration text, and the available player choices. The
+        /// graphical client renders this as a side-panel with the NPC portrait,
+        /// the body text in a speech bubble, and choice buttons below. Input
+        /// flows back through the shared GetInput call.
+        /// </summary>
+        private void EmitConversationDialogue(NPC npc, List<ConversationOption> options,
+            int relationLevel, RomanceRelationType romanceType)
+        {
+            var choices = new List<ElectronBridge.DialogueChoiceData>();
+            for (int i = 0; i < options.Count; i++)
+            {
+                var opt = options[i];
+                choices.Add(new ElectronBridge.DialogueChoiceData
+                {
+                    Key = (i + 1).ToString(),
+                    Text = opt.Text,
+                    Style = MapConversationStyle(opt),
+                    Disabled = opt.Disabled
+                });
+            }
+            choices.Add(new ElectronBridge.DialogueChoiceData
+            {
+                Key = "0",
+                Text = Loc.Get("dialogue.end_conversation"),
+                Style = "leave"
+            });
+
+            string speakerLabel = npc.Name2;
+            string portraitKey = $"npc:{npc.Name2}";
+            string narration = _pendingNPCNarration ?? "";
+            string relLabel = romanceType != RomanceRelationType.None
+                ? romanceType.ToString()
+                : DescribeRelationLevel(relationLevel);
+            string relColor = GetRelationColor(relationLevel);
+
+            ElectronBridge.EmitDialogue(
+                speaker: speakerLabel,
+                portraitKey: portraitKey,
+                text: narration,
+                choices: choices,
+                relationLabel: relLabel,
+                relationColor: relColor,
+                mood: null);
+        }
+
+        private static string MapConversationStyle(ConversationOption opt)
+        {
+            return opt.Type switch
+            {
+                ConversationType.Flirt => "flirt",
+                ConversationType.Compliment => "flirt",
+                ConversationType.Confess => "confess",
+                ConversationType.Propose => "propose",
+                ConversationType.Intimate => "intimate",
+                ConversationType.AskToLeave => "danger",
+                ConversationType.Provoke => "hostile",
+                ConversationType.Personal => "info",
+                _ => "normal"
+            };
+        }
+
+        private static string DescribeRelationLevel(int relationLevel) => relationLevel switch
+        {
+            <= 20 => "Beloved",
+            <= 40 => "Friendly",
+            <= 60 => "Respected",
+            <= 70 => "Neutral",
+            <= 90 => "Wary",
+            _ => "Hostile"
+        };
 
         /// <summary>
         /// Build available conversation options - dynamic based on context and history
@@ -949,15 +1054,25 @@ namespace UsurperRemake.Systems
         /// </summary>
         private async Task HandleConversationChoice(NPC npc, ConversationOption option, int relationLevel)
         {
-            terminal!.ClearScreen();
-            await ShowConversationHeader(npc, relationLevel, RomanceTracker.Instance.GetRelationType(npc.ID));
+            // Text-mode redraws header for visual continuity. Electron mode keeps
+            // the overlay open and only refreshes narration via _pendingNPCNarration
+            // when ShowConversationOptions emits at the next loop iteration.
+            if (!GameConfig.ElectronMode)
+            {
+                terminal!.ClearScreen();
+                await ShowConversationHeader(npc, relationLevel, RomanceTracker.Instance.GetRelationType(npc.ID));
+            }
 
             // Don't process disabled options
             if (option.Disabled)
             {
-                terminal!.SetColor("gray");
-                terminal.WriteLine($"  {Loc.Get("dialogue.decide_not_push")}");
-                await terminal.GetInput($"  {Loc.Get("ui.press_enter")}");
+                _pendingNPCNarration = Loc.Get("dialogue.decide_not_push");
+                if (!GameConfig.ElectronMode)
+                {
+                    terminal!.SetColor("gray");
+                    terminal.WriteLine($"  {Loc.Get("dialogue.decide_not_push")}");
+                    await terminal.GetInput($"  {Loc.Get("ui.press_enter")}");
+                }
                 return;
             }
 

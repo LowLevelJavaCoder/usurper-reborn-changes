@@ -322,6 +322,15 @@ public class CharacterCreationSystem
 
         do
         {
+            // Phase 3: emit pre-game step so graphical client renders the
+            // name-entry overlay. Text body below also runs (Pattern A bleed —
+            // overlay covers it, accepted for transient pre-game surfaces).
+            ElectronBridge.EmitCharacterCreationStep(
+                step: "name",
+                title: Loc.Get("creation.enter_name"),
+                description: Loc.Get("creation.name_known_as"),
+                data: new { allowEmpty });
+
             terminal.WriteLine("");
             terminal.WriteLine(Loc.Get("creation.enter_name"), "cyan");
             terminal.WriteLine(Loc.Get("creation.name_known_as"));
@@ -380,6 +389,19 @@ public class CharacterCreationSystem
     {
         while (true)
         {
+            ElectronBridge.EmitCharacterCreationStep(
+                step: "gender",
+                title: Loc.Get("creation.gender"),
+                description: "",
+                data: new
+                {
+                    options = new[]
+                    {
+                        new { key = "M", label = Loc.Get("creation.male") },
+                        new { key = "F", label = Loc.Get("creation.female") }
+                    }
+                });
+
             terminal.WriteLine("");
             terminal.WriteLine(Loc.Get("creation.gender"), "cyan");
             terminal.WriteLine(Loc.Get("creation.male"), "white");
@@ -413,6 +435,21 @@ public class CharacterCreationSystem
     {
         while (true)
         {
+            ElectronBridge.EmitCharacterCreationStep(
+                step: "orientation",
+                title: Loc.Get("creation.orientation"),
+                description: Loc.Get("creation.orientation_hint"),
+                data: new
+                {
+                    options = new[]
+                    {
+                        new { key = "1", label = Loc.Get("creation.orientation_1") },
+                        new { key = "2", label = Loc.Get("creation.orientation_2") },
+                        new { key = "3", label = Loc.Get("creation.orientation_3") },
+                        new { key = "4", label = Loc.Get("creation.orientation_4") }
+                    }
+                });
+
             terminal.WriteLine("");
             terminal.WriteLine(Loc.Get("creation.orientation"), "cyan");
             terminal.WriteLine(Loc.Get("creation.orientation_1"), "white");
@@ -454,6 +491,22 @@ public class CharacterCreationSystem
 
         while (true)
         {
+            ElectronBridge.EmitCharacterCreationStep(
+                step: "difficulty",
+                title: Loc.Get("creation.difficulty.header"),
+                description: "",
+                data: new
+                {
+                    options = new[]
+                    {
+                        new { key = "E", label = Loc.Get("character_creation.easy_label").Trim(), description = DifficultySystem.GetDescription(DifficultyMode.Easy), color = DifficultySystem.GetColor(DifficultyMode.Easy) },
+                        new { key = "N", label = Loc.Get("character_creation.normal_label").Trim(), description = DifficultySystem.GetDescription(DifficultyMode.Normal), color = DifficultySystem.GetColor(DifficultyMode.Normal) },
+                        new { key = "H", label = Loc.Get("character_creation.hard_label").Trim(), description = DifficultySystem.GetDescription(DifficultyMode.Hard), color = DifficultySystem.GetColor(DifficultyMode.Hard) },
+                        new { key = "!", label = Loc.Get("character_creation.nightmare_label").Trim(), description = DifficultySystem.GetDescription(DifficultyMode.Nightmare), color = DifficultySystem.GetColor(DifficultyMode.Nightmare) }
+                    }
+                });
+
+
             // Display difficulty options with descriptions
             terminal.WriteLine($"(E){Loc.Get("character_creation.easy_label")}      - " + DifficultySystem.GetDescription(DifficultyMode.Easy), DifficultySystem.GetColor(DifficultyMode.Easy));
             terminal.WriteLine("");
@@ -528,6 +581,21 @@ public class CharacterCreationSystem
         {
             if (choice == "?")
             {
+                // Phase 3: emit the race picker as a structured grid so JS can
+                // render race cards with portraits + per-race available-classes
+                // info. Sex is passed so JS can pick the correct portrait variant
+                // per-race once we add male/female portrait pairs.
+                ElectronBridge.EmitCharacterCreationStep(
+                    step: "race",
+                    title: Loc.Get("creation.choose_race"),
+                    description: "",
+                    data: new
+                    {
+                        playerName,
+                        sex = sex.ToString(),
+                        races = BuildRacePickerData()
+                    });
+
                 terminal.Clear();
                 terminal.WriteLine("");
                 terminal.WriteLine(Loc.Get("creation.choose_race"), "cyan");
@@ -629,6 +697,128 @@ public class CharacterCreationSystem
         {
             terminal.WriteLine($" [{classAbbreviations}]", "darkgray");
         }
+    }
+
+    /// <summary>
+    /// Phase 3: build the race picker data for the Electron graphical client.
+    /// Returns a list of races with their menu key, name, available classes,
+    /// and optional flavor suffix (regen for trolls, poison bite for gnolls).
+    /// JS renders these as cards with portraits + class-availability.
+    /// </summary>
+    private List<object> BuildRacePickerData()
+    {
+        var races = new List<(int idx, CharacterRace race, string nameKey, string? suffix)>
+        {
+            (0, CharacterRace.Human,    "race.human",    null),
+            (1, CharacterRace.Hobbit,   "race.hobbit",   null),
+            (2, CharacterRace.Elf,      "race.elf",      null),
+            (3, CharacterRace.HalfElf,  "race.half_elf", null),
+            (4, CharacterRace.Dwarf,    "race.dwarf",    null),
+            (5, CharacterRace.Troll,    "race.troll",    "regen"),
+            (6, CharacterRace.Orc,      "race.orc",      null),
+            (7, CharacterRace.Gnome,    "race.gnome",    null),
+            (8, CharacterRace.Gnoll,    "race.gnoll",    "poison_bite"),
+            (9, CharacterRace.Mutant,   "race.mutant",   null),
+        };
+
+        var allClasses = new[] {
+            CharacterClass.Warrior, CharacterClass.Paladin, CharacterClass.Ranger,
+            CharacterClass.Assassin, CharacterClass.Bard, CharacterClass.Jester,
+            CharacterClass.Alchemist, CharacterClass.Magician, CharacterClass.Cleric,
+            CharacterClass.Sage, CharacterClass.Barbarian, CharacterClass.MysticShaman
+        };
+
+        var result = new List<object>();
+        foreach (var (idx, race, nameKey, suffix) in races)
+        {
+            var restricted = GameConfig.InvalidCombinations.ContainsKey(race)
+                ? GameConfig.InvalidCombinations[race]
+                : Array.Empty<CharacterClass>();
+            var available = allClasses.Where(c => !restricted.Contains(c)).Select(c => c.ToString()).ToList();
+
+            result.Add(new
+            {
+                key = idx.ToString(),
+                race = race.ToString(),
+                name = Loc.Get(nameKey),
+                suffix,
+                availableClasses = available
+            });
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Phase 3: build the class picker data for the Electron graphical client.
+    /// Returns base + prestige classes with availability, restrictions, and
+    /// prestige-locked status. JS renders cards with portraits.
+    /// </summary>
+    private List<object> BuildClassPickerData(CharacterRace race, List<CharacterClass> unlockedPrestige)
+    {
+        var baseClasses = new[]
+        {
+            (0, CharacterClass.Warrior,      "class.warrior"),
+            (1, CharacterClass.Paladin,      "class.paladin"),
+            (2, CharacterClass.Ranger,       "class.ranger"),
+            (3, CharacterClass.Assassin,     "class.assassin"),
+            (4, CharacterClass.Bard,         "class.bard"),
+            (5, CharacterClass.Jester,       "class.jester"),
+            (6, CharacterClass.Alchemist,    "class.alchemist"),
+            (7, CharacterClass.Magician,     "class.magician"),
+            (8, CharacterClass.Cleric,       "class.cleric"),
+            (9, CharacterClass.Sage,         "class.sage"),
+            (10, CharacterClass.Barbarian,   "class.barbarian"),
+            (11, CharacterClass.MysticShaman,"class.mystic_shaman"),
+        };
+
+        var restrictedClasses = GameConfig.InvalidCombinations.ContainsKey(race)
+            ? GameConfig.InvalidCombinations[race]
+            : Array.Empty<CharacterClass>();
+
+        var result = new List<object>();
+        foreach (var (idx, cls, nameKey) in baseClasses)
+        {
+            bool restricted = restrictedClasses.Contains(cls);
+            result.Add(new
+            {
+                key = idx.ToString(),
+                @class = cls.ToString(),
+                name = Loc.Get(nameKey),
+                restricted,
+                tier = "base",
+                description = (string?)null,
+                unlockReq = (string?)null
+            });
+        }
+
+        // Prestige slots (always emitted; isUnlocked true/false determines styling)
+        var prestige = new[]
+        {
+            (CharacterClass.Tidesworn,   "charcreate.prestige_req_savior"),
+            (CharacterClass.Wavecaller,  "charcreate.prestige_req_savior"),
+            (CharacterClass.Cyclebreaker,"charcreate.prestige_req_defiant"),
+            (CharacterClass.Abysswarden, "charcreate.prestige_req_usurper"),
+            (CharacterClass.Voidreaver,  "charcreate.prestige_req_usurper"),
+        };
+        int prestigeIdx = 12;
+        foreach (var (pc, unlockReqKey) in prestige)
+        {
+            bool isUnlocked = unlockedPrestige.Contains(pc);
+            var desc = GameConfig.PrestigeClassDescriptions.TryGetValue(pc, out var d) ? d : "";
+            result.Add(new
+            {
+                key = isUnlocked ? prestigeIdx.ToString() : "",
+                @class = pc.ToString(),
+                name = pc.ToString(),
+                restricted = !isUnlocked,
+                tier = "prestige",
+                description = desc,
+                unlockReq = isUnlocked ? null : Loc.Get(unlockReqKey)
+            });
+            if (isUnlocked) prestigeIdx++;
+        }
+
+        return result;
     }
 
     /// <summary>
@@ -1749,6 +1939,17 @@ public class CharacterCreationSystem
         {
             if (choice == "?")
             {
+                // Phase 3: emit class picker as a structured list for JS.
+                ElectronBridge.EmitCharacterCreationStep(
+                    step: "class",
+                    title: Loc.Get("creation.choose_class", GameConfig.RaceNames[(int)race]),
+                    description: GameConfig.RaceRestrictionReasons.TryGetValue(race, out var reason) ? reason : "",
+                    data: new
+                    {
+                        race = race.ToString(),
+                        classes = BuildClassPickerData(race, unlockedPrestige)
+                    });
+
                 terminal.Clear();
                 terminal.WriteLine("");
                 terminal.WriteLine(Loc.Get("creation.choose_class", GameConfig.RaceNames[(int)race]), "cyan");
@@ -1952,6 +2153,48 @@ public class CharacterCreationSystem
         {
             // Roll the stats
             RollStats(character);
+
+            // Phase 3: emit rolled stats so JS renders the stat-roll panel with
+            // accept/reroll buttons. Rerolls remaining is part of the payload so
+            // JS can disable the reroll button when it hits 0.
+            {
+                long emitTotalStats = character.Strength + character.Defence + character.Stamina +
+                                      character.Agility + character.Charisma + character.Dexterity +
+                                      character.Wisdom + character.Intelligence + character.Constitution;
+                long emitMana = character.MaxMana;
+                if (emitMana > 0)
+                {
+                    emitMana += StatEffectsSystem.GetIntelligenceManaBonus(character.Intelligence, character.Level);
+                    emitMana += StatEffectsSystem.GetWisdomManaBonus(character.Wisdom);
+                }
+                ElectronBridge.EmitCharacterCreationStep(
+                    step: "stats",
+                    title: Loc.Get("character_creation.stat_roll"),
+                    description: "",
+                    data: new
+                    {
+                        className = character.ClassName,
+                        raceName = GameConfig.RaceNames[(int)character.Race],
+                        rerollsRemaining,
+                        totalStats = emitTotalStats,
+                        stats = new
+                        {
+                            hp = character.HP,
+                            maxHp = character.MaxHP,
+                            strength = character.Strength,
+                            defence = character.Defence,
+                            stamina = character.Stamina,
+                            agility = character.Agility,
+                            dexterity = character.Dexterity,
+                            constitution = character.Constitution,
+                            intelligence = character.Intelligence,
+                            wisdom = character.Wisdom,
+                            charisma = character.Charisma,
+                            mana = emitMana,
+                            maxMana = emitMana
+                        }
+                    });
+            }
 
             // Display the rolled stats
             terminal.Clear();
@@ -2331,6 +2574,44 @@ public class CharacterCreationSystem
     /// </summary>
     private async Task ShowCharacterSummary(Character character)
     {
+        // Phase 3: emit final character summary for the Electron client to
+        // render the confirmation card. JS shows the full character info and
+        // a "Begin Adventure" button that sends Enter to dismiss.
+        ElectronBridge.EmitCharacterCreationStep(
+            step: "summary",
+            title: Loc.Get("character_creation.summary_header"),
+            description: "",
+            data: new
+            {
+                name = character.Name2,
+                race = GameConfig.RaceNames[(int)character.Race],
+                className = character.ClassName,
+                sex = character.Sex.ToString(),
+                age = character.Age,
+                hp = character.HP,
+                maxHp = character.MaxHP,
+                strength = character.Strength,
+                defence = character.Defence,
+                stamina = character.Stamina,
+                agility = character.Agility,
+                dexterity = character.Dexterity,
+                constitution = character.Constitution,
+                intelligence = character.Intelligence,
+                wisdom = character.Wisdom,
+                charisma = character.Charisma,
+                mana = character.Mana,
+                maxMana = character.MaxMana,
+                height = character.Height,
+                weight = character.Weight,
+                eyes = GameConfig.EyeColors[character.Eyes],
+                hair = GameConfig.HairColors[character.Hair],
+                skin = GameConfig.SkinColors[character.Skin],
+                gold = character.Gold,
+                experience = character.Experience,
+                level = character.Level,
+                healingPotions = character.Healing
+            });
+
         terminal.Clear();
         terminal.WriteLine("");
         terminal.WriteLine($"--- {Loc.Get("character_creation.summary_header")} ---", "bright_green");

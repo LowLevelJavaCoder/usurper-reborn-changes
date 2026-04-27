@@ -115,6 +115,7 @@ public class PlayerSession : IDisposable
         CancellationToken cancellationToken,
         bool isPlainText = false,
         bool isCp437 = false,
+        bool gmcpEnabled = false,
         string? forwardedIP = null)
     {
         Username = username;
@@ -127,11 +128,13 @@ public class PlayerSession : IDisposable
         _serverCancellationToken = cancellationToken;
         _isPlainText = isPlainText;
         _isCp437 = isCp437;
+        _gmcpEnabled = gmcpEnabled;
         _forwardedIP = forwardedIP;
     }
 
     private readonly bool _isPlainText;
     private readonly bool _isCp437;
+    private readonly bool _gmcpEnabled;
     private readonly string? _forwardedIP;
 
     /// <summary>
@@ -180,6 +183,12 @@ public class PlayerSession : IDisposable
             // CP437 encoding for BBS terminals (SyncTerm, NetRunner, etc.)
             if (_isCp437)
                 ctx.Terminal.UseCp437 = true;
+
+            // v0.57.21: GMCP out-of-band protocol negotiated at connection time.
+            // GmcpBridge.Emit consults SessionContext.Current.GmcpEnabled before sending
+            // any IAC SB GMCP frames so non-GMCP clients (web terminal, SSH, BBS) never
+            // see the framing bytes.
+            ctx.GmcpEnabled = _gmcpEnabled;
 
             // ServerEchoes: true only for direct raw-TCP MUD connections (Mudlet, etc.)
             // where we sent IAC WILL ECHO and the client disabled its local echo.

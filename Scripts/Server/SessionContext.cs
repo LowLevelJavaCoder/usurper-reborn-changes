@@ -42,6 +42,13 @@ public class SessionContext : IDisposable
     public string RemoteIP { get; init; } = ""; // Client IP address
     public CancellationToken CancellationToken { get; init; }
 
+    /// <summary>
+    /// True if the client negotiated GMCP (Generic MUD Communication Protocol) at connection time.
+    /// When enabled, GmcpBridge.Emit fans out structured out-of-band events (Char.Vitals, Room.Info, etc.)
+    /// to the connected MUD client. Set during the IAC handshake in MudServer.ProbeTtypeAsync.
+    /// </summary>
+    public bool GmcpEnabled { get; set; }
+
     // --- Per-Session Terminal ---
     public TerminalEmulator Terminal { get; set; } = null!;
 

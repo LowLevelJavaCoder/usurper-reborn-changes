@@ -78,6 +78,16 @@ public class WeaponShopLocation : BaseLocation
             return;
         }
 
+        // Phase 4: Electron mode emits Weapon Shop top-level menu state.
+        // Only the main category-picker menu is graphical for now — paginated
+        // browse lists, buy/sell flows, identify dialogs all still text mode.
+        // Pattern C (full shop with command-protocol) deferred.
+        if (GameConfig.ElectronMode && currentCategory == null)
+        {
+            EmitElectronEvents();
+            return;
+        }
+
         WriteBoxHeader(Loc.Get("weapon_shop.header"), "bright_cyan");
         terminal.WriteLine("");
 
@@ -367,6 +377,16 @@ public class WeaponShopLocation : BaseLocation
         if (string.IsNullOrEmpty(categoryName)) return;
 
         List<Equipment> items = GetShopItemsForCategory(category);
+
+        // Phase 4 finish: Pattern C — Electron mode emits the paginated browse
+        // state for graphical rendering. JS shows item cards with price/stats/
+        // affordability hints. Click on item sends the on-page index back via
+        // stdin which lands at ProcessCategoryChoice → BuyItem. Skip text body.
+        if (GameConfig.ElectronMode)
+        {
+            EmitShopBrowseState(categoryName, category, items);
+            return;
+        }
 
         WriteSectionHeader(categoryName, "bright_yellow");
         terminal.WriteLine("");
@@ -1562,5 +1582,104 @@ public class WeaponShopLocation : BaseLocation
     private static string FormatNumber(long value)
     {
         return value.ToString("N0");
+    }
+
+    /// <summary>
+    /// Phase 4 finish: emit paginated browse state (Pattern C). JS renders
+    /// item cards with affordability/level/class hints; click an item sends
+    /// the on-page numeric index via stdin which routes to BuyItem. Pagination
+    /// keys (P/N) and Return (R) handled in ProcessCategoryChoice unchanged.
+    /// </summary>
+    private void EmitShopBrowseState(string categoryName, WeaponCategory category, List<Equipment> items)
+    {
+        var player = GetCurrentPlayer();
+        if (player == null) return;
+
+        int startIndex = currentPage * ItemsPerPage;
+        var pageItems = items.Skip(startIndex).Take(ItemsPerPage).ToList();
+        int totalPages = (items.Count + ItemsPerPage - 1) / ItemsPerPage;
+        bool isPrestige = player.Class >= CharacterClass.Tidesworn;
+
+        var browseItems = new List<ElectronBridge.ShopBrowseItem>();
+        for (int i = 0; i < pageItems.Count; i++)
+        {
+            var item = pageItems[i];
+            bool canAfford = player.Gold >= item.Value;
+            bool meetsLevel = player.Level >= item.MinLevel;
+            bool meetsClass = isPrestige || item.ClassRestrictions == null || item.ClassRestrictions.Count == 0
+                || item.ClassRestrictions.Contains(player.Class);
+
+            var bonuses = new Dictionary<string, int>();
+            if (item.StrengthBonus != 0) bonuses["STR"] = item.StrengthBonus;
+            if (item.DefenceBonus != 0) bonuses["DEF"] = item.DefenceBonus;
+            if (item.DexterityBonus != 0) bonuses["DEX"] = item.DexterityBonus;
+            if (item.WisdomBonus != 0) bonuses["WIS"] = item.WisdomBonus;
+
+            int power = category == WeaponCategory.Shields
+                ? item.ShieldBonus
+                : item.WeaponPower;
+
+            browseItems.Add(new ElectronBridge.ShopBrowseItem
+            {
+                Key = (i + 1).ToString(),
+                Name = item.Name,
+                Slot = category == WeaponCategory.Shields ? "Shield" : "Weapon",
+                Price = item.Value,
+                Power = power,
+                MinLevel = item.MinLevel,
+                Rarity = "common",
+                Affordable = canAfford,
+                LevelOk = meetsLevel,
+                ClassOk = meetsClass,
+                Bonuses = bonuses.Count > 0 ? bonuses : null,
+            });
+        }
+
+        ElectronBridge.EmitShopBrowse(
+            shopName: Loc.Get("weapon_shop.header"),
+            category: categoryName,
+            currentPage: currentPage + 1,
+            totalPages: Math.Max(1, totalPages),
+            items: browseItems,
+            playerGold: player.Gold);
+    }
+
+    /// <summary>
+    /// Phase 4: emit Weapon Shop top-level category menu for Electron client.
+    /// Pattern B for the entry; sub-screens (browse list, buy, sell, identify)
+    /// still render text. Pattern C (full graphical shop) is a future phase.
+    /// </summary>
+    private void EmitElectronEvents()
+    {
+        var player = GetCurrentPlayer();
+        if (player == null) return;
+
+        ElectronBridge.EmitLocation(
+            name: Loc.Get("weapon_shop.header"),
+            description: "",
+            timeOfDay: "");
+
+        bool isManaClass = player is Player p && p.IsManaClass;
+        ElectronBridge.EmitStats(
+            hp: player.HP, maxHp: player.MaxHP,
+            mana: isManaClass ? player.Mana : 0, maxMana: isManaClass ? player.MaxMana : 0,
+            stamina: isManaClass ? 0 : player.Stamina, maxStamina: isManaClass ? 0 : player.BaseStamina,
+            gold: player.Gold, level: player.Level,
+            className: player.ClassName, raceName: player.Race.ToString(),
+            playerName: player.DisplayName);
+
+        var menu = new List<ElectronBridge.MenuItemData>
+        {
+            new() { Key = "1", Label = "One-Handed", Category = "browse", Icon = "sword" },
+            new() { Key = "2", Label = "Two-Handed", Category = "browse", Icon = "greatsword" },
+            new() { Key = "3", Label = "Bows", Category = "browse", Icon = "bow" },
+            new() { Key = "4", Label = "Shields", Category = "browse", Icon = "shield" },
+            new() { Key = "S", Label = "Sell Weapon", Category = "sell", Icon = "sell" },
+            new() { Key = "I", Label = "Identify Item", Category = "service", Icon = "identify" },
+            new() { Key = "R", Label = Loc.Get("ui.return"), Category = "navigate", Icon = "back" },
+        };
+        ElectronBridge.EmitMenu(menu);
+
+        EmitNPCsInLocationToElectron();
     }
 }

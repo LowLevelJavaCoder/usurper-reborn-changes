@@ -64,6 +64,14 @@ public class HomeLocation : BaseLocation
 
         terminal.ClearScreen();
 
+        // Phase 5: Electron mode emits Home menu state. Pattern B —
+        // sub-screens (chest, herbs, family, intimacy) still text-mode.
+        if (GameConfig.ElectronMode)
+        {
+            EmitElectronEvents();
+            return;
+        }
+
         // Header
         WriteBoxHeader(Loc.Get("home.header"), "bright_cyan");
         terminal.WriteLine("");
@@ -4943,4 +4951,54 @@ toResurrect.IsDead = false;
     };
 
     #endregion
+
+    /// <summary>
+    /// Phase 5: emit Home menu state for the Electron client. Pattern B.
+    /// </summary>
+    private void EmitElectronEvents()
+    {
+        var player = GetCurrentPlayer();
+        if (player == null) return;
+
+        ElectronBridge.EmitLocation(
+            name: Loc.Get("home.header"),
+            description: "",
+            timeOfDay: "");
+
+        bool isManaClass = player is Player p && p.IsManaClass;
+        ElectronBridge.EmitStats(
+            hp: player.HP, maxHp: player.MaxHP,
+            mana: isManaClass ? player.Mana : 0, maxMana: isManaClass ? player.MaxMana : 0,
+            stamina: isManaClass ? 0 : player.Stamina, maxStamina: isManaClass ? 0 : player.BaseStamina,
+            gold: player.Gold, level: player.Level,
+            className: player.ClassName, raceName: player.Race.ToString(),
+            playerName: player.DisplayName);
+
+        var menu = new List<ElectronBridge.MenuItemData>
+        {
+            new() { Key = "E", Label = "Rest & Recover", Category = "service", Icon = "rest" },
+            new() { Key = "U", Label = "Upgrade Home", Category = "service", Icon = "upgrade" },
+            new() { Key = "D", Label = "Deposit to Chest", Category = "storage", Icon = "chest" },
+            new() { Key = "W", Label = "Withdraw from Chest", Category = "storage", Icon = "chest" },
+            new() { Key = "L", Label = "List Chest", Category = "storage", Icon = "chest" },
+            new() { Key = "A", Label = "Gather Herbs", Category = "service", Icon = "herb" },
+            new() { Key = "J", Label = "Use Herb", Category = "service", Icon = "herb" },
+            new() { Key = "T", Label = "Trophies", Category = "info", Icon = "trophy" },
+            new() { Key = "F", Label = "Family", Category = "social", Icon = "family" },
+            new() { Key = "C", Label = "Spend Time with Children", Category = "social", Icon = "children" },
+            new() { Key = "P", Label = "Spend Time with Spouse", Category = "social", Icon = "love" },
+            new() { Key = "B", Label = "Bedroom", Category = "social", Icon = "bedroom" },
+            new() { Key = "X", Label = "Resurrect Partner", Category = "service", Icon = "resurrect" },
+            new() { Key = "I", Label = "Inventory", Category = "info", Icon = "inventory" },
+            new() { Key = "G", Label = "Gear for Partner", Category = "service", Icon = "gear" },
+            new() { Key = "V", Label = "Party Inventory", Category = "info", Icon = "party" },
+            new() { Key = "H", Label = "Healing Potion", Category = "service", Icon = "potion" },
+            new() { Key = "Z", Label = "Sleep / Wait Night", Category = "service", Icon = "sleep" },
+            new() { Key = "S", Label = "Status", Category = "info", Icon = "info" },
+            new() { Key = "R", Label = Loc.Get("ui.return"), Category = "navigate", Icon = "back" },
+        };
+        ElectronBridge.EmitMenu(menu);
+
+        EmitNPCsInLocationToElectron();
+    }
 }

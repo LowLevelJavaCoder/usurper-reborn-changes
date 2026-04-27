@@ -19,6 +19,13 @@ public class WildernessLocation : BaseLocation
 
         terminal.ClearScreen();
 
+        // Phase 5: Electron mode emits Wilderness menu state. Pattern B.
+        if (GameConfig.ElectronMode)
+        {
+            EmitElectronEvents();
+            return;
+        }
+
         WriteBoxHeader(Loc.Get("wilderness.header"), "bright_green");
         terminal.WriteLine("");
 
@@ -686,5 +693,43 @@ public class WildernessLocation : BaseLocation
                     break;
             }
         }
+    }
+
+    /// <summary>
+    /// Phase 5: emit Wilderness region picker for the Electron client. Pattern B.
+    /// </summary>
+    private void EmitElectronEvents()
+    {
+        var player = GetCurrentPlayer();
+        if (player == null) return;
+
+        ElectronBridge.EmitLocation(
+            name: Loc.Get("wilderness.header"),
+            description: Loc.Get("wilderness.intro_line1"),
+            timeOfDay: "");
+
+        bool isManaClass = player is Player p && p.IsManaClass;
+        ElectronBridge.EmitStats(
+            hp: player.HP, maxHp: player.MaxHP,
+            mana: isManaClass ? player.Mana : 0, maxMana: isManaClass ? player.MaxMana : 0,
+            stamina: isManaClass ? 0 : player.Stamina, maxStamina: isManaClass ? 0 : player.BaseStamina,
+            gold: player.Gold, level: player.Level,
+            className: player.ClassName, raceName: player.Race.ToString(),
+            playerName: player.DisplayName);
+
+        var menu = new List<ElectronBridge.MenuItemData>();
+        foreach (var region in WildernessData.Regions)
+        {
+            bool canAccess = player.Level >= region.MinLevel;
+            menu.Add(new() {
+                Key = region.DirectionKey,
+                Label = $"{region.Name} ({region.Direction})" + (canAccess ? "" : $" [Lv.{region.MinLevel}]"),
+                Category = canAccess ? "explore" : "locked",
+                Icon = "wilderness"
+            });
+        }
+        menu.Add(new() { Key = "D", Label = "Visit Discovery", Category = "explore", Icon = "discovery" });
+        menu.Add(new() { Key = "R", Label = Loc.Get("ui.return"), Category = "navigate", Icon = "back" });
+        ElectronBridge.EmitMenu(menu);
     }
 }

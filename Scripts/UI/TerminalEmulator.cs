@@ -1451,7 +1451,7 @@ public partial class TerminalEmulator
             _consecutiveEmptyInputs = 0;
         }
     }
-    
+
     // Missing API methods for compatibility
     public void SetColor(string color)
     {

@@ -292,6 +292,7 @@ public class MudServer
             string connectionType;
             bool isPlainText = false;
             bool isCp437 = false;
+            bool gmcpEnabled = false;
 
             if (isInteractive)
             {
@@ -301,13 +302,18 @@ public class MudServer
                 // ReadLineInteractiveAsync, causing every character to appear twice.
                 //   IAC WILL ECHO  (0xFF 0xFB 0x01) — server will echo, disable client echo
                 //   IAC WILL SGA   (0xFF 0xFB 0x03) — suppress go-ahead (character mode)
-                await stream.WriteAsync(new byte[] { 0xFF, 0xFB, 0x01, 0xFF, 0xFB, 0x03 }, 0, 6, ct);
+                //   IAC WILL GMCP  (0xFF 0xFB 0xC9) — v0.57.21: offer GMCP out-of-band events
+                await stream.WriteAsync(new byte[] { 0xFF, 0xFB, 0x01, 0xFF, 0xFB, 0x03, 0xFF, 0xFB, 0xC9 }, 0, 9, ct);
                 await stream.FlushAsync(ct);
 
-                // Probe terminal type to detect screen-reader and CP437 BBS clients
+                // Probe terminal type to detect screen-reader and CP437 BBS clients,
+                // and capture any GMCP DO/DONT response that arrives in the same window.
                 var probeResult = await ProbeTtypeAsync(stream, ct);
                 isPlainText = probeResult.isPlainText;
                 isCp437 = probeResult.isCp437;
+                gmcpEnabled = probeResult.gmcpEnabled;
+                if (gmcpEnabled)
+                    Console.Error.WriteLine($"[MUD] GMCP enabled for {client.Client.RemoteEndPoint}");
                 if (isPlainText)
                     Console.Error.WriteLine($"[MUD] Screen-reader client detected from {client.Client.RemoteEndPoint} — plain text mode");
                 if (isCp437)
@@ -440,6 +446,7 @@ public class MudServer
                     cancellationToken: ct,
                     isPlainText: isPlainText,
                     isCp437: isCp437,
+                    gmcpEnabled: gmcpEnabled,
                     forwardedIP: forwardedIP
                 );
 
@@ -713,12 +720,14 @@ public class MudServer
     /// <summary>
     /// Probe the client's terminal type via telnet TTYPE negotiation.
     /// Sends IAC DO TTYPE + IAC SB TTYPE SEND, waits up to 250ms for a response.
-    /// Returns (isPlainText, isCp437, ttypeString).
+    /// Returns (isPlainText, isCp437, ttypeString, gmcpEnabled).
     /// isPlainText=true for screen readers (VIP Mud). isCp437=true for BBS terminals (SyncTerm, etc.).
+    /// gmcpEnabled=true if the client responded IAC DO GMCP to our IAC WILL GMCP offer.
     /// Called only for interactive (non-AUTH) connections after the 500ms AUTH timeout.
     /// </summary>
-    private static async Task<(bool isPlainText, bool isCp437, string? ttype)> ProbeTtypeAsync(NetworkStream stream, CancellationToken ct)
+    private static async Task<(bool isPlainText, bool isCp437, string? ttype, bool gmcpEnabled)> ProbeTtypeAsync(NetworkStream stream, CancellationToken ct)
     {
+        bool gmcpEnabled = false;
         try
         {
             using var ttypeCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -747,7 +756,11 @@ public class MudServer
 
                 if (cmd == 0xFB || cmd == 0xFC || cmd == 0xFD || cmd == 0xFE) // WILL/WONT/DO/DONT
                 {
-                    await stream.ReadAsync(buf, 0, 1, ttypeCts.Token); // consume option
+                    if (await stream.ReadAsync(buf, 0, 1, ttypeCts.Token) == 0) break; // consume option
+                    // v0.57.21: detect IAC DO GMCP (0xFD + 0xC9) as "client supports GMCP".
+                    // IAC DONT GMCP (0xFE + 0xC9) explicitly leaves it disabled.
+                    if (buf[0] == 0xC9 && cmd == 0xFD)
+                        gmcpEnabled = true;
                 }
                 else if (cmd == 0xFA) // SB — subnegotiation (TTYPE IS "..." IAC SE)
                 {
@@ -770,7 +783,7 @@ public class MudServer
                             }
                         }
                         gotTtype = true;
-                        break;
+                        // Don't break — keep draining so GMCP DO/DONT also has a chance to arrive.
                     }
                     else
                     {
@@ -798,7 +811,7 @@ public class MudServer
                 bool isCp437 = ttypeStr.Contains("SYNCTERM") || ttypeStr.Contains("NETRUNNER")
                     || ttypeStr.Contains("MTELNET") || ttypeStr.Contains("FTELNET")
                     || ttypeStr.Contains("CTERM") || ttypeStr.Contains("ANSI-BBS");
-                return (isPlain, isCp437, ttypeStr);
+                return (isPlain, isCp437, ttypeStr, gmcpEnabled);
             }
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested) { }
@@ -807,7 +820,7 @@ public class MudServer
             Console.Error.WriteLine($"[MUD] TTYPE probe error: {ex.Message}");
         }
 
-        return (false, false, null);
+        return (false, false, null, gmcpEnabled);
     }
 
     /// <summary>Read a single line from a network stream (up to \n, strips \r).

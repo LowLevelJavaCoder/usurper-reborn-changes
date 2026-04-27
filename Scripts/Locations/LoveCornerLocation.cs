@@ -30,10 +30,55 @@ public class LoveCornerLocation : BaseLocation
         bool stayInLocation = true;
         while (stayInLocation)
         {
-            ShowPrompt(player);
+            // Phase 5: Electron mode emits Love Corner menu state. Pattern B —
+            // emit replaces the text prompt; same GetInput receives the click.
+            if (GameConfig.ElectronMode)
+            {
+                EmitElectronEvents(player);
+            }
+            else
+            {
+                ShowPrompt(player);
+            }
             string command = await terminal.GetInput("");
             stayInLocation = await HandleCommand(player, command);
         }
+    }
+
+    /// <summary>
+    /// Phase 5: emit Love Corner menu state for the Electron client. Pattern B.
+    /// </summary>
+    private void EmitElectronEvents(Character player)
+    {
+        ElectronBridge.EmitLocation(
+            name: GameConfig.DefaultLoveCornerName,
+            description: Loc.Get("love_corner.you_enter", GameConfig.DefaultLoveCornerName),
+            timeOfDay: "");
+
+        bool isManaClass = player is Player p && p.IsManaClass;
+        ElectronBridge.EmitStats(
+            hp: player.HP, maxHp: player.MaxHP,
+            mana: isManaClass ? player.Mana : 0, maxMana: isManaClass ? player.MaxMana : 0,
+            stamina: isManaClass ? 0 : player.Stamina, maxStamina: isManaClass ? 0 : player.BaseStamina,
+            gold: player.Gold, level: player.Level,
+            className: player.ClassName, raceName: player.Race.ToString(),
+            playerName: player.DisplayName);
+
+        var menu = new List<ElectronBridge.MenuItemData>
+        {
+            new() { Key = "A", Label = "Approach Somebody", Category = "social", Icon = "approach" },
+            new() { Key = "C", Label = "Children in Realm", Category = "info", Icon = "children" },
+            new() { Key = "D", Label = "Divorce", Category = "social", Icon = "divorce" },
+            new() { Key = "E", Label = "Examine Child", Category = "social", Icon = "child" },
+            new() { Key = "V", Label = "Gossip Monger", Category = "social", Icon = "gossip" },
+            new() { Key = "M", Label = "Married Couples", Category = "info", Icon = "marriage" },
+            new() { Key = "P", Label = "Personal Relations", Category = "social", Icon = "relations" },
+            new() { Key = "G", Label = "Gift Shop", Category = "shop", Icon = "gift" },
+            new() { Key = "S", Label = "Status", Category = "info", Icon = "info" },
+            new() { Key = "L", Label = "Love History", Category = "info", Icon = "history" },
+            new() { Key = "R", Label = Loc.Get("ui.return"), Category = "navigate", Icon = "back" },
+        };
+        ElectronBridge.EmitMenu(menu);
     }
 
     private async Task<bool> HandleCommand(Character player, string command)

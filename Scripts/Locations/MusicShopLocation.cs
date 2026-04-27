@@ -121,6 +121,15 @@ public class MusicShopLocation : BaseLocation
         terminal.ClearScreen();
         if (currentPlayer == null) return;
 
+        // Phase 4: Electron mode emits Music Shop top-level menu state.
+        // Sub-screens (instrument browse, performance, lore songs, recruit
+        // Melodia) still text-mode. Pattern B for entry.
+        if (GameConfig.ElectronMode)
+        {
+            EmitElectronEvents();
+            return;
+        }
+
         var state = GetMelodiaState();
 
         // Header box — matches Weapon/Armor/Healer pattern
@@ -1248,5 +1257,42 @@ public class MusicShopLocation : BaseLocation
         if (value >= 1_000_000) return $"{value / 1_000_000.0:F1}M";
         if (value >= 1_000) return $"{value / 1_000.0:F1}K";
         return value.ToString();
+    }
+
+    /// <summary>
+    /// Phase 4: emit Music Shop top-level menu for Electron client.
+    /// Sub-screens (instruments, performance songs, lore unlock, Melodia
+    /// recruitment dialogue) still text-mode.
+    /// </summary>
+    private void EmitElectronEvents()
+    {
+        var player = GetCurrentPlayer();
+        if (player == null) return;
+
+        ElectronBridge.EmitLocation(
+            name: Loc.Get("music_shop.header"),
+            description: Loc.Get("music_shop.atmo1"),
+            timeOfDay: "");
+
+        bool isManaClass = player is Player p && p.IsManaClass;
+        ElectronBridge.EmitStats(
+            hp: player.HP, maxHp: player.MaxHP,
+            mana: isManaClass ? player.Mana : 0, maxMana: isManaClass ? player.MaxMana : 0,
+            stamina: isManaClass ? 0 : player.Stamina, maxStamina: isManaClass ? 0 : player.BaseStamina,
+            gold: player.Gold, level: player.Level,
+            className: player.ClassName, raceName: player.Race.ToString(),
+            playerName: player.DisplayName);
+
+        var menu = new List<ElectronBridge.MenuItemData>
+        {
+            new() { Key = "B", Label = "Buy Instruments", Category = "browse", Icon = "instrument" },
+            new() { Key = "P", Label = "Hire Performance", Category = "service", Icon = "music" },
+            new() { Key = "T", Label = "Talk to Melodia", Category = "social", Icon = "talk" },
+            new() { Key = "L", Label = "Lore Songs", Category = "info", Icon = "scroll" },
+            new() { Key = "R", Label = Loc.Get("ui.return"), Category = "navigate", Icon = "back" },
+        };
+        ElectronBridge.EmitMenu(menu);
+
+        EmitNPCsInLocationToElectron();
     }
 }

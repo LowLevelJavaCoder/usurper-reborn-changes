@@ -288,6 +288,14 @@ public class InnLocation : BaseLocation
 
         terminal.ClearScreen();
 
+        // Phase 4: Electron mode emits Inn menu state. Pattern B (top-level only).
+        // Sub-screens (rooms, companions, dreams, sparring) still render text.
+        if (GameConfig.ElectronMode)
+        {
+            EmitElectronEvents();
+            return;
+        }
+
         // Inn header - standardized format
         WriteBoxHeader(Loc.Get("inn.header"), "bright_cyan", 77);
         terminal.WriteLine("");
@@ -6121,6 +6129,47 @@ public class InnLocation : BaseLocation
             }
         }
         catch { }
+    }
+
+    /// <summary>
+    /// Phase 4: emit Inn menu state for the Electron client. Top-level menu
+    /// only — sub-screens (rooms, companions, dreams, sparring) still render
+    /// text. Pattern B.
+    /// </summary>
+    private void EmitElectronEvents()
+    {
+        var player = GetCurrentPlayer();
+        if (player == null) return;
+
+        ElectronBridge.EmitLocation(
+            name: Loc.Get("inn.header"),
+            description: Loc.Get("inn.desc_dimly_lit"),
+            timeOfDay: "");
+
+        bool isManaClass = player is Player p && p.IsManaClass;
+        ElectronBridge.EmitStats(
+            hp: player.HP, maxHp: player.MaxHP,
+            mana: isManaClass ? player.Mana : 0, maxMana: isManaClass ? player.MaxMana : 0,
+            stamina: isManaClass ? 0 : player.Stamina, maxStamina: isManaClass ? 0 : player.BaseStamina,
+            gold: player.Gold, level: player.Level,
+            className: player.ClassName, raceName: player.Race.ToString(),
+            playerName: player.DisplayName);
+
+        var menu = new List<ElectronBridge.MenuItemData>
+        {
+            new() { Key = "S", Label = "Sleep at Inn", Category = "service", Icon = "sleep" },
+            new() { Key = "C", Label = "Companions", Category = "social", Icon = "companions" },
+            new() { Key = "T", Label = "Talk", Category = "social", Icon = "talk" },
+            new() { Key = "D", Label = "Drink", Category = "social", Icon = "drink" },
+            new() { Key = "G", Label = "Gambling", Category = "social", Icon = "gambling" },
+            new() { Key = "B", Label = "Brawl", Category = "combat", Icon = "brawl" },
+            new() { Key = "M", Label = "Mingle", Category = "social", Icon = "mingle" },
+            new() { Key = "Z", Label = "Sparring", Category = "combat", Icon = "spar" },
+            new() { Key = "R", Label = Loc.Get("ui.return"), Category = "navigate", Icon = "back" },
+        };
+        ElectronBridge.EmitMenu(menu);
+
+        EmitNPCsInLocationToElectron();
     }
 
     #endregion

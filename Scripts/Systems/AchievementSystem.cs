@@ -1125,6 +1125,22 @@ public static class AchievementSystem
             // Queue notification on per-player queue (not the static one)
             player.Achievements.PendingNotifications.Enqueue(achievement);
 
+            // Phase 7: emit achievement toast to Electron client (non-blocking).
+            if (GameConfig.ElectronMode)
+            {
+                ElectronBridge.EmitAchievementToast(
+                    id: achievementId,
+                    name: achievement.Name,
+                    description: achievement.Description ?? "",
+                    tier: achievement.Tier.ToString(),
+                    goldReward: achievement.GoldReward,
+                    xpReward: achievement.ExperienceReward,
+                    fameReward: fameReward,
+                    isBroadcast: achievement.Tier >= AchievementTier.Gold);
+                // Phase 9.5: tier-specific achievement chime
+                ElectronBridge.EmitSound($"sfx.achievement.{achievement.Tier.ToString().ToLowerInvariant()}");
+            }
+
             // Update statistics
             player.Statistics.TotalExperienceEarned += achievement.ExperienceReward;
             player.Statistics.TotalGoldEarned += achievement.GoldReward;

@@ -73,10 +73,17 @@ public partial class PrisonWalkLocation : BaseLocation
         {
             // Update location status if needed
             await UpdateLocationStatus(player);
-            
+
             // Display menu
-            await DisplayPrisonWalkMenu(player, true, true);
-            
+            if (GameConfig.ElectronMode)
+            {
+                EmitElectronEvents(player);
+            }
+            else
+            {
+                await DisplayPrisonWalkMenu(player, true, true);
+            }
+
             // Get user input
             choice = await terminal.GetCharAsync();
             choice = char.ToUpper(choice);
@@ -707,4 +714,33 @@ public partial class PrisonWalkLocation : BaseLocation
         var prisoners = await GetAllPrisoners();
         return Loc.Get("prison_walk.location_status", prisoners.Count.ToString());
     }
-} 
+
+    private void EmitElectronEvents(Character player)
+    {
+        if (player == null) return;
+
+        ElectronBridge.EmitLocation(
+            name: Loc.Get("prison_walk.title"),
+            description: "",
+            timeOfDay: "");
+
+        bool isManaClass = player is Player p && p.IsManaClass;
+        ElectronBridge.EmitStats(
+            hp: player.HP, maxHp: player.MaxHP,
+            mana: isManaClass ? player.Mana : 0, maxMana: isManaClass ? player.MaxMana : 0,
+            stamina: isManaClass ? 0 : player.Stamina, maxStamina: isManaClass ? 0 : player.BaseStamina,
+            gold: player.Gold, level: player.Level,
+            className: player.ClassName, raceName: player.Race.ToString(),
+            playerName: player.DisplayName);
+
+        var menu = new List<ElectronBridge.MenuItemData>
+        {
+            new() { Key = "P", Label = "List prisoners", Category = "info", Icon = "list" },
+            new() { Key = "F", Label = "Free a prisoner", Category = "danger", Icon = "escape" },
+            new() { Key = "S", Label = "Status", Category = "info", Icon = "info" },
+            new() { Key = "R", Label = Loc.Get("ui.return"), Category = "navigate", Icon = "back" },
+        };
+        ElectronBridge.EmitMenu(menu);
+    }
+}
+

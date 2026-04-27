@@ -280,6 +280,30 @@ public class LocationManager
                 UsurperRemake.Server.RoomRegistry.Instance.PlayerEntered(locationId, session);
         }
 
+        // v0.57.21: GMCP — emit Room.Info and Char.Status on every location change.
+        // Bridge no-ops when GMCP is not negotiated, so this is free for non-MUD clients.
+        if (UsurperRemake.Server.GmcpBridge.IsActive)
+        {
+            UsurperRemake.Server.GmcpBridge.Emit("Room.Info", new
+            {
+                num = (int)locationId,
+                name = currentLocation?.LocationName ?? locationId.ToString(),
+                area = "Usurper Reborn",
+                exits = new { } // placeholder — full exit list requires per-location enumeration; v1 ships name+id only
+            });
+            UsurperRemake.Server.GmcpBridge.Emit("Char.Status", new
+            {
+                name = player.Name2 ?? player.Name1,
+                @class = player.Class.ToString(),
+                level = player.Level,
+                race = player.Race.ToString(),
+                gold = player.Gold,
+                bank = player.BankGold,
+                xp = player.Experience,
+                location = currentLocation?.LocationName ?? locationId.ToString()
+            });
+        }
+
         // Advance game time for travel between locations (single-player only)
         if (!UsurperRemake.BBS.DoorMode.IsOnlineMode && previousLocation != locationId)
         {

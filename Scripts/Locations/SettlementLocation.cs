@@ -31,6 +31,13 @@ public class SettlementLocation : BaseLocation
         var state = SettlementSystem.Instance.State;
         int settlers = state.SettlerNames.Count;
 
+        // Phase 5: Electron mode emits Settlement menu state. Pattern B.
+        if (GameConfig.ElectronMode)
+        {
+            EmitElectronEvents(settlers);
+            return;
+        }
+
         // Header
         WriteBoxHeader(Loc.Get("settlement.header"), "bright_yellow", 70);
         terminal.WriteLine("");
@@ -1224,5 +1231,41 @@ public class SettlementLocation : BaseLocation
         terminal.WriteLine("");
 
         await terminal.PressAnyKey();
+    }
+
+    /// <summary>
+    /// Phase 5: emit Settlement menu state for the Electron client. Pattern B.
+    /// </summary>
+    private void EmitElectronEvents(int settlerCount)
+    {
+        var player = GetCurrentPlayer();
+        if (player == null) return;
+
+        ElectronBridge.EmitLocation(
+            name: Loc.Get("settlement.header"),
+            description: $"{settlerCount} settlers",
+            timeOfDay: "");
+
+        bool isManaClass = player is Player p && p.IsManaClass;
+        ElectronBridge.EmitStats(
+            hp: player.HP, maxHp: player.MaxHP,
+            mana: isManaClass ? player.Mana : 0, maxMana: isManaClass ? player.MaxMana : 0,
+            stamina: isManaClass ? 0 : player.Stamina, maxStamina: isManaClass ? 0 : player.BaseStamina,
+            gold: player.Gold, level: player.Level,
+            className: player.ClassName, raceName: player.Race.ToString(),
+            playerName: player.DisplayName);
+
+        var menu = new List<ElectronBridge.MenuItemData>
+        {
+            new() { Key = "V", Label = "View Buildings", Category = "info", Icon = "buildings" },
+            new() { Key = "C", Label = "Contribute Resources", Category = "service", Icon = "donate" },
+            new() { Key = "P", Label = "Manage Proposals", Category = "team", Icon = "proposal" },
+            new() { Key = "T", Label = "Talk to Settlers", Category = "social", Icon = "talk" },
+            new() { Key = "O", Label = "Visit Oracle", Category = "info", Icon = "oracle" },
+            new() { Key = "R", Label = Loc.Get("ui.return"), Category = "navigate", Icon = "back" },
+        };
+        ElectronBridge.EmitMenu(menu);
+
+        EmitNPCsInLocationToElectron();
     }
 }

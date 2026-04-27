@@ -63,6 +63,35 @@ public abstract class BaseLocation
     private List<UsurperRemake.Systems.OnlinePlayerInfo> _coPresenceCache = new();
     private DateTime _coPresenceCacheTime = DateTime.MinValue;
 
+    // v0.57.21: GMCP last-emitted vitals for delta detection. Per-instance because
+    // each location has its own loop; resets implicitly on location change.
+    private long _lastGmcpHp = -1, _lastGmcpMaxHp = -1, _lastGmcpMana = -1, _lastGmcpMaxMana = -1, _lastGmcpStamina = -1;
+
+    /// <summary>
+    /// v0.57.21: emit GMCP Char.Vitals if any tracked stat changed since last emit.
+    /// Cheap no-op when GMCP isn't negotiated (early return on bridge IsActive check).
+    /// Frame format matches the conventional GMCP Char.Vitals shape used by Achaea
+    /// and other Iron Realms muds — clients with off-the-shelf scripts work without
+    /// custom mapping.
+    /// </summary>
+    private void EmitGmcpVitals(Character player)
+    {
+        if (player == null || !UsurperRemake.Server.GmcpBridge.IsActive) return;
+        long hp = player.HP, maxHp = player.MaxHP;
+        long mana = player.Mana, maxMana = player.MaxMana;
+        long sta = player.Stamina;
+        if (hp == _lastGmcpHp && maxHp == _lastGmcpMaxHp && mana == _lastGmcpMana
+            && maxMana == _lastGmcpMaxMana && sta == _lastGmcpStamina)
+            return;
+        _lastGmcpHp = hp; _lastGmcpMaxHp = maxHp;
+        _lastGmcpMana = mana; _lastGmcpMaxMana = maxMana;
+        _lastGmcpStamina = sta;
+        UsurperRemake.Server.GmcpBridge.Emit("Char.Vitals", new
+        {
+            hp, maxHp, mp = mana, maxMp = maxMana, sp = sta
+        });
+    }
+
     /// <summary>
     /// True when this session should use compact BBS menus (80x24 terminal).
     /// Covers both single-player BBS door mode and MUD server BBS connections.
@@ -551,6 +580,12 @@ public abstract class BaseLocation
 
         while (!exitLocation && currentPlayer.IsAlive) // No turn limit - continuous gameplay
         {
+            // v0.57.21: GMCP — push current vitals on every loop iteration. Bridge
+            // checks SessionContext.GmcpEnabled internally, so this is a single
+            // boolean check + early return for non-GMCP clients (web, SSH, BBS).
+            // Mudlet/MUSHclient/TT++ users get live HP/MP/SP gauges via this stream.
+            EmitGmcpVitals(currentPlayer);
+
             // Nightmare permadeath — save deleted, exit immediately
             if (GameEngine.Instance.IsPermadeath)
                 return;
@@ -1711,6 +1746,36 @@ public abstract class BaseLocation
     /// Shows up to 3 NPCs with activity descriptions that reflect what they're doing.
     /// Only shows NPCs the player has met (has memory of) unless they're static location NPCs.
     /// </summary>
+    /// <summary>
+    /// Phase 4: shared helper that emits the current location's NPC list
+    /// to the Electron client. Same NPC-filtering logic as ShowNPCsInLocation()
+    /// but fires an EmitNPCList event instead of rendering text. Locations
+    /// using the EmitElectronEvents pattern should call this from their helper.
+    /// </summary>
+    protected void EmitNPCsInLocationToElectron()
+    {
+        if (!GameConfig.ElectronMode) return;
+
+        var liveNPCs = GetLiveNPCsAtLocation();
+        var allNPCs = new List<NPC>(LocationNPCs);
+        foreach (var npc in liveNPCs)
+        {
+            if (!allNPCs.Any(n => n.Name2 == npc.Name2))
+                allNPCs.Add(npc);
+        }
+        var visibleNPCs = allNPCs.Where(npc => npc.IsAlive && !npc.IsDead).Take(10).ToList();
+
+        var npcData = visibleNPCs.Select(npc => new ElectronBridge.NPCPresenceData
+        {
+            Name = npc.DisplayName,
+            Activity = GetLocationContextActivity(npc),
+            Class = npc.ClassName,
+            Level = npc.Level,
+        }).ToList();
+
+        ElectronBridge.EmitNPCList(npcData);
+    }
+
     protected virtual void ShowNPCsInLocation()
     {
         // Get live NPCs from the spawn system
@@ -2468,6 +2533,16 @@ public abstract class BaseLocation
     /// </summary>
     protected async Task<(bool handled, bool shouldExit)> ProcessSlashCommand(string command)
     {
+        // Phase 9: "/settings" with optional args (e.g., "/settings lang es",
+        // "/settings sr on") — handled before the bare-token switch.
+        if (command.StartsWith("settings ") || command.StartsWith("set "))
+        {
+            int firstSpace = command.IndexOf(' ');
+            string args = firstSpace > 0 ? command.Substring(firstSpace + 1).Trim() : "";
+            await HandleSettingsCommand(args);
+            return (true, false);
+        }
+
         switch (command)
         {
             case "":
@@ -2653,6 +2728,11 @@ public abstract class BaseLocation
             case "town":
             case "townhall":
                 await ShowTownHall();
+                return (true, false);
+
+            case "settings":
+            case "set":
+                await HandleSettingsCommand(string.Empty);
                 return (true, false);
 
             default:
@@ -3061,6 +3141,126 @@ public abstract class BaseLocation
     /// you" since the tax money otherwise just flows silently into the
     /// player's bank account.
     /// </summary>
+    /// <summary>
+    /// Phase 9: handle /settings slash command. With no args, opens the Electron
+    /// settings overlay (in Electron mode) or the existing text preferences menu.
+    /// With args (e.g. "lang es", "sr on", "compact off", "art on"), applies the
+    /// change directly so JS overlay buttons can call this without invoking the
+    /// menu loop.
+    /// </summary>
+    protected async Task HandleSettingsCommand(string args)
+    {
+        if (currentPlayer == null || terminal == null) return;
+
+        if (string.IsNullOrWhiteSpace(args))
+        {
+            if (GameConfig.ElectronMode)
+            {
+                EmitSettingsScreenToElectron();
+                await Task.Delay(100);
+                return;
+            }
+            await ShowPreferencesMenu();
+            return;
+        }
+
+        var parts = args.Split(new[] { ' ', ':' }, 2, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length < 1) return;
+        string key = parts[0].ToLowerInvariant();
+        string value = parts.Length > 1 ? parts[1].Trim().ToLowerInvariant() : "";
+
+        switch (key)
+        {
+            case "lang":
+            case "language":
+                if (!string.IsNullOrEmpty(value))
+                {
+                    GameConfig.Language = value;
+                    currentPlayer.Language = value;
+                    Loc.Initialize();
+                    if (GameConfig.ElectronMode)
+                        ElectronBridge.EmitSettingsApplied("language", value);
+                    await GameEngine.Instance.SaveCurrentGame();
+                }
+                break;
+
+            case "sr":
+            case "screen_reader":
+            case "screenreader":
+                bool srOn = value == "on" || value == "true" || value == "1";
+                GameConfig.ScreenReaderMode = srOn;
+                if (GameConfig.ElectronMode)
+                    ElectronBridge.EmitSettingsApplied("screenReader", srOn ? "on" : "off");
+                await GameEngine.Instance.SaveCurrentGame();
+                break;
+
+            case "compact":
+                bool compactOn = value == "on" || value == "true" || value == "1";
+                currentPlayer.CompactMode = compactOn;
+                GameConfig.CompactMode = compactOn;
+                if (GameConfig.ElectronMode)
+                    ElectronBridge.EmitSettingsApplied("compact", compactOn ? "on" : "off");
+                await GameEngine.Instance.SaveCurrentGame();
+                break;
+
+            case "art":
+                // "off" means HIDE art (DisableCharacterMonsterArt = true)
+                bool artHidden = value == "off" || value == "false" || value == "0";
+                currentPlayer.DisableCharacterMonsterArt = artHidden;
+                GameConfig.DisableCharacterMonsterArt = artHidden;
+                if (GameConfig.ElectronMode)
+                    ElectronBridge.EmitSettingsApplied("art", artHidden ? "hidden" : "shown");
+                await GameEngine.Instance.SaveCurrentGame();
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Build and emit the current settings state to the Electron client.
+    /// Reads supported languages by enumerating the Localization/ directory.
+    /// </summary>
+    private void EmitSettingsScreenToElectron()
+    {
+        if (currentPlayer == null) return;
+
+        var langOptions = new List<ElectronBridge.SettingsLanguageOption>();
+        try
+        {
+            var locDir = System.IO.Path.Combine(AppContext.BaseDirectory, "Localization");
+            if (System.IO.Directory.Exists(locDir))
+            {
+                var langNames = new Dictionary<string, string>
+                {
+                    { "en", "English" }, { "es", "Español" }, { "fr", "Français" },
+                    { "hu", "Magyar" }, { "it", "Italiano" }, { "ar", "العربية" }
+                };
+                foreach (var f in System.IO.Directory.EnumerateFiles(locDir, "*.json"))
+                {
+                    var code = System.IO.Path.GetFileNameWithoutExtension(f).ToLowerInvariant();
+                    var display = langNames.TryGetValue(code, out var dn) ? dn : code.ToUpper();
+                    langOptions.Add(new ElectronBridge.SettingsLanguageOption
+                    {
+                        Code = code,
+                        DisplayName = display,
+                        IsCurrent = string.Equals(GameConfig.Language ?? "en", code, StringComparison.OrdinalIgnoreCase)
+                    });
+                }
+            }
+        }
+        catch { /* fall through to empty list */ }
+
+        ElectronBridge.EmitSettingsScreen(new ElectronBridge.SettingsScreenData
+        {
+            CurrentLanguage = GameConfig.Language ?? "en",
+            AvailableLanguages = langOptions,
+            ScreenReaderMode = GameConfig.ScreenReaderMode,
+            CompactMode = currentPlayer.CompactMode,
+            DisableCharacterMonsterArt = currentPlayer.DisableCharacterMonsterArt,
+            DateFormat = GameConfig.DateFormat == 0 ? "MM/DD/YYYY" : GameConfig.DateFormat == 1 ? "DD/MM/YYYY" : "YYYY-MM-DD",
+            Orientation = currentPlayer.Orientation.ToString()
+        });
+    }
+
     protected async Task ShowTownHall()
     {
         if (currentPlayer == null || terminal == null) return;

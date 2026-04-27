@@ -309,6 +309,13 @@ namespace UsurperRemake.Locations
 
             terminal.ClearScreen();
 
+            // Phase 5: Electron mode emits Dark Alley menu state. Pattern B.
+            if (GameConfig.ElectronMode)
+            {
+                EmitElectronEvents();
+                return;
+            }
+
             // Header - standardized format
             WriteBoxHeader(Loc.Get("dark_alley.header"), "bright_cyan", 77);
             terminal.WriteLine("");
@@ -3448,5 +3455,52 @@ namespace UsurperRemake.Locations
         }
 
         #endregion
+
+        /// <summary>
+        /// Phase 5: emit Dark Alley menu state for the Electron client. Pattern B.
+        /// </summary>
+        private void EmitElectronEvents()
+        {
+            var player = GetCurrentPlayer();
+            if (player == null) return;
+
+            ElectronBridge.EmitLocation(
+                name: Loc.Get("dark_alley.header"),
+                description: Loc.Get("dark_alley.visual_desc"),
+                timeOfDay: "");
+
+            bool isManaClass = player is Player p && p.IsManaClass;
+            ElectronBridge.EmitStats(
+                hp: player.HP, maxHp: player.MaxHP,
+                mana: isManaClass ? player.Mana : 0, maxMana: isManaClass ? player.MaxMana : 0,
+                stamina: isManaClass ? 0 : player.Stamina, maxStamina: isManaClass ? 0 : player.BaseStamina,
+                gold: player.Gold, level: player.Level,
+                className: player.ClassName, raceName: player.Race.ToString(),
+                playerName: player.DisplayName);
+
+            var menu = new List<ElectronBridge.MenuItemData>
+            {
+                new() { Key = "D", Label = "Drug Palace", Category = "evil", Icon = "drug" },
+                new() { Key = "S", Label = "Steroid Shop", Category = "evil", Icon = "steroid" },
+                new() { Key = "O", Label = "Orbs Health Club", Category = "service", Icon = "orb" },
+                new() { Key = "G", Label = "Groggo Magic", Category = "shop", Icon = "magic" },
+                new() { Key = "B", Label = "Beer Hut", Category = "social", Icon = "beer" },
+                new() { Key = "A", Label = "Alchemist Heaven", Category = "shop", Icon = "alchemist" },
+                new() { Key = "J", Label = "Shadows Faction", Category = "team", Icon = "shadow" },
+                new() { Key = "W", Label = "Pay Tribute", Category = "social", Icon = "tribute" },
+                new() { Key = "M", Label = "Black Market", Category = "shop", Icon = "market" },
+                new() { Key = "I", Label = "Informant", Category = "social", Icon = "informant" },
+                new() { Key = "P", Label = "Pickpocket", Category = "evil", Icon = "pickpocket" },
+                new() { Key = "C", Label = "Gambling Den", Category = "social", Icon = "dice" },
+                new() { Key = "T", Label = "The Pit", Category = "combat", Icon = "pit" },
+                new() { Key = "L", Label = "Loan Shark", Category = "shop", Icon = "loan" },
+                new() { Key = "N", Label = "Safe House", Category = "service", Icon = "safe" },
+                new() { Key = "E", Label = "Evil Deeds", Category = "evil", Icon = "evil" },
+                new() { Key = "R", Label = Loc.Get("ui.return"), Category = "navigate", Icon = "back" },
+            };
+            ElectronBridge.EmitMenu(menu);
+
+            EmitNPCsInLocationToElectron();
+        }
     }
 }

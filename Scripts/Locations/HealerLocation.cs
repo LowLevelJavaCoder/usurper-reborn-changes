@@ -92,6 +92,16 @@ public class HealerLocation : BaseLocation
             return;
         }
 
+        // Phase 4: Electron mode emits structured location/stats/menu state for
+        // the graphical client; skip the entire text body. Same Pattern B as
+        // MainStreetLocation. Menu items mirror what ShowMenu() renders so
+        // graphical and text modes always agree on the available hotkeys.
+        if (GameConfig.ElectronMode)
+        {
+            EmitElectronEvents();
+            return;
+        }
+
         WriteBoxHeader(Loc.Get("healer.header"), "bright_cyan", 77);
         terminal.WriteLine("");
 
@@ -1440,5 +1450,51 @@ public class HealerLocation : BaseLocation
         terminal.WriteLine(Loc.Get("healer.stay_clean", Manager), "gray");
 
         await terminal.PressAnyKey();
+    }
+
+    /// <summary>
+    /// Phase 4: emit structured location state for the Electron graphical client.
+    /// Same pattern as MainStreetLocation.EmitElectronEvents — emits location
+    /// banner + player stats + menu items + NPC list. Click handlers route the
+    /// hotkey via stdin to the same ProcessChoice logic the text path uses.
+    /// </summary>
+    private void EmitElectronEvents()
+    {
+        var player = GetCurrentPlayer();
+        if (player == null) return;
+
+        ElectronBridge.EmitLocation(
+            name: Loc.Get("healer.header"),
+            description: Loc.Get("healer.shopkeeper_mood", Manager),
+            timeOfDay: "");
+
+        bool isManaClass = player is Player p && p.IsManaClass;
+        ElectronBridge.EmitStats(
+            hp: player.HP, maxHp: player.MaxHP,
+            mana: isManaClass ? player.Mana : 0, maxMana: isManaClass ? player.MaxMana : 0,
+            stamina: isManaClass ? 0 : player.Stamina, maxStamina: isManaClass ? 0 : player.BaseStamina,
+            gold: player.Gold, level: player.Level,
+            className: player.ClassName, raceName: player.Race.ToString(),
+            playerName: player.DisplayName);
+
+        var menu = new List<ElectronBridge.MenuItemData>
+        {
+            new() { Key = "H", Label = Loc.Get("healer.menu_heal_suffix").Trim(' ', '[', ']'), Category = "service", Icon = "heal" },
+            new() { Key = "F", Label = Loc.Get("healer.menu_full_suffix").Trim(' ', '[', ']'), Category = "service", Icon = "heal-full" },
+            new() { Key = "B", Label = "Buy Potions", Category = "shop", Icon = "potion" },
+            new() { Key = "M", Label = "Buy Mana Potions", Category = "shop", Icon = "mana-potion" },
+            new() { Key = "N", Label = "Buy Antidotes", Category = "shop", Icon = "antidote" },
+            new() { Key = "P", Label = "Cure Poison", Category = "service", Icon = "cure-poison" },
+            new() { Key = "C", Label = "Cure Disease", Category = "service", Icon = "cure-disease" },
+            new() { Key = "D", Label = "Remove Curse", Category = "service", Icon = "cure-curse" },
+            new() { Key = "A", Label = "Cure Addiction", Category = "service", Icon = "cure-addiction" },
+            new() { Key = "S", Label = "Player Status", Category = "info", Icon = "info" },
+            new() { Key = "R", Label = Loc.Get("ui.return"), Category = "navigate", Icon = "back" },
+        };
+        ElectronBridge.EmitMenu(menu);
+
+        // NPC presence — reuses BaseLocation's NPC scanning so co-presence
+        // (other online players + town NPCs) shows up in the graphical view.
+        EmitNPCsInLocationToElectron();
     }
 }

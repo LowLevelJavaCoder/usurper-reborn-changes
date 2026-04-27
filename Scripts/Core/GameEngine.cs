@@ -1298,6 +1298,15 @@ public partial class GameEngine
                 continue;
             }
 
+            // Phase 3: Electron mode emits structured menu data so JS renders
+            // splash + clickable menu buttons. Click sends key+\n via stdin
+            // which lands at the same GetInput call below (Pattern B).
+            // Emit fires unconditionally inside the helper (no-op when not in
+            // Electron mode); text body below is gated on !ElectronMode.
+            EmitMainMenuToElectron();
+
+            if (!GameConfig.ElectronMode)
+            {
             terminal.ClearScreen();
 
             // Title header
@@ -1545,7 +1554,8 @@ public partial class GameEngine
 
             terminal.WriteLine("");
             terminal.SetColor("bright_white");
-            var choice = await terminal.GetInput(Loc.Get("ui.your_choice"));
+            } // end if (!GameConfig.ElectronMode) — Electron mode skipped the entire text body above
+            var choice = await terminal.GetInput(GameConfig.ElectronMode ? "" : Loc.Get("ui.your_choice"));
 
             switch (choice.ToUpper())
             {
@@ -1685,6 +1695,91 @@ public partial class GameEngine
 #endif
             }
         }
+    }
+
+    /// <summary>
+    /// Phase 3: emit the main menu state for the Electron graphical client.
+    /// JS renders the splash + clickable menu buttons. Click sends key+\n
+    /// via stdin which lands at MainMenu's GetInput call. No-op when not in
+    /// Electron mode. Item-visibility logic mirrors the text-rendering
+    /// branches above so graphical and text menus always agree.
+    /// </summary>
+    private void EmitMainMenuToElectron()
+    {
+        if (!GameConfig.ElectronMode) return;
+
+        var items = new List<ElectronBridge.MenuItemData>
+        {
+            new() { Key = "S", Label = Loc.Get("engine.main_single_player"), Category = "play" }
+        };
+        if (!UsurperRemake.BBS.DoorMode.IsMudServerMode
+            && !UsurperRemake.BBS.DoorMode.IsMudRelayMode
+            && !GameConfig.DisableOnlinePlay)
+            items.Add(new() { Key = "O", Label = "Online Multiplayer", Category = "play" });
+        if (!UsurperRemake.BBS.DoorMode.IsInDoorMode
+            && !UsurperRemake.BBS.DoorMode.IsMudServerMode
+            && !UsurperRemake.BBS.DoorMode.IsMudRelayMode)
+            items.Add(new() { Key = "G", Label = Loc.Get("engine.main_editor"), Category = "tools" });
+        items.Add(new() { Key = "I", Label = "Story", Category = "info" });
+        items.Add(new() { Key = "H", Label = "History", Category = "info" });
+        items.Add(new() { Key = "B", Label = "BBS List", Category = "info" });
+        items.Add(new() { Key = "C", Label = "Credits", Category = "info" });
+        items.Add(new() { Key = "L", Label = $"Language: {UsurperRemake.Systems.Loc.GetLanguageName(GameConfig.Language ?? "en")}", Category = "settings" });
+        items.Add(new() { Key = "Z", Label = GameConfig.CompactMode ? "Compact Mode: ON" : "Compact Mode: OFF", Category = "settings" });
+        items.Add(new() { Key = "A", Label = GameConfig.ScreenReaderMode ? "Screen Reader: ON" : "Screen Reader: OFF", Category = "accessibility" });
+        items.Add(new() { Key = "Q", Label = "Quit", Category = "exit" });
+        if (UsurperRemake.BBS.DoorMode.IsInDoorMode && UsurperRemake.BBS.DoorMode.IsSysOp)
+            items.Add(new() { Key = "%", Label = "SysOp Console", Category = "tools" });
+
+        ElectronBridge.EmitMainMenu(
+            title: Loc.Get("engine.main_title_box").Trim(),
+            subtitle: Loc.Get("engine.main_subtitle_box").Trim(),
+            version: $"v{GameConfig.Version} \"{GameConfig.VersionName}\"",
+            items: items);
+    }
+
+    /// <summary>
+    /// Phase 3: emit the save selection state for the Electron graphical client.
+    /// JS renders save slots as cards with character info, last-played, and
+    /// [RECOVERY] / [EMERGENCY SAVE] tags styled distinctly. Click sends the
+    /// numeric slot key (or N/B) via stdin which lands at EnterGame's GetInput.
+    /// No-op when not in Electron mode.
+    /// </summary>
+    private void EmitSaveListToElectron(List<string> playerNames)
+    {
+        if (!GameConfig.ElectronMode) return;
+
+        var slots = new List<ElectronBridge.SaveSlotData>();
+        for (int i = 0; i < playerNames.Count; i++)
+        {
+            var name = playerNames[i];
+            var save = SaveSystem.Instance.GetMostRecentSave(name);
+            if (save == null) continue;
+            slots.Add(new ElectronBridge.SaveSlotData
+            {
+                SlotKey = (i + 1).ToString(),
+                CharacterName = save.PlayerName,
+                Level = save.Level,
+                ClassName = save.ClassName ?? "",
+                RaceName = "", // SaveInfo doesn't carry race; loading the save would, but cheap listing skips it
+                IsImmortal = false, // same — flag derives from full save load
+                LastPlayed = save.SaveTime.Year >= 2020 ? save.SaveTime.ToString("o") : null,
+                IsRecovered = save.IsRecovered,
+                IsEmergency = save.IsEmergency,
+                IsAlt = false,
+            });
+        }
+
+        var actions = new List<ElectronBridge.MenuItemData>
+        {
+            new() { Key = "N", Label = Loc.Get("engine.new_character"), Category = "create" },
+            new() { Key = "B", Label = Loc.Get("engine.back_to_menu"), Category = "navigate" },
+        };
+
+        ElectronBridge.EmitSaveList(
+            accountName: UsurperRemake.Server.SessionContext.Current?.Username ?? "",
+            slots: slots,
+            actions: actions);
     }
 
     /// <summary>
@@ -1891,6 +1986,13 @@ public partial class GameEngine
         var request = new UsurperRemake.Server.SpectateRequest { Requester = mySession };
         target.PendingSpectateRequest = request;
 
+        // Phase 8: emit graphical spectate request to the target's Electron
+        // client. Dormant until Phase 9 wires online-Electron.
+        if (GameConfig.ElectronMode)
+        {
+            ElectronBridge.EmitSpectateRequest(myUsername, timeoutSeconds: 60);
+        }
+
         // Notify the target
         target.EnqueueMessage(
             $"\u001b[1;35m  * {myUsername} wants to watch your session (Spectator Mode).\u001b[0m");
@@ -2059,6 +2161,36 @@ public partial class GameEngine
     {
         while (true)
         {
+            // Get all unique player names. Done unconditionally — used by both
+            // render paths and the no-saves fast-path.
+            var playerNames = SaveSystem.Instance.GetAllPlayerNames();
+
+            if (playerNames.Count == 0)
+            {
+                // No saves exist - go directly to character creation. In
+                // Electron mode the char-create screen takes over fully; in
+                // text mode we briefly explain what's happening first.
+                if (!GameConfig.ElectronMode)
+                {
+                    terminal.ClearScreen();
+                    terminal.SetColor("yellow");
+                    terminal.WriteLine(Loc.Get("engine.no_saves_found"));
+                    terminal.WriteLine("");
+                    terminal.SetColor("white");
+                    terminal.WriteLine(Loc.Get("engine.create_character_prompt"));
+                    terminal.WriteLine("");
+                }
+                await CreateNewGame("");
+                return;
+            }
+
+            // Phase 3: Electron mode emits the save list as structured data
+            // for the JS-side save selection screen. Text body below is gated
+            // on !ElectronMode so the same GetInput call serves both modes.
+            EmitSaveListToElectron(playerNames);
+
+            if (!GameConfig.ElectronMode)
+            {
             terminal.ClearScreen();
             if (GameConfig.ScreenReaderMode)
             {
@@ -2077,24 +2209,6 @@ public partial class GameEngine
                 terminal.WriteLine("╚══════════════════════════════════════════════════════════════════════════════╝");
             }
             terminal.WriteLine("");
-
-            // Get all unique player names
-            var playerNames = SaveSystem.Instance.GetAllPlayerNames();
-
-            if (playerNames.Count == 0)
-            {
-                // No saves exist - create new character
-                terminal.SetColor("yellow");
-                terminal.WriteLine(Loc.Get("engine.no_saves_found"));
-                terminal.WriteLine("");
-                terminal.SetColor("white");
-                terminal.WriteLine(Loc.Get("engine.create_character_prompt"));
-                terminal.WriteLine("");
-
-                // Go directly to character creation - name will be entered there
-                await CreateNewGame("");
-                return;
-            }
 
             // Show existing save slots
             terminal.SetColor("bright_green");
@@ -2189,7 +2303,8 @@ public partial class GameEngine
 
             terminal.WriteLine("");
             terminal.SetColor("bright_white");
-            var choice = await terminal.GetInput(Loc.Get("engine.select_save_prompt"));
+            } // end if (!GameConfig.ElectronMode) — text body skipped in Electron mode
+            var choice = await terminal.GetInput(GameConfig.ElectronMode ? "" : Loc.Get("engine.select_save_prompt"));
 
             // Handle numeric selection
             if (int.TryParse(choice, out int slotNumber) && slotNumber > 0 && slotNumber <= playerNames.Count)
@@ -3099,6 +3214,33 @@ public partial class GameEngine
         }
         terminal.WriteLine("");
 
+        // Phase 3: emit the recovery menu state for the Electron client. The
+        // graphical view shows the error + clickable recovery file buttons +
+        // the optional [R] auto-repair button (only when isBloatError) +
+        // [N] / [Q] actions. Click sends the key via stdin which lands at
+        // the same GetInput call below.
+        if (GameConfig.ElectronMode)
+        {
+            var files = new List<ElectronBridge.RecoveryFileData>();
+            for (int i = 0; i < recoveryOptions.Count; i++)
+            {
+                long size = 0;
+                try { size = new System.IO.FileInfo(recoveryOptions[i].path).Length; } catch { }
+                files.Add(new ElectronBridge.RecoveryFileData
+                {
+                    Key = (i + 1).ToString(),
+                    Label = recoveryOptions[i].label,
+                    Path = recoveryOptions[i].path,
+                    SizeBytes = size
+                });
+            }
+            ElectronBridge.EmitRecoveryMenu(
+                errorMessage: errorMessage ?? "",
+                saveFolderPath: saveDir ?? "",
+                files: files,
+                offerAutoRepair: isBloatError);
+        }
+
         var choice = (await terminal.GetInput("Your choice: ")).Trim().ToUpperInvariant();
 
         if (choice == "Q" || string.IsNullOrEmpty(choice))
@@ -3848,6 +3990,74 @@ public partial class GameEngine
             if (pvpAttacks.Count == 0 && directMessages.Count == 0 && news.Count == 0
                 && unreadMail == 0 && pendingTrades == 0)
                 return;
+
+            // Phase 8: emit graphical "While You Were Gone" overlay. Text path
+            // below still renders for terminal users / SR mode.
+            if (GameConfig.ElectronMode)
+            {
+                var feed = new ElectronBridge.NewsFeedData
+                {
+                    CharacterName = username,
+                    LastSeen = lastLogout.Value.ToString("o"),
+                    UnreadMailCount = unreadMail,
+                    PendingTradeCount = pendingTrades,
+                    UnreadMessages = directMessages.Count
+                };
+
+                if (pvpAttacks.Count > 0)
+                {
+                    var section = new ElectronBridge.NewsFeedSection { Title = Loc.Get("engine.arena_attacks"), Icon = "sword" };
+                    foreach (var attack in pvpAttacks)
+                    {
+                        bool defenderWon = attack.WinnerUsername.Equals(username, StringComparison.OrdinalIgnoreCase)
+                            || attack.WinnerUsername.Equals(attack.DefenderName, StringComparison.OrdinalIgnoreCase);
+                        section.Items.Add(new ElectronBridge.NewsFeedItem
+                        {
+                            Text = defenderWon
+                                ? $"You defeated {attack.AttackerName} in self-defense"
+                                : $"{attack.AttackerName} defeated you",
+                            Type = "pvp_attack",
+                            GoldDelta = defenderWon ? attack.GoldStolen : -attack.GoldStolen,
+                            IsGood = defenderWon,
+                            IsBad = !defenderWon
+                        });
+                    }
+                    feed.Sections.Add(section);
+                }
+
+                if (news.Count > 0)
+                {
+                    var section = new ElectronBridge.NewsFeedSection { Title = "World News", Icon = "scroll" };
+                    foreach (var n in news)
+                    {
+                        section.Items.Add(new ElectronBridge.NewsFeedItem
+                        {
+                            Text = n.Message ?? "",
+                            Type = n.Category ?? "world_event",
+                            Timestamp = n.CreatedAt.ToString("o")
+                        });
+                    }
+                    feed.Sections.Add(section);
+                }
+
+                if (directMessages.Count > 0)
+                {
+                    var section = new ElectronBridge.NewsFeedSection { Title = "Messages", Icon = "letter" };
+                    foreach (var msg in directMessages)
+                    {
+                        string msgText = msg.Message.Length > 80 ? msg.Message.Substring(0, 77) + "..." : msg.Message;
+                        section.Items.Add(new ElectronBridge.NewsFeedItem
+                        {
+                            Text = $"[{msg.FromPlayer}]: {msgText}",
+                            Type = "system",
+                            Timestamp = msg.CreatedAt.ToString("o")
+                        });
+                    }
+                    feed.Sections.Add(section);
+                }
+
+                ElectronBridge.EmitNewsFeed(feed);
+            }
 
             terminal.WriteLine("");
             if (GameConfig.ScreenReaderMode)

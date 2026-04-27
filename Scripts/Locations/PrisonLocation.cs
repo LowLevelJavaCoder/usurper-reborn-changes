@@ -113,7 +113,14 @@ public partial class PrisonLocation : BaseLocation
             }
 
             // Display menu
-            await DisplayPrisonMenu(player, true, true);
+            if (GameConfig.ElectronMode)
+            {
+                EmitElectronEvents(player);
+            }
+            else
+            {
+                await DisplayPrisonMenu(player, true, true);
+            }
 
             // Get user input
             string input = (await terminal.ReadLineAsync())?.Trim() ?? "";
@@ -1227,4 +1234,44 @@ public partial class PrisonLocation : BaseLocation
     }
 
     #endregion
+
+    private void EmitElectronEvents(Character player)
+    {
+        if (player == null) return;
+
+        ElectronBridge.EmitLocation(
+            name: Loc.Get("prison.title"),
+            description: $"Days remaining: {player.DaysInPrison}",
+            timeOfDay: "");
+
+        bool isManaClass = player is Player p && p.IsManaClass;
+        ElectronBridge.EmitStats(
+            hp: player.HP, maxHp: player.MaxHP,
+            mana: isManaClass ? player.Mana : 0, maxMana: isManaClass ? player.MaxMana : 0,
+            stamina: isManaClass ? 0 : player.Stamina, maxStamina: isManaClass ? 0 : player.BaseStamina,
+            gold: player.Gold, level: player.Level,
+            className: player.ClassName, raceName: player.Race.ToString(),
+            playerName: player.DisplayName);
+
+        var menu = new List<ElectronBridge.MenuItemData>
+        {
+            new() { Key = "W", Label = "Who is here?", Category = "info", Icon = "list" },
+            new() { Key = "D", Label = "Demand release", Category = "social", Icon = "shout" },
+            new() { Key = "O", Label = "Open the cell door", Category = "action", Icon = "door" },
+            new() { Key = "E", Label = "Escape attempt", Category = "danger", Icon = "escape" },
+            new() { Key = "S", Label = "Status", Category = "info", Icon = "info" },
+            new() { Key = "A", Label = "Activities", Category = "action", Icon = "activity" },
+            new() { Key = "B", Label = "Pay Bail", Category = "shop", Icon = "gold" },
+            new() { Key = "P", Label = "Petition the King", Category = "social", Icon = "petition" },
+        };
+
+        if (CanMeetVex(player))
+        {
+            menu.Add(new() { Key = "V", Label = "Speak with Vex", Category = "social", Icon = "vex" });
+        }
+
+        menu.Add(new() { Key = "Q", Label = "Wait / Quit", Category = "navigate", Icon = "back" });
+
+        ElectronBridge.EmitMenu(menu);
+    }
 }

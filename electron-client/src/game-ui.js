@@ -8,6 +8,18 @@ class GameUI {
     this.sendInput = sendInput;
     this.matcher = new PatternMatcher();
 
+    // Phase 9: persist font scale across launches via localStorage. Applied
+    // as a CSS variable on the document root so size affects every overlay.
+    try {
+      const saved = parseFloat(localStorage.getItem('usurper.fontScale') || '1.0');
+      if (!isNaN(saved) && saved >= 0.85 && saved <= 1.4) {
+        this._fontScale = saved;
+        document.documentElement.style.setProperty('--gui-font-scale', String(saved));
+      } else {
+        this._fontScale = 1.0;
+      }
+    } catch { this._fontScale = 1.0; }
+
     // Game state
     this.state = {
       hp: 0, maxHp: 0,
@@ -379,9 +391,1636 @@ class GameUI {
         ]);
         break;
 
+      // ─── Phase 3 Pre-Game Events ──────────────
+      // The C# side emits these before any character is loaded. Each handler
+      // shows a focused screen that takes over the viewport; click handlers
+      // send the input back via stdin (same path as text-mode keystrokes).
+
+      case 'main_menu':
+        this._renderMainMenu(data);
+        break;
+
+      case 'save_list':
+        this._renderSaveList(data);
+        break;
+
+      case 'char_create_step':
+        this._renderCharCreateStep(data);
+        break;
+
+      case 'recovery_menu':
+        this._renderRecoveryMenu(data);
+        break;
+
+      case 'opening_narration':
+        this._renderOpeningNarration(data);
+        break;
+
+      // ─── Phase 4 Sub-Screen Events ──────────────
+
+      case 'amount_entry':
+        this._renderAmountEntry(data);
+        break;
+
+      case 'shop_browse':
+        this._renderShopBrowse(data);
+        break;
+
+      // ─── Phase 6 Dialogue + Quest Events ───────
+
+      case 'dialogue':
+        this._renderDialogue(data);
+        break;
+
+      case 'dialogue_close':
+        this._dismissDialogueOverlay();
+        break;
+
+      case 'quest_list':
+        this._renderQuestList(data);
+        break;
+
+      case 'quest_details':
+        this._renderQuestDetails(data);
+        break;
+
+      case 'quest_complete':
+        this._renderQuestComplete(data);
+        break;
+
+      case 'quest_log':
+        this._renderQuestLog(data);
+        break;
+
+      // ─── Phase 7 Lifecycle Events ──────────────
+
+      case 'level_up':
+        this._renderLevelUp(data);
+        break;
+
+      case 'death':
+        this._renderDeathScreen(data);
+        break;
+
+      case 'achievement_toast':
+        this._renderAchievementToast(data);
+        break;
+
+      case 'ending':
+        this._renderEnding(data);
+        break;
+
+      case 'ng_plus_prompt':
+        this._renderNgPlusPrompt(data);
+        break;
+
+      case 'immortal_ascension':
+        this._renderImmortalAscension(data);
+        break;
+
+      case 'boss_phase_transition':
+        this._renderBossPhaseTransition(data);
+        break;
+
+      // ─── Phase 8 Online Multiplayer Events ────
+
+      case 'chat_broadcast':
+        this._renderChatBroadcast(data);
+        break;
+
+      case 'group_invite':
+        this._renderGroupInvite(data);
+        break;
+
+      case 'news_feed':
+        this._renderNewsFeed(data);
+        break;
+
+      case 'spectate_request':
+        this._renderSpectateRequest(data);
+        break;
+
+      case 'spectator_state':
+        this._renderSpectatorState(data);
+        break;
+
+      // ─── Phase 9 Settings + Polish ─────────────
+
+      case 'settings':
+        this._renderSettings(data);
+        break;
+
+      case 'settings_applied':
+        this._renderSettingsAppliedToast(data);
+        break;
+
+      // ─── Phase 9.5 Audio Events ────────────────
+
+      case 'sound':
+        if (window.audio && window.audio.playSound) {
+          window.audio.playSound(
+            data.soundId,
+            data.volume != null ? data.volume : 1.0,
+            data.pitch != null ? data.pitch : 1.0,
+            data.channel || null);
+        }
+        break;
+
+      case 'sound_stop':
+        if (window.audio && window.audio.stopSound) {
+          window.audio.stopSound(data.soundId);
+        }
+        break;
+
+      case 'volume_set':
+        if (window.audio && window.audio.setVolume) {
+          window.audio.setVolume(data.channel, data.volume);
+        }
+        break;
+
       default:
         console.log('Unknown game event:', type, data);
     }
+  }
+
+  // ─── Phase 4 Sub-Screen Renderers ──────────────
+
+  _renderAmountEntry(data) {
+    // Generic numeric amount-entry overlay used by Bank deposit/withdraw,
+    // Temple/Church donations, Level Master training, etc. C# emits the
+    // prompt + max amount; we accept a number, validate against min/max,
+    // and send the value back as plain text so the existing C# input
+    // parser treats it like a typed line.
+    const overlay = document.createElement('div');
+    overlay.className = 'pregame-overlay amount-entry-overlay';
+    const max = data.maxAmount || 0;
+    const min = data.minAmount || 0;
+    const def = data.defaultAmount != null ? data.defaultAmount : Math.min(max, Math.max(min, 0));
+    overlay.innerHTML = `
+      <div class="amount-entry-card">
+        <div class="amount-entry-title">${this._escapeHtml(data.title || 'Enter Amount')}</div>
+        <div class="amount-entry-prompt">${this._escapeHtml(data.prompt || '')}</div>
+        <div class="amount-entry-max">Max: ${this._formatNumber(max)} ${this._escapeHtml(data.currency || 'gold')}</div>
+        <input type="number" class="amount-entry-input" value="${def}" min="${min}" max="${max}" />
+        <div class="amount-entry-presets">
+          <button class="pregame-btn amount-preset" data-amount="${Math.floor(max / 4)}">25%</button>
+          <button class="pregame-btn amount-preset" data-amount="${Math.floor(max / 2)}">50%</button>
+          <button class="pregame-btn amount-preset" data-amount="${Math.floor(max * 0.75)}">75%</button>
+          <button class="pregame-btn amount-preset" data-amount="${max}">Max</button>
+        </div>
+        <div class="amount-entry-actions">
+          <button class="pregame-btn amount-confirm-btn">Confirm</button>
+          <button class="pregame-btn amount-cancel-btn">Cancel</button>
+        </div>
+      </div>
+    `;
+    const input = overlay.querySelector('.amount-entry-input');
+    overlay.querySelectorAll('.amount-preset').forEach(btn => {
+      btn.addEventListener('click', () => {
+        input.value = btn.getAttribute('data-amount');
+      });
+    });
+    overlay.querySelector('.amount-confirm-btn').addEventListener('click', () => {
+      const val = Math.max(min, Math.min(max, parseInt(input.value, 10) || 0));
+      this._sendInput(String(val));
+      this._dismissPregameOverlay();
+    });
+    overlay.querySelector('.amount-cancel-btn').addEventListener('click', () => {
+      this._sendInput('0');
+      this._dismissPregameOverlay();
+    });
+    // Enter key submits
+    input.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') {
+        ev.preventDefault();
+        overlay.querySelector('.amount-confirm-btn').click();
+      } else if (ev.key === 'Escape') {
+        ev.preventDefault();
+        overlay.querySelector('.amount-cancel-btn').click();
+      }
+    });
+
+    this._dismissPregameOverlay();
+    document.body.appendChild(overlay);
+    this._currentPregameOverlay = overlay;
+    setTimeout(() => input.focus(), 50);
+  }
+
+  _renderShopBrowse(data) {
+    const overlay = document.createElement('div');
+    overlay.className = 'pregame-overlay shop-browse-overlay';
+    const items = data.items || [];
+    const totalPages = data.totalPages || 1;
+    const currentPage = data.currentPage || 1;
+
+    overlay.innerHTML = `
+      <div class="shop-browse-card">
+        <div class="shop-browse-header">
+          <div class="shop-browse-title">${this._escapeHtml(data.shopName || 'Shop')}</div>
+          <div class="shop-browse-category">${this._escapeHtml(data.category || '')}</div>
+          <div class="shop-browse-gold">${this._formatNumber(data.playerGold || 0)} gold</div>
+        </div>
+        <div class="shop-browse-items"></div>
+        <div class="shop-browse-pagination">
+          ${currentPage > 1 ? `<button class="pregame-btn shop-page-btn" data-cc-key="P">← Prev</button>` : '<span></span>'}
+          <span class="shop-page-indicator">Page ${currentPage} / ${totalPages}</span>
+          ${currentPage < totalPages ? `<button class="pregame-btn shop-page-btn" data-cc-key="N">Next →</button>` : '<span></span>'}
+        </div>
+        <div class="shop-browse-footer">
+          <button class="pregame-btn shop-back-btn" data-cc-key="R">Return</button>
+        </div>
+      </div>
+    `;
+
+    const itemsContainer = overlay.querySelector('.shop-browse-items');
+    for (const item of items) {
+      const btn = document.createElement('button');
+      btn.className = `pregame-btn shop-item-card rarity-${(item.rarity || 'common').toLowerCase()}`;
+      const buyable = item.affordable && item.levelOk && item.classOk;
+      if (!buyable) btn.classList.add('not-buyable');
+      btn.disabled = !buyable;
+
+      let warningHtml = '';
+      if (!item.affordable) warningHtml = '<div class="shop-item-warning">Insufficient gold</div>';
+      else if (!item.levelOk) warningHtml = `<div class="shop-item-warning">Requires Lv.${item.minLevel}</div>`;
+      else if (!item.classOk) warningHtml = '<div class="shop-item-warning">Class restricted</div>';
+
+      const bonuses = item.bonuses && Object.keys(item.bonuses).length > 0
+        ? `<div class="shop-item-bonuses">${Object.entries(item.bonuses).map(([k, v]) => `<span>${k} ${v >= 0 ? '+' : ''}${v}</span>`).join(' ')}</div>`
+        : '';
+
+      btn.innerHTML = `
+        <div class="shop-item-name">${this._escapeHtml(item.name)}</div>
+        <div class="shop-item-meta">
+          <span class="shop-item-slot">${this._escapeHtml(item.slot)}</span>
+          <span class="shop-item-power">PWR ${item.power}</span>
+        </div>
+        ${bonuses}
+        <div class="shop-item-price">${this._formatNumber(item.price)} gold</div>
+        ${warningHtml}
+      `;
+      btn.setAttribute('data-cc-key', item.key);
+      btn.addEventListener('click', () => {
+        this._sendInput(item.key);
+        // Don't dismiss — shop will re-emit a new state (purchase confirm or
+        // refreshed page) and the new emit triggers a fresh overlay.
+      });
+      itemsContainer.appendChild(btn);
+    }
+
+    overlay.querySelectorAll('.shop-page-btn, .shop-back-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const key = btn.getAttribute('data-cc-key');
+        this._sendInput(key);
+      });
+    });
+
+    this._dismissPregameOverlay();
+    document.body.appendChild(overlay);
+    this._currentPregameOverlay = overlay;
+  }
+
+  _formatNumber(n) {
+    if (n == null) return '0';
+    return Number(n).toLocaleString();
+  }
+
+  // ─── Phase 6 Dialogue + Quest Renderers ─────
+
+  _renderDialogue(data) {
+    // Re-use existing overlay if present so iterating through a conversation
+    // updates in place (no flicker). Speaker portrait left, body text + choices
+    // right. Numeric choice keys flow back through the shared GetInput call.
+    let overlay = this._currentDialogueOverlay;
+    const isNew = !overlay;
+    if (isNew) {
+      overlay = document.createElement('div');
+      overlay.className = 'gui-overlay dialogue-overlay';
+      this._currentDialogueOverlay = overlay;
+    }
+
+    const speaker = this._escapeHtml(data.speaker || '');
+    const relLabel = data.relationLabel ? `<div class="dialogue-relation" data-color="${this._escapeHtml(data.relationColor || 'gray')}">${this._escapeHtml(data.relationLabel)}</div>` : '';
+    const textBody = (data.text || '').split('\n').map(line => `<p>${this._escapeHtml(line)}</p>`).join('');
+    const portrait = this._resolveDialoguePortrait(data.portraitKey, data.speaker);
+
+    let choicesHtml = '';
+    if (Array.isArray(data.choices) && data.choices.length > 0) {
+      choicesHtml = '<div class="dialogue-choices">' +
+        data.choices.map(c => {
+          const disabled = c.disabled ? ' disabled' : '';
+          const style = c.style ? ` data-style="${this._escapeHtml(c.style)}"` : '';
+          return `<button class="dialogue-choice"${style}${disabled} data-key="${this._escapeHtml(c.key)}">
+            <span class="dialogue-choice-key">${this._escapeHtml(c.key)}</span>
+            <span class="dialogue-choice-text">${this._escapeHtml(c.text)}</span>
+          </button>`;
+        }).join('') +
+        '</div>';
+    }
+
+    overlay.innerHTML = `
+      <div class="dialogue-card">
+        <div class="dialogue-portrait" style="background-image:url('${portrait}')"></div>
+        <div class="dialogue-body">
+          <div class="dialogue-header">
+            <div class="dialogue-speaker">${speaker || '&nbsp;'}</div>
+            ${relLabel}
+          </div>
+          <div class="dialogue-text">${textBody}</div>
+          ${choicesHtml}
+        </div>
+      </div>
+    `;
+
+    overlay.querySelectorAll('.dialogue-choice:not([disabled])').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const key = btn.getAttribute('data-key');
+        this._sendInput(key);
+        // Don't dismiss yet — C# will re-emit the next dialogue state or
+        // EmitDialogueClose when the conversation ends.
+      });
+    });
+
+    if (isNew) document.body.appendChild(overlay);
+  }
+
+  _dismissDialogueOverlay() {
+    if (this._currentDialogueOverlay && this._currentDialogueOverlay.parentNode) {
+      this._currentDialogueOverlay.parentNode.removeChild(this._currentDialogueOverlay);
+    }
+    this._currentDialogueOverlay = null;
+  }
+
+  _resolveDialoguePortrait(portraitKey, speakerName) {
+    // Fallback chain (Phase 9 hardened):
+    // 1. NPC-specific portrait by speaker name → portraits-hd/{name}.png
+    // 2. Companion class fallback (Aldric→warrior, Mira→cleric, etc.)
+    // 3. Generic class portrait by class hint
+    // 4. Generic silhouette
+    const COMPANION_CLASS_MAP = {
+      'aldric': 'warrior',
+      'mira': 'cleric',
+      'lyris': 'ranger',
+      'vex': 'assassin',
+      'melodia': 'bard'
+    };
+    if (portraitKey && portraitKey.startsWith('npc:')) {
+      const rawName = portraitKey.slice(4).toLowerCase();
+      const safeName = rawName.replace(/[^a-z0-9]/g, '_');
+      const compClass = COMPANION_CLASS_MAP[rawName];
+      // Use class portrait directly (NPC-specific portraits aren't generated yet).
+      // Phase 9.5 polish backlog: per-NPC portrait generation via PixelLab.
+      if (compClass) return `assets/classes-hd/${compClass}.png`;
+      // Future: try assets/portraits-hd/{safeName}.png first via image preload check.
+      return `assets/classes-hd/warrior.png`;
+    }
+    if (portraitKey && portraitKey.startsWith('class:')) {
+      const cls = portraitKey.slice(6).toLowerCase();
+      return `assets/classes-hd/${cls}.png`;
+    }
+    return 'assets/classes-hd/warrior.png';
+  }
+
+  _renderQuestList(data) {
+    const overlay = document.createElement('div');
+    overlay.className = 'gui-overlay quest-list-overlay';
+    const title = this._escapeHtml(data.title || 'Quests');
+    const listType = this._escapeHtml(data.listType || '');
+
+    let body;
+    if (!Array.isArray(data.quests) || data.quests.length === 0) {
+      body = `<div class="quest-list-empty">No quests available.</div>`;
+    } else {
+      body = '<div class="quest-list-items">' + data.quests.map(q => {
+        const eligible = q.eligible !== false;
+        const disabled = eligible ? '' : ' disabled';
+        const ineligible = !eligible && q.ineligibleReason
+          ? `<div class="quest-list-warning">${this._escapeHtml(q.ineligibleReason)}</div>` : '';
+        const progress = q.progress
+          ? `<div class="quest-list-progress">${this._escapeHtml(q.progress)}</div>` : '';
+        const status = q.status ? `<span class="quest-list-status">${this._escapeHtml(q.status)}</span>` : '';
+        const desc = q.description ? `<div class="quest-list-desc">${this._escapeHtml(q.description)}</div>` : '';
+        return `<button class="quest-list-item" data-key="${this._escapeHtml(q.key)}"${disabled}>
+          <div class="quest-list-key">${this._escapeHtml(q.key)}</div>
+          <div class="quest-list-body">
+            <div class="quest-list-title">${this._escapeHtml(q.title)}</div>
+            <div class="quest-list-meta">
+              <span class="quest-list-difficulty" data-difficulty="${this._escapeHtml(q.difficulty || '')}">${this._escapeHtml(q.difficulty || '')}</span>
+              <span class="quest-list-levels">Lv.${q.minLevel}-${q.maxLevel}</span>
+              ${status}
+            </div>
+            ${desc}
+            ${progress}
+            ${ineligible}
+          </div>
+        </button>`;
+      }).join('') + '</div>';
+    }
+
+    overlay.innerHTML = `
+      <div class="quest-list-card" data-list-type="${listType}">
+        <div class="quest-list-title-bar">${title}</div>
+        ${body}
+        <div class="quest-list-actions">
+          <button class="pregame-btn quest-list-cancel">Cancel</button>
+        </div>
+      </div>
+    `;
+
+    overlay.querySelectorAll('.quest-list-item:not([disabled])').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const key = btn.getAttribute('data-key');
+        this._sendInput(key);
+      });
+    });
+    overlay.querySelector('.quest-list-cancel').addEventListener('click', () => {
+      this._sendInput('0');
+    });
+
+    this._dismissPregameOverlay();
+    document.body.appendChild(overlay);
+    this._currentPregameOverlay = overlay;
+  }
+
+  _renderQuestDetails(data) {
+    const q = data.quest || {};
+    const overlay = document.createElement('div');
+    overlay.className = 'gui-overlay quest-details-overlay';
+    const action = data.confirmAction || 'accept';
+
+    const objectives = Array.isArray(q.objectives) && q.objectives.length > 0
+      ? '<ul class="quest-detail-objectives">' + q.objectives.map(o => `<li>${this._escapeHtml(o)}</li>`).join('') + '</ul>'
+      : '';
+    const reward = this._buildRewardSummary(q.reward);
+
+    overlay.innerHTML = `
+      <div class="quest-detail-card">
+        <div class="quest-detail-title-bar">${this._escapeHtml(q.title || 'Quest')}</div>
+        <div class="quest-detail-body">
+          <div class="quest-detail-meta">
+            <span class="quest-list-difficulty" data-difficulty="${this._escapeHtml(q.difficulty || '')}">${this._escapeHtml(q.difficulty || '')}</span>
+            <span>Lv.${q.minLevel}-${q.maxLevel}</span>
+            ${q.giver ? `<span>Posted by: ${this._escapeHtml(q.giver)}</span>` : ''}
+            ${q.timeLimit ? `<span>Time: ${this._escapeHtml(q.timeLimit)}</span>` : ''}
+          </div>
+          ${q.description ? `<div class="quest-detail-desc">${this._escapeHtml(q.description)}</div>` : ''}
+          ${objectives}
+          ${reward}
+        </div>
+        <div class="quest-detail-actions">
+          <button class="pregame-btn quest-detail-confirm">Accept</button>
+          <button class="pregame-btn quest-detail-cancel">Cancel</button>
+        </div>
+      </div>
+    `;
+
+    overlay.querySelector('.quest-detail-confirm').addEventListener('click', () => {
+      this._sendInput('Y');
+    });
+    overlay.querySelector('.quest-detail-cancel').addEventListener('click', () => {
+      this._sendInput('N');
+    });
+
+    this._dismissPregameOverlay();
+    document.body.appendChild(overlay);
+    this._currentPregameOverlay = overlay;
+  }
+
+  _renderQuestComplete(data) {
+    const q = data.quest || {};
+    const reward = this._buildRewardSummary(data.rewards || q.reward);
+    const overlay = document.createElement('div');
+    overlay.className = 'gui-overlay quest-complete-overlay';
+    const tr = (window.i18n && window.i18n.t) || ((k) => k);
+    overlay.innerHTML = `
+      <div class="quest-complete-card">
+        <div class="quest-complete-banner">${this._escapeHtml(tr('quest.complete.banner'))}</div>
+        <div class="quest-complete-title">${this._escapeHtml(q.title || 'Quest')}</div>
+        ${reward}
+        <div class="quest-detail-actions">
+          <button class="pregame-btn quest-complete-dismiss">${this._escapeHtml(tr('quest.complete.continue'))}</button>
+        </div>
+      </div>
+    `;
+    overlay.querySelector('.quest-complete-dismiss').addEventListener('click', () => {
+      this._sendInput('');
+    });
+    this._dismissPregameOverlay();
+    document.body.appendChild(overlay);
+    this._currentPregameOverlay = overlay;
+  }
+
+  _renderQuestLog(data) {
+    const quests = Array.isArray(data.activeQuests) ? data.activeQuests : [];
+    const overlay = document.createElement('div');
+    overlay.className = 'gui-overlay quest-log-overlay';
+
+    let body;
+    if (quests.length === 0) {
+      body = `<div class="quest-log-empty">No active quests.</div>`;
+    } else {
+      body = '<div class="quest-log-items">' + quests.map(q => {
+        const objectives = Array.isArray(q.objectives) && q.objectives.length > 0
+          ? '<ul class="quest-detail-objectives">' + q.objectives.map(o => `<li>${this._escapeHtml(o)}</li>`).join('') + '</ul>'
+          : '';
+        return `<div class="quest-log-item">
+          <div class="quest-log-title">${this._escapeHtml(q.title)}</div>
+          <div class="quest-detail-meta">
+            <span class="quest-list-difficulty" data-difficulty="${this._escapeHtml(q.difficulty || '')}">${this._escapeHtml(q.difficulty || '')}</span>
+            ${q.timeLimit ? `<span>Time: ${this._escapeHtml(q.timeLimit)}</span>` : ''}
+          </div>
+          ${q.description ? `<div class="quest-detail-desc">${this._escapeHtml(q.description)}</div>` : ''}
+          ${objectives}
+        </div>`;
+      }).join('') + '</div>';
+    }
+
+    overlay.innerHTML = `
+      <div class="quest-log-card">
+        <div class="quest-list-title-bar">Quest Log</div>
+        ${body}
+        <div class="quest-detail-actions">
+          <button class="pregame-btn quest-log-close">Close</button>
+        </div>
+      </div>
+    `;
+    overlay.querySelector('.quest-log-close').addEventListener('click', () => {
+      this._sendInput('');
+    });
+    this._dismissPregameOverlay();
+    document.body.appendChild(overlay);
+    this._currentPregameOverlay = overlay;
+  }
+
+  _buildRewardSummary(reward) {
+    if (!reward) return '';
+    const parts = [];
+    if (reward.gold) parts.push(`<div class="reward-icon"><span>💰</span> ${this._formatNumber(reward.gold)} gold</div>`);
+    if (reward.experience) parts.push(`<div class="reward-icon"><span>⭐</span> ${this._formatNumber(reward.experience)} XP</div>`);
+    if (reward.potions) parts.push(`<div class="reward-icon"><span>🧪</span> ${reward.potions} healing potion(s)</div>`);
+    if (reward.manaPotions) parts.push(`<div class="reward-icon"><span>💧</span> ${reward.manaPotions} mana potion(s)</div>`);
+    if (reward.chivalry) parts.push(`<div class="reward-icon"><span>✨</span> +${reward.chivalry} Chivalry</div>`);
+    if (reward.darkness) parts.push(`<div class="reward-icon"><span>☠️</span> +${reward.darkness} Darkness</div>`);
+    if (reward.itemName) parts.push(`<div class="reward-icon"><span>🎁</span> ${this._escapeHtml(reward.itemName)}</div>`);
+    if (Array.isArray(reward.extras)) {
+      reward.extras.forEach(e => parts.push(`<div class="reward-extra">${this._escapeHtml(e)}</div>`));
+    }
+    if (parts.length === 0) return '';
+    return `<div class="quest-reward-block"><div class="quest-reward-header">Reward</div>${parts.join('')}</div>`;
+  }
+
+  // ─── Phase 7 Lifecycle Renderers ────────────
+
+  _renderLevelUp(data) {
+    // Non-blocking celebratory toast. Stat increases listed; auto-dismisses
+    // after 4s but clickable to dismiss early.
+    const overlay = document.createElement('div');
+    overlay.className = 'gui-overlay level-up-overlay';
+    if (data.isMilestone) overlay.classList.add('level-up-milestone');
+
+    const stats = data.gains || {};
+    const lines = [];
+    if (stats.maxHp) lines.push(`<div class="lvl-stat"><span class="lvl-icon">❤️</span>+${stats.maxHp} Max HP</div>`);
+    if (stats.maxMana) lines.push(`<div class="lvl-stat"><span class="lvl-icon">💧</span>+${stats.maxMana} Max Mana</div>`);
+    if (stats.maxStamina) lines.push(`<div class="lvl-stat"><span class="lvl-icon">⚡</span>+${stats.maxStamina} Max Stamina</div>`);
+    if (stats.strength) lines.push(`<div class="lvl-stat"><span class="lvl-icon">💪</span>+${stats.strength} STR</div>`);
+    if (stats.defence) lines.push(`<div class="lvl-stat"><span class="lvl-icon">🛡️</span>+${stats.defence} DEF</div>`);
+    if (stats.dexterity) lines.push(`<div class="lvl-stat"><span class="lvl-icon">🏹</span>+${stats.dexterity} DEX</div>`);
+    if (stats.constitution) lines.push(`<div class="lvl-stat"><span class="lvl-icon">🧱</span>+${stats.constitution} CON</div>`);
+    if (stats.intelligence) lines.push(`<div class="lvl-stat"><span class="lvl-icon">🔮</span>+${stats.intelligence} INT</div>`);
+    if (stats.wisdom) lines.push(`<div class="lvl-stat"><span class="lvl-icon">📖</span>+${stats.wisdom} WIS</div>`);
+    if (stats.charisma) lines.push(`<div class="lvl-stat"><span class="lvl-icon">✨</span>+${stats.charisma} CHA</div>`);
+    if (stats.agility) lines.push(`<div class="lvl-stat"><span class="lvl-icon">🌀</span>+${stats.agility} AGI</div>`);
+    if (stats.trainingPoints) lines.push(`<div class="lvl-stat"><span class="lvl-icon">🎯</span>+${stats.trainingPoints} Training Points</div>`);
+
+    const tr = (window.i18n && window.i18n.t) || ((k, ...a) => k);
+    overlay.innerHTML = `
+      <div class="level-up-card">
+        <div class="level-up-banner">${this._escapeHtml(tr('level_up.banner'))}</div>
+        <div class="level-up-level">${data.newLevel}</div>
+        <div class="level-up-class">${this._escapeHtml(data.className || '')}</div>
+        <div class="level-up-stats">${lines.join('') || `<div class="lvl-stat">${this._escapeHtml(tr('level_up.fallback'))}</div>`}</div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', () => {
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+    });
+    setTimeout(() => {
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+    }, 4000);
+  }
+
+  _renderDeathScreen(data) {
+    const overlay = document.createElement('div');
+    overlay.className = 'gui-overlay death-overlay';
+    if (data.isPermadeath) overlay.classList.add('death-permadeath');
+
+    const losses = [];
+    if (data.fameLoss) losses.push(`<div class="death-loss">Fame: -${data.fameLoss}</div>`);
+    if (data.xpLoss) losses.push(`<div class="death-loss">XP: -${this._formatNumber(data.xpLoss)}</div>`);
+    if (data.goldLoss) losses.push(`<div class="death-loss">Gold: -${this._formatNumber(data.goldLoss)}</div>`);
+    if (Array.isArray(data.itemsLost) && data.itemsLost.length > 0) {
+      losses.push(`<div class="death-loss">Lost: ${data.itemsLost.map(i => this._escapeHtml(i)).join(', ')}</div>`);
+    }
+
+    const farewells = (Array.isArray(data.teammateFarewells) && data.teammateFarewells.length > 0)
+      ? '<div class="death-farewells">' + data.teammateFarewells.map(f => `<div>${this._escapeHtml(f)}</div>`).join('') + '</div>'
+      : '';
+
+    const tr = (window.i18n && window.i18n.t) || ((k) => k);
+    let actions = '';
+    if (data.isPermadeath || data.isNightmareMode) {
+      actions = `
+        <div class="death-permadeath-notice">${this._escapeHtml(tr('death.permadeath'))}</div>
+        <div class="death-subtext">${this._escapeHtml(tr('death.save_erased'))}</div>
+        <div class="death-actions">
+          <button class="pregame-btn death-dismiss-btn">${this._escapeHtml(tr('death.continue'))}</button>
+        </div>`;
+    } else if (data.resurrectionOffered) {
+      actions = `
+        <div class="death-prompt">${this._escapeHtml(data.resurrectionPrompt || tr('death.prompt_default'))}</div>
+        <div class="death-actions">
+          <button class="pregame-btn death-resurrect-btn">${this._escapeHtml(tr('death.resurrect_yes'))}</button>
+          <button class="pregame-btn death-decline-btn">${this._escapeHtml(tr('death.resurrect_no'))}</button>
+        </div>`;
+    }
+
+    overlay.innerHTML = `
+      <div class="death-card">
+        <div class="death-tombstone">☠</div>
+        <div class="death-title">${this._escapeHtml(tr('death.banner'))}</div>
+        <div class="death-killer">${this._escapeHtml(tr('death.killed_by'))} ${this._escapeHtml(data.killedBy || 'unknown')}</div>
+        ${losses.length > 0 ? `<div class="death-losses">${losses.join('')}</div>` : ''}
+        ${farewells}
+        ${actions}
+      </div>
+    `;
+
+    const resBtn = overlay.querySelector('.death-resurrect-btn');
+    if (resBtn) resBtn.addEventListener('click', () => this._sendInput('Y'));
+    const decBtn = overlay.querySelector('.death-decline-btn');
+    if (decBtn) decBtn.addEventListener('click', () => this._sendInput('N'));
+    const dismissBtn = overlay.querySelector('.death-dismiss-btn');
+    if (dismissBtn) dismissBtn.addEventListener('click', () => this._sendInput(''));
+
+    this._dismissPregameOverlay();
+    document.body.appendChild(overlay);
+    this._currentPregameOverlay = overlay;
+  }
+
+  _renderAchievementToast(data) {
+    // Toast-style notification — stack in top-right, auto-dismiss after 5s.
+    if (!this._toastStack) {
+      this._toastStack = document.createElement('div');
+      this._toastStack.className = 'gui-toast-stack';
+      document.body.appendChild(this._toastStack);
+    }
+    // Phase 9 perf pass: cap toast stack to prevent unbounded DOM growth
+    // when many achievements unlock at once (e.g. NG+ rerun).
+    while (this._toastStack.children.length >= 5) {
+      this._toastStack.removeChild(this._toastStack.firstChild);
+    }
+    const toast = document.createElement('div');
+    const tier = (data.tier || 'Bronze').toLowerCase();
+    toast.className = `gui-toast achievement-toast achievement-tier-${tier}`;
+
+    const rewards = [];
+    if (data.goldReward) rewards.push(`+${this._formatNumber(data.goldReward)}g`);
+    if (data.xpReward) rewards.push(`+${this._formatNumber(data.xpReward)} XP`);
+    if (data.fameReward) rewards.push(`+${data.fameReward} Fame`);
+
+    toast.innerHTML = `
+      <div class="achievement-toast-header">
+        <span class="achievement-toast-icon">🏆</span>
+        <span class="achievement-toast-tier">${this._escapeHtml(data.tier || '')}</span>
+        ${data.isBroadcast ? '<span class="achievement-toast-broadcast">BROADCAST</span>' : ''}
+      </div>
+      <div class="achievement-toast-name">${this._escapeHtml(data.name || '')}</div>
+      ${data.description ? `<div class="achievement-toast-desc">${this._escapeHtml(data.description)}</div>` : ''}
+      ${rewards.length > 0 ? `<div class="achievement-toast-rewards">${rewards.join(' • ')}</div>` : ''}
+    `;
+
+    this._toastStack.appendChild(toast);
+    // Slide-in animation, then auto-dismiss
+    requestAnimationFrame(() => toast.classList.add('toast-visible'));
+    setTimeout(() => {
+      toast.classList.remove('toast-visible');
+      setTimeout(() => {
+        if (toast.parentNode) toast.parentNode.removeChild(toast);
+      }, 500);
+    }, 5000);
+  }
+
+  _renderEnding(data) {
+    // Full-screen end card with title, final stats, scrolling credits/epilogue.
+    // Stays up until the C# side emits the next overlay (NG+ prompt or
+    // immortal ascension), at which point that overlay supersedes it.
+    const overlay = document.createElement('div');
+    overlay.className = 'gui-overlay ending-overlay';
+    overlay.classList.add(`ending-${(data.endingType || '').toLowerCase()}`);
+
+    const epilogue = (Array.isArray(data.epilogue) && data.epilogue.length > 0)
+      ? '<div class="ending-epilogue">' + data.epilogue.map(p => `<p>${this._escapeHtml(p)}</p>`).join('') + '</div>'
+      : '';
+    const credits = (Array.isArray(data.credits) && data.credits.length > 0)
+      ? '<div class="ending-credits">' + data.credits.map(c => `<div>${this._escapeHtml(c)}</div>`).join('') + '</div>'
+      : '';
+
+    overlay.innerHTML = `
+      <div class="ending-card">
+        <div class="ending-banner">${this._escapeHtml(data.title || 'The End')}</div>
+        ${data.subtitle ? `<div class="ending-subtitle">${this._escapeHtml(data.subtitle)}</div>` : ''}
+        <div class="ending-stats">
+          <div class="ending-stat"><span>Final Level</span><strong>${data.finalLevel}</strong></div>
+          <div class="ending-stat"><span>Total Kills</span><strong>${this._formatNumber(data.totalKills)}</strong></div>
+          <div class="ending-stat"><span>Final Gold</span><strong>${this._formatNumber(data.totalGold)}</strong></div>
+          <div class="ending-stat"><span>Fame</span><strong>${data.fameFinal}</strong></div>
+          <div class="ending-stat"><span>Cycle</span><strong>${data.cycleNumber}</strong></div>
+        </div>
+        ${epilogue}
+        ${credits}
+      </div>
+    `;
+
+    this._dismissPregameOverlay();
+    document.body.appendChild(overlay);
+    this._currentPregameOverlay = overlay;
+  }
+
+  _renderNgPlusPrompt(data) {
+    const overlay = document.createElement('div');
+    overlay.className = 'gui-overlay ngplus-overlay';
+    const bonuses = (Array.isArray(data.carryoverBonuses) && data.carryoverBonuses.length > 0)
+      ? '<ul class="ngplus-bonuses">' + data.carryoverBonuses.map(b => `<li>${this._escapeHtml(b)}</li>`).join('') + '</ul>'
+      : '';
+    overlay.innerHTML = `
+      <div class="ngplus-card">
+        <div class="ngplus-banner">A NEW CYCLE BEGINS</div>
+        <div class="ngplus-cycle">Cycle ${data.currentCycle} → Cycle ${data.nextCycle}</div>
+        ${bonuses}
+        <div class="ngplus-prompt">Begin a new game cycle?</div>
+        <div class="ngplus-actions">
+          <button class="pregame-btn ngplus-yes">Begin (Y)</button>
+          <button class="pregame-btn ngplus-no">Decline (N)</button>
+        </div>
+      </div>
+    `;
+    overlay.querySelector('.ngplus-yes').addEventListener('click', () => this._sendInput('Y'));
+    overlay.querySelector('.ngplus-no').addEventListener('click', () => this._sendInput('N'));
+    this._dismissPregameOverlay();
+    document.body.appendChild(overlay);
+    this._currentPregameOverlay = overlay;
+  }
+
+  _renderImmortalAscension(data) {
+    const overlay = document.createElement('div');
+    overlay.className = 'gui-overlay ascension-overlay';
+    const dialogue = (Array.isArray(data.manweDialogue) && data.manweDialogue.length > 0)
+      ? '<div class="ascension-dialogue">' + data.manweDialogue.map(l => `<p>${this._escapeHtml(l)}</p>`).join('') + '</div>'
+      : '';
+    const benefits = (Array.isArray(data.benefits) && data.benefits.length > 0)
+      ? '<ul class="ascension-benefits">' + data.benefits.map(b => `<li>${this._escapeHtml(b)}</li>`).join('') + '</ul>'
+      : '';
+    const blocked = data.blockedReason
+      ? `<div class="ascension-blocked">${this._escapeHtml(data.blockedMessage || 'You cannot ascend at this time.')}</div>`
+      : '';
+
+    overlay.innerHTML = `
+      <div class="ascension-card">
+        <div class="ascension-banner">★ ASCENSION ★</div>
+        <div class="ascension-character">${this._escapeHtml(data.characterName || '')} ${data.className ? '— ' + this._escapeHtml(data.className) : ''}</div>
+        ${dialogue}
+        ${benefits}
+        ${blocked}
+        <div class="ascension-prompt">Ascend to godhood?</div>
+        <div class="ngplus-actions">
+          <button class="pregame-btn ascend-yes">Ascend (Y)</button>
+          <button class="pregame-btn ascend-no">Decline (N)</button>
+        </div>
+      </div>
+    `;
+    overlay.querySelector('.ascend-yes').addEventListener('click', () => this._sendInput('Y'));
+    overlay.querySelector('.ascend-no').addEventListener('click', () => this._sendInput('N'));
+    this._dismissPregameOverlay();
+    document.body.appendChild(overlay);
+    this._currentPregameOverlay = overlay;
+  }
+
+  _renderBossPhaseTransition(data) {
+    // Transient cinematic banner — auto-dismisses after 3.5s. Combat continues
+    // on the C# side immediately, so we don't block input.
+    const banner = document.createElement('div');
+    banner.className = 'gui-overlay boss-phase-overlay';
+    const dialogue = (Array.isArray(data.dialogue) && data.dialogue.length > 0)
+      ? '<div class="boss-phase-dialogue">' + data.dialogue.map(d => `<p>${this._escapeHtml(d)}</p>`).join('') + '</div>'
+      : '';
+    const immune = [];
+    if (data.isPhysicalImmune) immune.push('PHYSICAL IMMUNITY');
+    if (data.isMagicalImmune) immune.push('MAGICAL IMMUNITY');
+    const immuneHtml = immune.length > 0
+      ? `<div class="boss-phase-immune">${immune.join(' • ')}</div>` : '';
+
+    const tr = (window.i18n && window.i18n.t) || ((k, ...a) => k);
+    banner.innerHTML = `
+      <div class="boss-phase-card">
+        <div class="boss-phase-name">${this._escapeHtml(data.bossName || '')}</div>
+        <div class="boss-phase-banner">${this._escapeHtml(tr('boss_phase.banner', data.newPhase))}</div>
+        ${dialogue}
+        <div class="boss-phase-flavor">${this._escapeHtml(data.flavorText || '')}</div>
+        ${immuneHtml}
+      </div>
+    `;
+    document.body.appendChild(banner);
+    setTimeout(() => {
+      banner.classList.add('boss-phase-fadeout');
+      setTimeout(() => {
+        if (banner.parentNode) banner.parentNode.removeChild(banner);
+      }, 500);
+    }, 3500);
+  }
+
+  // ─── Phase 8 Online Multiplayer Renderers ───
+
+  _renderChatBroadcast(data) {
+    // Always-on chat panel — append message to scrollback. Channel determines
+    // styling. Auto-pin to bottom and cap at 200 entries to bound DOM size.
+    const tr = (window.i18n && window.i18n.t) || ((k, ...a) => k);
+    if (!this._chatPanel) {
+      this._chatPanel = document.createElement('div');
+      this._chatPanel.className = 'gui-chat-panel';
+      this._chatPanel.innerHTML = `
+        <div class="chat-panel-header">
+          <span class="chat-panel-title">${this._escapeHtml(tr('chat.panel_title'))}</span>
+          <button class="chat-panel-toggle" title="Toggle">_</button>
+        </div>
+        <div class="chat-panel-body"></div>
+      `;
+      document.body.appendChild(this._chatPanel);
+      this._chatPanel.querySelector('.chat-panel-toggle').addEventListener('click', () => {
+        this._chatPanel.classList.toggle('chat-panel-collapsed');
+      });
+    }
+
+    const body = this._chatPanel.querySelector('.chat-panel-body');
+    const channel = (data.channel || 'gossip').toLowerCase();
+    const sender = this._escapeHtml(data.sender || '');
+    const message = this._escapeHtml(data.message || '');
+    const target = data.targetName ? this._escapeHtml(data.targetName) : null;
+
+    let prefix = '';
+    if (channel === 'shout') prefix = `${sender} ${this._escapeHtml(tr('chat.shouts'))}`;
+    else if (channel === 'gossip') prefix = `${sender} ${this._escapeHtml(tr('chat.gossips'))}`;
+    else if (channel === 'guild') prefix = `${this._escapeHtml(tr('chat.guild'))} ${sender}:`;
+    else if (channel === 'tell' && data.perspective === 'actor' && target)
+      prefix = this._escapeHtml(tr('chat.tells_actor', target));
+    else if (channel === 'tell') prefix = this._escapeHtml(tr('chat.tells_observer', sender));
+    else prefix = `${sender}:`;
+
+    const line = document.createElement('div');
+    line.className = `chat-line chat-channel-${channel}`;
+    if (data.perspective === 'actor') line.classList.add('chat-actor');
+    line.innerHTML = `<span class="chat-prefix">${prefix}</span> <span class="chat-text">${message}</span>`;
+    body.appendChild(line);
+
+    // Cap scrollback
+    while (body.children.length > 200) body.removeChild(body.firstChild);
+    body.scrollTop = body.scrollHeight;
+  }
+
+  _renderGroupInvite(data) {
+    // Modal with countdown timer. Accept sends "/accept", Decline sends "/deny".
+    const overlay = document.createElement('div');
+    overlay.className = 'gui-overlay group-invite-overlay';
+    const timeoutSec = data.timeoutSeconds || 60;
+    const tr = (window.i18n && window.i18n.t) || ((k, ...a) => k);
+    overlay.innerHTML = `
+      <div class="group-invite-card">
+        <div class="group-invite-banner">${this._escapeHtml(tr('group_invite.banner'))}</div>
+        <div class="group-invite-body">
+          <strong>${this._escapeHtml(data.fromName || tr('chat.someone'))}</strong>
+          ${this._escapeHtml(tr('group_invite.body'))}
+        </div>
+        <div class="group-invite-meta">
+          ${this._escapeHtml(tr('group_invite.group_size', data.currentSize || 1, data.maxSize || 4))}
+        </div>
+        <div class="group-invite-countdown" data-timeout="${timeoutSec}">${this._escapeHtml(tr('group_invite.countdown', timeoutSec))}</div>
+        <div class="ngplus-actions">
+          <button class="pregame-btn group-invite-accept">${this._escapeHtml(tr('group_invite.accept'))}</button>
+          <button class="pregame-btn group-invite-decline">${this._escapeHtml(tr('group_invite.decline'))}</button>
+        </div>
+      </div>
+    `;
+
+    overlay.querySelector('.group-invite-accept').addEventListener('click', () => {
+      this._sendInput('/accept');
+      this._dismissPregameOverlay();
+    });
+    overlay.querySelector('.group-invite-decline').addEventListener('click', () => {
+      this._sendInput('/deny');
+      this._dismissPregameOverlay();
+    });
+
+    // Countdown timer
+    const countdownEl = overlay.querySelector('.group-invite-countdown');
+    let remaining = timeoutSec;
+    const tick = setInterval(() => {
+      remaining--;
+      if (remaining <= 0) {
+        clearInterval(tick);
+        if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+        return;
+      }
+      countdownEl.textContent = tr('group_invite.countdown', remaining);
+    }, 1000);
+
+    this._dismissPregameOverlay();
+    document.body.appendChild(overlay);
+    this._currentPregameOverlay = overlay;
+  }
+
+  _renderNewsFeed(data) {
+    const overlay = document.createElement('div');
+    overlay.className = 'gui-overlay news-feed-overlay';
+
+    const sectionsHtml = (Array.isArray(data.sections) && data.sections.length > 0)
+      ? data.sections.map(s => {
+          const items = (s.items || []).map(item => {
+            const cls = item.isGood ? 'news-good' : item.isBad ? 'news-bad' : '';
+            const gold = item.goldDelta != null && item.goldDelta !== 0
+              ? ` <span class="news-gold">${item.goldDelta > 0 ? '+' : ''}${this._formatNumber(item.goldDelta)}g</span>` : '';
+            return `<div class="news-item ${cls}">${this._escapeHtml(item.text)}${gold}</div>`;
+          }).join('');
+          return `
+            <div class="news-section">
+              <div class="news-section-title">${this._escapeHtml(s.title)}</div>
+              ${items}
+            </div>`;
+        }).join('')
+      : `<div class="news-empty">${this._escapeHtml((window.i18n && window.i18n.t('news_feed.empty')) || 'All quiet on the world front.')}</div>`;
+
+    const tr = (window.i18n && window.i18n.t) || ((k, ...a) => k);
+    const counts = [];
+    if (data.unreadMailCount) counts.push(this._escapeHtml(tr('news_feed.unread_mail', data.unreadMailCount)));
+    if (data.pendingTradeCount) counts.push(this._escapeHtml(tr('news_feed.pending_trade', data.pendingTradeCount)));
+    const countsHtml = counts.length > 0
+      ? `<div class="news-counts">${counts.join(' · ')}</div>` : '';
+
+    overlay.innerHTML = `
+      <div class="news-feed-card">
+        <div class="news-feed-header">
+          <div class="news-feed-title">${this._escapeHtml(tr('news_feed.title'))}</div>
+          <div class="news-feed-character">${this._escapeHtml(data.characterName || '')}</div>
+        </div>
+        ${countsHtml}
+        <div class="news-feed-body">${sectionsHtml}</div>
+        <div class="news-feed-actions">
+          <button class="pregame-btn news-feed-dismiss">${this._escapeHtml(tr('news_feed.continue'))}</button>
+        </div>
+      </div>
+    `;
+    overlay.querySelector('.news-feed-dismiss').addEventListener('click', () => {
+      this._sendInput('');
+      this._dismissPregameOverlay();
+    });
+
+    this._dismissPregameOverlay();
+    document.body.appendChild(overlay);
+    this._currentPregameOverlay = overlay;
+  }
+
+  _renderSpectateRequest(data) {
+    const overlay = document.createElement('div');
+    overlay.className = 'gui-overlay spectate-request-overlay';
+    const timeoutSec = data.timeoutSeconds || 60;
+    const tr = (window.i18n && window.i18n.t) || ((k, ...a) => k);
+    overlay.innerHTML = `
+      <div class="spectate-request-card">
+        <div class="spectate-request-banner">${this._escapeHtml(tr('spectate.banner'))}</div>
+        <div class="spectate-request-body">
+          <strong>${this._escapeHtml(data.fromName || tr('chat.someone'))}</strong>
+          ${this._escapeHtml(tr('spectate.body'))}
+        </div>
+        <div class="group-invite-countdown" data-timeout="${timeoutSec}">${this._escapeHtml(tr('group_invite.countdown', timeoutSec))}</div>
+        <div class="ngplus-actions">
+          <button class="pregame-btn spectate-accept">${this._escapeHtml(tr('spectate.allow'))}</button>
+          <button class="pregame-btn spectate-decline">${this._escapeHtml(tr('spectate.deny'))}</button>
+        </div>
+      </div>
+    `;
+    overlay.querySelector('.spectate-accept').addEventListener('click', () => {
+      this._sendInput('/accept');
+      this._dismissPregameOverlay();
+    });
+    overlay.querySelector('.spectate-decline').addEventListener('click', () => {
+      this._sendInput('/deny');
+      this._dismissPregameOverlay();
+    });
+    const countdownEl = overlay.querySelector('.group-invite-countdown');
+    let remaining = timeoutSec;
+    const tick = setInterval(() => {
+      remaining--;
+      if (remaining <= 0) {
+        clearInterval(tick);
+        if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+        return;
+      }
+      countdownEl.textContent = `${remaining}s remaining`;
+    }, 1000);
+
+    this._dismissPregameOverlay();
+    document.body.appendChild(overlay);
+    this._currentPregameOverlay = overlay;
+  }
+
+  _renderSpectatorState(data) {
+    // Persistent indicator showing watcher count or "watching" status.
+    if (!this._spectatorIndicator) {
+      this._spectatorIndicator = document.createElement('div');
+      this._spectatorIndicator.className = 'gui-spectator-indicator';
+      document.body.appendChild(this._spectatorIndicator);
+    }
+    const watchers = Array.isArray(data.watchers) ? data.watchers : [];
+    if (data.watchingTarget) {
+      this._spectatorIndicator.innerHTML = `👁 Watching <strong>${this._escapeHtml(data.watchingTarget)}</strong>`;
+      this._spectatorIndicator.classList.add('spectator-active');
+    } else if (watchers.length > 0) {
+      this._spectatorIndicator.innerHTML = `👁 ${watchers.length} watching`;
+      this._spectatorIndicator.title = watchers.join(', ');
+      this._spectatorIndicator.classList.add('spectator-active');
+    } else {
+      this._spectatorIndicator.classList.remove('spectator-active');
+      this._spectatorIndicator.innerHTML = '';
+    }
+  }
+
+  // ─── Phase 9 Settings + Polish Renderers ────
+
+  _renderSettings(data) {
+    const overlay = document.createElement('div');
+    overlay.className = 'gui-overlay settings-overlay';
+
+    const langs = Array.isArray(data.availableLanguages) ? data.availableLanguages : [];
+    const langOptions = langs.map(l => {
+      const sel = l.isCurrent ? ' selected' : '';
+      return `<option value="${this._escapeHtml(l.code)}"${sel}>${this._escapeHtml(l.displayName)}</option>`;
+    }).join('');
+
+    const tr = (window.i18n && window.i18n.t) || ((k) => k);
+    overlay.innerHTML = `
+      <div class="settings-card">
+        <div class="settings-title-bar">
+          <div class="settings-title">${this._escapeHtml(tr('settings.title'))}</div>
+          <button class="settings-close" title="Close">×</button>
+        </div>
+        <div class="settings-body">
+          <div class="settings-row">
+            <label class="settings-label" for="settings-language">${this._escapeHtml(tr('settings.label.language'))}</label>
+            <select class="settings-select" id="settings-language">${langOptions}</select>
+          </div>
+          <div class="settings-row">
+            <label class="settings-label" for="settings-font-scale">${this._escapeHtml(tr('settings.label.font_scale'))}</label>
+            <input type="range" class="settings-slider" id="settings-font-scale"
+              min="0.85" max="1.4" step="0.05" value="${this._fontScale || 1.0}">
+            <span class="settings-value" id="settings-font-scale-value">${(this._fontScale || 1.0).toFixed(2)}×</span>
+          </div>
+          <div class="settings-row">
+            <label class="settings-label settings-toggle-label" for="settings-sr">
+              <input type="checkbox" id="settings-sr" ${data.screenReaderMode ? 'checked' : ''}>
+              ${this._escapeHtml(tr('settings.toggle.screen_reader'))}
+            </label>
+          </div>
+          <div class="settings-row">
+            <label class="settings-label settings-toggle-label" for="settings-compact">
+              <input type="checkbox" id="settings-compact" ${data.compactMode ? 'checked' : ''}>
+              ${this._escapeHtml(tr('settings.toggle.compact'))}
+            </label>
+          </div>
+          <div class="settings-row">
+            <label class="settings-label settings-toggle-label" for="settings-art">
+              <input type="checkbox" id="settings-art" ${!data.disableCharacterMonsterArt ? 'checked' : ''}>
+              ${this._escapeHtml(tr('settings.toggle.art'))}
+            </label>
+          </div>
+          <div class="settings-row settings-info">
+            <div class="settings-info-label">${this._escapeHtml(tr('settings.label.date_format'))}</div>
+            <div class="settings-info-value">${this._escapeHtml(data.dateFormat || 'MM/DD/YYYY')}</div>
+          </div>
+        </div>
+        <div class="settings-actions">
+          <button class="pregame-btn settings-done">${this._escapeHtml(tr('settings.button.done'))}</button>
+        </div>
+      </div>
+    `;
+
+    // Language picker — fires immediately on change. Reload JS-side
+    // translations live so overlay buttons localize without a restart.
+    overlay.querySelector('#settings-language').addEventListener('change', (e) => {
+      const code = e.target.value;
+      this._sendInput(`/settings lang ${code}`);
+      try { localStorage.setItem('usurper.language', code); } catch {}
+      if (window.i18n && window.i18n.setLanguage) {
+        window.i18n.setLanguage(code);
+      }
+    });
+
+    // Font scale — adjusts CSS variable on root, no C# round-trip needed
+    const fontSlider = overlay.querySelector('#settings-font-scale');
+    const fontVal = overlay.querySelector('#settings-font-scale-value');
+    fontSlider.addEventListener('input', (e) => {
+      const scale = parseFloat(e.target.value);
+      this._fontScale = scale;
+      fontVal.textContent = scale.toFixed(2) + '×';
+      document.documentElement.style.setProperty('--gui-font-scale', String(scale));
+      try { localStorage.setItem('usurper.fontScale', String(scale)); } catch {}
+    });
+
+    // Toggle checkboxes — each fires its own /settings sub-command
+    overlay.querySelector('#settings-sr').addEventListener('change', (e) => {
+      this._sendInput(`/settings sr ${e.target.checked ? 'on' : 'off'}`);
+    });
+    overlay.querySelector('#settings-compact').addEventListener('change', (e) => {
+      this._sendInput(`/settings compact ${e.target.checked ? 'on' : 'off'}`);
+    });
+    overlay.querySelector('#settings-art').addEventListener('change', (e) => {
+      // Inverted: checkbox shows art, but C# stores DisableCharacterMonsterArt
+      this._sendInput(`/settings art ${e.target.checked ? 'on' : 'off'}`);
+    });
+
+    overlay.querySelector('.settings-close').addEventListener('click', () => {
+      this._dismissPregameOverlay();
+    });
+    overlay.querySelector('.settings-done').addEventListener('click', () => {
+      this._dismissPregameOverlay();
+    });
+
+    this._dismissPregameOverlay();
+    document.body.appendChild(overlay);
+    this._currentPregameOverlay = overlay;
+  }
+
+  _renderSettingsAppliedToast(data) {
+    if (!this._toastStack) {
+      this._toastStack = document.createElement('div');
+      this._toastStack.className = 'gui-toast-stack';
+      document.body.appendChild(this._toastStack);
+    }
+    // Cap toast stack to prevent unbounded DOM growth.
+    while (this._toastStack.children.length >= 5) {
+      this._toastStack.removeChild(this._toastStack.firstChild);
+    }
+    const toast = document.createElement('div');
+    toast.className = 'gui-toast settings-applied-toast';
+    toast.innerHTML = `
+      <div class="achievement-toast-name">⚙ ${this._escapeHtml(data.settingKey || 'setting')}</div>
+      <div class="achievement-toast-desc">Set to: <strong>${this._escapeHtml(data.newValue || '')}</strong></div>
+    `;
+    this._toastStack.appendChild(toast);
+    requestAnimationFrame(() => toast.classList.add('toast-visible'));
+    setTimeout(() => {
+      toast.classList.remove('toast-visible');
+      setTimeout(() => {
+        if (toast.parentNode) toast.parentNode.removeChild(toast);
+      }, 500);
+    }, 2500);
+  }
+
+  // ─── Phase 3 Pre-Game Renderers ──────────────
+
+  _renderMainMenu(data) {
+    this.screen = 'main_menu';
+    this.compass.style.display = 'none';
+    this.roomActions.innerHTML = '';
+    this.npcArea.innerHTML = '';
+
+    // Splash + version + clickable menu buttons.
+    const overlay = document.createElement('div');
+    overlay.className = 'pregame-overlay main-menu-overlay';
+    overlay.innerHTML = `
+      <div class="main-menu-card">
+        <div class="main-menu-title">${this._escapeHtml(data.title || 'Usurper Reborn')}</div>
+        <div class="main-menu-subtitle">${this._escapeHtml(data.subtitle || '')}</div>
+        <div class="main-menu-version">${this._escapeHtml(data.version || '')}</div>
+        <div class="main-menu-buttons"></div>
+      </div>
+    `;
+    const buttonContainer = overlay.querySelector('.main-menu-buttons');
+    for (const item of (data.items || [])) {
+      const btn = document.createElement('button');
+      btn.className = `pregame-btn main-menu-btn cat-${item.category || 'default'}`;
+      btn.innerHTML = `<span class="key">[${this._escapeHtml(item.key)}]</span> <span class="label">${this._escapeHtml(item.label)}</span>`;
+      btn.onclick = () => {
+        this._sendInput(item.key);
+        this._dismissPregameOverlay();
+      };
+      buttonContainer.appendChild(btn);
+    }
+
+    this._dismissPregameOverlay();
+    document.body.appendChild(overlay);
+    this._currentPregameOverlay = overlay;
+  }
+
+  _renderSaveList(data) {
+    this.screen = 'save_list';
+    const overlay = document.createElement('div');
+    overlay.className = 'pregame-overlay save-list-overlay';
+    overlay.innerHTML = `
+      <div class="save-list-card">
+        <div class="save-list-title">Choose a Character</div>
+        ${data.accountName ? `<div class="save-list-account">${this._escapeHtml(data.accountName)}</div>` : ''}
+        <div class="save-list-slots"></div>
+        <div class="save-list-actions"></div>
+      </div>
+    `;
+
+    const slotsContainer = overlay.querySelector('.save-list-slots');
+    for (const slot of (data.slots || [])) {
+      const slotEl = document.createElement('div');
+      let badgeClass = '';
+      let badge = '';
+      if (slot.isEmergency) { badgeClass = 'badge-emergency'; badge = 'EMERGENCY SAVE'; }
+      else if (slot.isRecovered) { badgeClass = 'badge-recovery'; badge = 'RECOVERY'; }
+      slotEl.className = `save-slot-card ${badgeClass}`;
+
+      const lastPlayed = slot.lastPlayed
+        ? new Date(slot.lastPlayed).toLocaleString()
+        : '';
+      slotEl.innerHTML = `
+        <div class="save-slot-portrait class-${(slot.className || '').toLowerCase().replace(/\s+/g, '-')}"></div>
+        <div class="save-slot-info">
+          <div class="save-slot-name">${this._escapeHtml(slot.characterName)}${badge ? ` <span class="save-slot-badge">${badge}</span>` : ''}</div>
+          <div class="save-slot-meta">Lv. ${slot.level} ${this._escapeHtml(slot.className)}</div>
+          ${lastPlayed ? `<div class="save-slot-played">${this._escapeHtml(lastPlayed)}</div>` : ''}
+        </div>
+        <div class="save-slot-key">[${this._escapeHtml(slot.slotKey)}]</div>
+      `;
+      slotEl.onclick = () => {
+        this._sendInput(slot.slotKey);
+        this._dismissPregameOverlay();
+      };
+      slotsContainer.appendChild(slotEl);
+    }
+
+    const actionsContainer = overlay.querySelector('.save-list-actions');
+    for (const action of (data.actions || [])) {
+      const btn = document.createElement('button');
+      btn.className = `pregame-btn save-list-btn cat-${action.category || 'default'}`;
+      btn.innerHTML = `<span class="key">[${this._escapeHtml(action.key)}]</span> <span class="label">${this._escapeHtml(action.label)}</span>`;
+      btn.onclick = () => {
+        this._sendInput(action.key);
+        this._dismissPregameOverlay();
+      };
+      actionsContainer.appendChild(btn);
+    }
+
+    this._dismissPregameOverlay();
+    document.body.appendChild(overlay);
+    this._currentPregameOverlay = overlay;
+  }
+
+  _renderCharCreateStep(data) {
+    // Phase 3: per-step renderers for the character creation wizard. The C# side
+    // emits one step at a time; we render a focused overlay per step. Click sends
+    // the input back via stdin (same path as text-mode keystrokes).
+    this.screen = 'char_create';
+    const step = data.step || '';
+    const overlay = document.createElement('div');
+    overlay.className = `pregame-overlay char-create-overlay step-${step}`;
+
+    let bodyHtml = '';
+    switch (step) {
+      case 'name':
+        bodyHtml = this._buildCharCreateNameBody(data);
+        break;
+      case 'gender':
+        bodyHtml = this._buildCharCreateOptionsBody(data, 'gender-options');
+        break;
+      case 'orientation':
+        bodyHtml = this._buildCharCreateOptionsBody(data, 'orientation-options');
+        break;
+      case 'difficulty':
+        bodyHtml = this._buildCharCreateDifficultyBody(data);
+        break;
+      case 'race':
+        bodyHtml = this._buildCharCreateRaceBody(data);
+        break;
+      case 'class':
+        bodyHtml = this._buildCharCreateClassBody(data);
+        break;
+      case 'stats':
+        bodyHtml = this._buildCharCreateStatsBody(data);
+        break;
+      case 'summary':
+        bodyHtml = this._buildCharCreateSummaryBody(data);
+        break;
+      default:
+        bodyHtml = `<div class="char-create-hint">Use the input below to continue.</div>`;
+    }
+
+    overlay.innerHTML = `
+      <div class="char-create-card">
+        <div class="char-create-step-label">${this._escapeHtml(step)}</div>
+        <div class="char-create-title">${this._escapeHtml(data.title || '')}</div>
+        ${data.description ? `<div class="char-create-description">${this._escapeHtml(data.description)}</div>` : ''}
+        ${bodyHtml}
+      </div>
+    `;
+
+    // Wire up button click handlers that send their data-key via stdin.
+    overlay.querySelectorAll('[data-cc-key]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const key = btn.getAttribute('data-cc-key');
+        this._sendInput(key);
+        // Don't dismiss the overlay yet — the next emit (next step or re-prompt)
+        // will replace it. Premature dismissal would briefly show terminal pane.
+      });
+    });
+
+    this._dismissPregameOverlay();
+    document.body.appendChild(overlay);
+    this._currentPregameOverlay = overlay;
+  }
+
+  _buildCharCreateNameBody(data) {
+    // Plain message + a submit button that uses the existing input box.
+    // (Free-text name entry uses the bottom input bar; clicking submit sends Enter.)
+    return `
+      <div class="char-create-hint">Type your character's name in the input below and press Enter.</div>
+    `;
+  }
+
+  _buildCharCreateOptionsBody(data, extraClass = '') {
+    // Generic horizontal options for gender/orientation pickers.
+    const opts = (data.data && data.data.options) || [];
+    let html = `<div class="char-create-options ${this._escapeHtml(extraClass)}">`;
+    for (const opt of opts) {
+      html += `
+        <button class="pregame-btn char-create-option-btn" data-cc-key="${this._escapeHtml(opt.key)}">
+          <span class="key">[${this._escapeHtml(opt.key)}]</span>
+          <span class="label">${this._escapeHtml(opt.label)}</span>
+        </button>
+      `;
+    }
+    html += `</div>`;
+    return html;
+  }
+
+  _buildCharCreateDifficultyBody(data) {
+    const opts = (data.data && data.data.options) || [];
+    let html = `<div class="char-create-difficulty">`;
+    for (const opt of opts) {
+      html += `
+        <button class="pregame-btn char-create-difficulty-btn" data-cc-key="${this._escapeHtml(opt.key)}" style="border-color: ${this._cssColor(opt.color)};">
+          <div class="diff-key" style="color: ${this._cssColor(opt.color)};">[${this._escapeHtml(opt.key)}]</div>
+          <div class="diff-name" style="color: ${this._cssColor(opt.color)};">${this._escapeHtml(opt.label)}</div>
+          <div class="diff-desc">${this._escapeHtml(opt.description || '')}</div>
+        </button>
+      `;
+    }
+    html += `</div>`;
+    return html;
+  }
+
+  _buildCharCreateRaceBody(data) {
+    const races = (data.data && data.data.races) || [];
+    let html = `<div class="char-create-race-grid">`;
+    for (const r of races) {
+      // Map race name to portrait. We use the existing class portraits dir
+      // for now since race portraits aren't graphical-pipeline assets yet —
+      // the C# RacePortraits.cs has ANSI art only. Phase 3.5 / Phase 9
+      // polish will add proper race portraits to the asset library.
+      const raceKey = (r.race || '').toLowerCase();
+      const classCount = (r.availableClasses || []).length;
+      const flavor = r.suffix === 'regen' ? '* regenerates'
+                   : r.suffix === 'poison_bite' ? '* poison bite'
+                   : '';
+      html += `
+        <button class="pregame-btn char-create-race-card" data-cc-key="${this._escapeHtml(r.key)}">
+          <div class="race-portrait race-${this._escapeHtml(raceKey)}"></div>
+          <div class="race-key">[${this._escapeHtml(r.key)}]</div>
+          <div class="race-name">${this._escapeHtml(r.name)}</div>
+          <div class="race-meta">${classCount} classes${flavor ? ` · ${flavor}` : ''}</div>
+        </button>
+      `;
+    }
+    html += `
+      <button class="pregame-btn char-create-race-card race-action" data-cc-key="H">
+        <div class="race-key">[H]</div>
+        <div class="race-name">Help</div>
+      </button>
+      <button class="pregame-btn char-create-race-card race-action" data-cc-key="A">
+        <div class="race-key">[A]</div>
+        <div class="race-name">Abort</div>
+      </button>
+    </div>`;
+    return html;
+  }
+
+  _buildCharCreateClassBody(data) {
+    const classes = (data.data && data.data.classes) || [];
+    let baseHtml = '';
+    let prestigeHtml = '';
+    for (const c of classes) {
+      const classKey = (c.class || '').toLowerCase().replace(/\s+/g, '-');
+      const cardHtml = `
+        <button class="pregame-btn char-create-class-card ${c.tier === 'prestige' ? 'prestige' : ''} ${c.restricted ? 'restricted' : ''}"
+                data-cc-key="${this._escapeHtml(c.key || '')}"
+                ${c.restricted || !c.key ? 'disabled' : ''}>
+          <div class="class-portrait class-${this._escapeHtml(classKey)}"></div>
+          ${c.key ? `<div class="class-key">[${this._escapeHtml(c.key)}]</div>` : '<div class="class-key locked">LOCKED</div>'}
+          <div class="class-name">${this._escapeHtml(c.name)}</div>
+          ${c.description ? `<div class="class-desc">${this._escapeHtml(c.description)}</div>` : ''}
+          ${c.unlockReq ? `<div class="class-unlock-req">${this._escapeHtml(c.unlockReq)}</div>` : ''}
+        </button>
+      `;
+      if (c.tier === 'prestige') prestigeHtml += cardHtml;
+      else baseHtml += cardHtml;
+    }
+    return `
+      <div class="char-create-class-grid">${baseHtml}</div>
+      ${prestigeHtml ? `
+        <div class="char-create-prestige-header">Prestige Classes (NG+)</div>
+        <div class="char-create-class-grid prestige">${prestigeHtml}</div>
+      ` : ''}
+      <div class="char-create-class-actions">
+        <button class="pregame-btn class-action" data-cc-key="H">[H] Help</button>
+        <button class="pregame-btn class-action" data-cc-key="A">[A] Abort</button>
+      </div>
+    `;
+  }
+
+  _buildCharCreateStatsBody(data) {
+    const d = data.data || {};
+    const stats = d.stats || {};
+    const rerollsRemaining = d.rerollsRemaining ?? 0;
+    const total = d.totalStats ?? 0;
+    const totalClass = total >= 70 ? 'good' : total >= 55 ? 'mid' : 'low';
+
+    const statRows = [
+      ['HP',      `${stats.hp}/${stats.maxHp}`],
+      ['STR',     stats.strength],
+      ['DEF',     stats.defence],
+      ['STA',     stats.stamina],
+      ['AGI',     stats.agility],
+      ['DEX',     stats.dexterity],
+      ['CON',     stats.constitution],
+      ['INT',     stats.intelligence],
+      ['WIS',     stats.wisdom],
+      ['CHA',     stats.charisma],
+    ];
+    if (stats.maxMana > 0) {
+      statRows.push(['MANA', `${stats.mana}/${stats.maxMana}`]);
+    }
+
+    let rowsHtml = statRows.map(([label, value]) => `
+      <div class="stat-row">
+        <span class="stat-label">${label}</span>
+        <span class="stat-value">${value}</span>
+      </div>
+    `).join('');
+
+    return `
+      <div class="char-create-stats">
+        <div class="stats-meta">
+          <span class="stats-class">${this._escapeHtml(d.className || '')}</span>
+          <span class="stats-race">${this._escapeHtml(d.raceName || '')}</span>
+        </div>
+        <div class="stats-grid">${rowsHtml}</div>
+        <div class="stats-total ${totalClass}">Total: ${total}</div>
+        <div class="stats-rerolls">Rerolls remaining: ${rerollsRemaining}</div>
+        <div class="stats-actions">
+          <button class="pregame-btn stats-accept-btn" data-cc-key="A">[A] Accept</button>
+          ${rerollsRemaining > 0 ? `<button class="pregame-btn stats-reroll-btn" data-cc-key="R">[R] Reroll</button>` : ''}
+        </div>
+      </div>
+    `;
+  }
+
+  _buildCharCreateSummaryBody(data) {
+    const d = data.data || {};
+    return `
+      <div class="char-create-summary">
+        <div class="summary-name">${this._escapeHtml(d.name || '')}</div>
+        <div class="summary-class-race">Lv.${d.level} ${this._escapeHtml(d.race || '')} ${this._escapeHtml(d.className || '')}</div>
+        <div class="summary-section">
+          <div class="summary-row"><span>HP</span><span>${d.hp}/${d.maxHp}</span></div>
+          ${d.maxMana > 0 ? `<div class="summary-row"><span>Mana</span><span>${d.mana}/${d.maxMana}</span></div>` : ''}
+          <div class="summary-row"><span>Gold</span><span>${d.gold}</span></div>
+          <div class="summary-row"><span>Sex</span><span>${this._escapeHtml(d.sex || '')}</span></div>
+        </div>
+        <div class="summary-section appearance">
+          <div class="summary-row"><span>Eyes</span><span>${this._escapeHtml(d.eyes || '')}</span></div>
+          <div class="summary-row"><span>Hair</span><span>${this._escapeHtml(d.hair || '')}</span></div>
+          <div class="summary-row"><span>Skin</span><span>${this._escapeHtml(d.skin || '')}</span></div>
+        </div>
+        <button class="pregame-btn summary-begin-btn" data-cc-key="">Begin Adventure ↵</button>
+      </div>
+    `;
+  }
+
+  // Map color names from C# DifficultySystem.GetColor to CSS hex values.
+  _cssColor(name) {
+    const map = {
+      'bright_green': '#80d080',
+      'bright_yellow': '#f0d68c',
+      'yellow': '#d4b040',
+      'bright_red': '#d04040',
+      'red': '#a04040',
+      'green': '#508050',
+      'cyan': '#80a0c0',
+      'bright_cyan': '#a0c0e0',
+      'magenta': '#c080c0',
+      'white': '#d4c194',
+      'gray': '#808080',
+    };
+    return map[name] || '#d4c194';
+  }
+
+  _renderRecoveryMenu(data) {
+    this.screen = 'recovery';
+    const overlay = document.createElement('div');
+    overlay.className = 'pregame-overlay recovery-menu-overlay';
+    overlay.innerHTML = `
+      <div class="recovery-menu-card">
+        <div class="recovery-menu-title">Save Load Failed</div>
+        <div class="recovery-menu-error">${this._escapeHtml(data.errorMessage || '')}</div>
+        ${data.saveFolderPath ? `<div class="recovery-menu-folder">${this._escapeHtml(data.saveFolderPath)}</div>` : ''}
+        ${(data.files && data.files.length > 0)
+          ? '<div class="recovery-menu-section-title">Recovery Files</div><div class="recovery-menu-files"></div>'
+          : '<div class="recovery-menu-section-title">No backup or autosave files found</div>'}
+        <div class="recovery-menu-actions"></div>
+      </div>
+    `;
+    const filesEl = overlay.querySelector('.recovery-menu-files');
+    if (filesEl) {
+      for (const f of (data.files || [])) {
+        const sizeMb = f.sizeBytes > 0 ? ` (${(f.sizeBytes / 1048576).toFixed(1)} MB)` : '';
+        const btn = document.createElement('button');
+        btn.className = 'pregame-btn recovery-file-btn';
+        btn.innerHTML = `<span class="key">[${this._escapeHtml(f.key)}]</span> <span class="label">${this._escapeHtml(f.label)}${sizeMb}</span>`;
+        btn.onclick = () => {
+          this._sendInput(f.key);
+          // Don't dismiss yet — recovery flow may re-emit on failure.
+        };
+        filesEl.appendChild(btn);
+      }
+    }
+    const actionsEl = overlay.querySelector('.recovery-menu-actions');
+    if (data.offerAutoRepair) {
+      const repairBtn = document.createElement('button');
+      repairBtn.className = 'pregame-btn recovery-repair-btn';
+      repairBtn.innerHTML = `<span class="key">[R]</span> <span class="label">Auto-repair the bloated save file (recommended)</span>`;
+      repairBtn.onclick = () => this._sendInput('R');
+      actionsEl.appendChild(repairBtn);
+    }
+    const newBtn = document.createElement('button');
+    newBtn.className = 'pregame-btn recovery-new-btn';
+    newBtn.innerHTML = `<span class="key">[N]</span> <span class="label">Start a NEW character (overwrites broken save)</span>`;
+    newBtn.onclick = () => this._sendInput('N');
+    actionsEl.appendChild(newBtn);
+
+    const quitBtn = document.createElement('button');
+    quitBtn.className = 'pregame-btn recovery-quit-btn';
+    quitBtn.innerHTML = `<span class="key">[Q]</span> <span class="label">Return to main menu</span>`;
+    quitBtn.onclick = () => this._sendInput('Q');
+    actionsEl.appendChild(quitBtn);
+
+    this._dismissPregameOverlay();
+    document.body.appendChild(overlay);
+    this._currentPregameOverlay = overlay;
+  }
+
+  _renderOpeningNarration(data) {
+    // Phase 7 (lifecycle events) will replace this with a proper themed
+    // narration panel. For now emit-only acknowledgement.
+    this._toast([{ text: data.text || '', fg: '#c0a050', bold: false }], 'narration');
+  }
+
+  _dismissPregameOverlay() {
+    if (this._currentPregameOverlay && this._currentPregameOverlay.parentNode) {
+      this._currentPregameOverlay.parentNode.removeChild(this._currentPregameOverlay);
+    }
+    this._currentPregameOverlay = null;
+  }
+
+  _sendInput(text) {
+    // Send a key/string + newline through the same IPC the regular input box uses.
+    // The C# side reads it from stdin as if it had been typed.
+    if (window.usurper && window.usurper.sendInput) {
+      window.usurper.sendInput(text + '\n');
+    }
+  }
+
+  _escapeHtml(s) {
+    if (s == null) return '';
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
   _addNPCTagFromEvent(npc) {

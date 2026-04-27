@@ -162,6 +162,15 @@ public class LevelMasterLocation : BaseLocation
             return;
         }
 
+        // Phase 4: Electron mode emits Level Master menu state. Pattern B —
+        // emit then return; sub-screens (level-up wizard, training, abilities)
+        // still use text path for now. Top menu graphical only.
+        if (GameConfig.ElectronMode)
+        {
+            EmitElectronEvents();
+            return;
+        }
+
         // Header - standardized format
         WriteBoxHeader(Loc.Get("level_master.header"), "bright_cyan");
         terminal.WriteLine("");
@@ -1287,6 +1296,22 @@ public class LevelMasterLocation : BaseLocation
         int levelsGained = 0;
         int startLevel = player.Level;
 
+        // Snapshot pre-level-up stats so the Electron emit can show deltas.
+        long preMaxHp = player.MaxHP;
+        long preMaxMana = player.MaxMana;
+        long preMaxStamina = player.BaseStamina;
+        long preStr = player.BaseStrength;
+        long preDef = player.BaseDefence;
+        long preDex = player.BaseDexterity;
+        long preCon = player.BaseConstitution;
+        long preInt = player.BaseIntelligence;
+        long preWis = player.BaseWisdom;
+        long preCha = player.BaseCharisma;
+        long preAgi = player.BaseAgility;
+        long preChiv = player.Chivalry;
+        long preDark = player.Darkness;
+        int preTraining = player.TrainingPoints;
+
         while (player.Level < GameConfig.MaxLevel &&
                player.Experience >= GetExperienceForLevel(player.Level + 1))
         {
@@ -1337,6 +1362,35 @@ public class LevelMasterLocation : BaseLocation
 
             // Auto-add newly unlocked spells/abilities to empty quickbar slots
             GameEngine.QuickbarAddNewSkills(player);
+
+            // Phase 7: emit a level-up celebration overlay to the Electron client.
+            if (GameConfig.ElectronMode)
+            {
+                var gains = new ElectronBridge.LevelUpStatGains
+                {
+                    MaxHp = (int)(player.MaxHP - preMaxHp),
+                    MaxMana = (int)(player.MaxMana - preMaxMana),
+                    MaxStamina = (int)(player.BaseStamina - preMaxStamina),
+                    Strength = (int)(player.BaseStrength - preStr),
+                    Defence = (int)(player.BaseDefence - preDef),
+                    Dexterity = (int)(player.BaseDexterity - preDex),
+                    Constitution = (int)(player.BaseConstitution - preCon),
+                    Intelligence = (int)(player.BaseIntelligence - preInt),
+                    Wisdom = (int)(player.BaseWisdom - preWis),
+                    Charisma = (int)(player.BaseCharisma - preCha),
+                    Agility = (int)(player.BaseAgility - preAgi),
+                    TrainingPoints = player.TrainingPoints - preTraining,
+                    ChivalryBonus = player.Chivalry - preChiv,
+                    DarknessBonus = player.Darkness - preDark
+                };
+                ElectronBridge.EmitLevelUp(
+                    newLevel: player.Level,
+                    className: player.ClassName,
+                    gains: gains,
+                    isMilestone: player.Level % 5 == 0 || player.Level <= 3);
+                ElectronBridge.EmitSound(
+                    player.Level % 5 == 0 ? "sfx.level_up_milestone" : "sfx.level_up");
+            }
         }
 
         return levelsGained;
@@ -1794,6 +1848,45 @@ public class LevelMasterLocation : BaseLocation
         }
 
         await terminal.PressAnyKey();
+    }
+
+    /// <summary>
+    /// Phase 4: emit Level Master menu state for the Electron client. Top-level
+    /// menu only — sub-screens (L level-up wizard, A abilities list, T training
+    /// allocator, C crystal ball, H help-team) still render text. Pattern B.
+    /// </summary>
+    private void EmitElectronEvents()
+    {
+        var player = GetCurrentPlayer();
+        if (player == null) return;
+
+        ElectronBridge.EmitLocation(
+            name: Loc.Get("level_master.header"),
+            description: Loc.Get("level_master.master_label", currentMaster.Name),
+            timeOfDay: "");
+
+        bool isManaClass = player is Player p && p.IsManaClass;
+        ElectronBridge.EmitStats(
+            hp: player.HP, maxHp: player.MaxHP,
+            mana: isManaClass ? player.Mana : 0, maxMana: isManaClass ? player.MaxMana : 0,
+            stamina: isManaClass ? 0 : player.Stamina, maxStamina: isManaClass ? 0 : player.BaseStamina,
+            gold: player.Gold, level: player.Level,
+            className: player.ClassName, raceName: player.Race.ToString(),
+            playerName: player.DisplayName);
+
+        var menu = new List<ElectronBridge.MenuItemData>
+        {
+            new() { Key = "L", Label = Loc.Get("level_master.menu_level_raise"), Category = "core", Icon = "level-up" },
+            new() { Key = "A", Label = "Abilities", Category = "info", Icon = "abilities" },
+            new() { Key = "T", Label = $"Training ({currentPlayer.TrainingPoints} pts)", Category = "core", Icon = "training" },
+            new() { Key = "C", Label = "Crystal Ball", Category = "info", Icon = "crystal-ball" },
+            new() { Key = "H", Label = "Help Teammates", Category = "social", Icon = "team" },
+            new() { Key = "S", Label = "Status", Category = "info", Icon = "info" },
+            new() { Key = "R", Label = Loc.Get("ui.return"), Category = "navigate", Icon = "back" },
+        };
+        ElectronBridge.EmitMenu(menu);
+
+        EmitNPCsInLocationToElectron();
     }
 
     #endregion

@@ -92,6 +92,16 @@ public class BankLocation : BaseLocation
             return;
         }
 
+        // Phase 4: Electron mode emits structured bank state. Pattern B —
+        // emit then return; downstream choice-handling logic in EnterLocation
+        // reads the same input both modes. Sub-screens (deposit, withdraw,
+        // robbery) keep text-mode for now; only the top menu is graphical.
+        if (GameConfig.ElectronMode)
+        {
+            EmitElectronEvents();
+            return;
+        }
+
         // Standardized bank header
         WriteBoxHeader(Loc.Get("bank.header"), "bright_cyan");
         terminal.WriteLine("");
@@ -471,18 +481,31 @@ public class BankLocation : BaseLocation
             return;
         }
 
-        terminal.SetColor("cyan");
-        terminal.WriteLine(Loc.Get("bank.leans_forward", BankerName));
-        terminal.WriteLine(Loc.Get("bank.how_much_deposit", (currentPlayer.Sex == CharacterSex.Male ? Loc.Get("bank.sir") : Loc.Get("bank.madam"))));
-        terminal.WriteLine("");
+        // Phase 4: graphical amount-entry overlay. Both modes flow through
+        // the same GetInput call below so the parser doesn't change.
+        if (GameConfig.ElectronMode)
+        {
+            ElectronBridge.EmitAmountEntry(
+                title: Loc.Get("bank.deposit_gold"),
+                prompt: Loc.Get("bank.how_much_deposit", currentPlayer.Sex == CharacterSex.Male ? Loc.Get("bank.sir") : Loc.Get("bank.madam")),
+                maxAmount: currentPlayer.Gold,
+                currency: "gold");
+        }
+        else
+        {
+            terminal.SetColor("cyan");
+            terminal.WriteLine(Loc.Get("bank.leans_forward", BankerName));
+            terminal.WriteLine(Loc.Get("bank.how_much_deposit", (currentPlayer.Sex == CharacterSex.Male ? Loc.Get("bank.sir") : Loc.Get("bank.madam"))));
+            terminal.WriteLine("");
 
-        terminal.SetColor("white");
-        terminal.WriteLine(Loc.Get("bank.deposit_amount", $"{currentPlayer.Gold:N0}"));
-        terminal.WriteLine(Loc.Get("bank.deposit_balance", $"{currentPlayer.BankGold:N0}"));
-        terminal.WriteLine("");
+            terminal.SetColor("white");
+            terminal.WriteLine(Loc.Get("bank.deposit_amount", $"{currentPlayer.Gold:N0}"));
+            terminal.WriteLine(Loc.Get("bank.deposit_balance", $"{currentPlayer.BankGold:N0}"));
+            terminal.WriteLine("");
 
-        terminal.SetColor("gray");
-        terminal.WriteLine(Loc.Get("bank.deposit_prompt"));
+            terminal.SetColor("gray");
+            terminal.WriteLine(Loc.Get("bank.deposit_prompt"));
+        }
 
         string input = await terminal.GetInput("> ");
 
@@ -560,18 +583,29 @@ public class BankLocation : BaseLocation
             return;
         }
 
-        terminal.SetColor("cyan");
-        terminal.WriteLine(Loc.Get("bank.disappointed", BankerName));
-        terminal.WriteLine(Loc.Get("bank.how_much_withdraw", (currentPlayer.Sex == CharacterSex.Male ? Loc.Get("bank.sir") : Loc.Get("bank.madam"))));
-        terminal.WriteLine("");
+        if (GameConfig.ElectronMode)
+        {
+            ElectronBridge.EmitAmountEntry(
+                title: Loc.Get("bank.withdraw_gold"),
+                prompt: Loc.Get("bank.how_much_withdraw", currentPlayer.Sex == CharacterSex.Male ? Loc.Get("bank.sir") : Loc.Get("bank.madam")),
+                maxAmount: currentPlayer.BankGold,
+                currency: "gold");
+        }
+        else
+        {
+            terminal.SetColor("cyan");
+            terminal.WriteLine(Loc.Get("bank.disappointed", BankerName));
+            terminal.WriteLine(Loc.Get("bank.how_much_withdraw", (currentPlayer.Sex == CharacterSex.Male ? Loc.Get("bank.sir") : Loc.Get("bank.madam"))));
+            terminal.WriteLine("");
 
-        terminal.SetColor("white");
-        terminal.WriteLine(Loc.Get("bank.withdraw_amount", $"{currentPlayer.BankGold:N0}"));
-        terminal.WriteLine(Loc.Get("bank.deposit_amount", $"{currentPlayer.Gold:N0}"));
-        terminal.WriteLine("");
+            terminal.SetColor("white");
+            terminal.WriteLine(Loc.Get("bank.withdraw_amount", $"{currentPlayer.BankGold:N0}"));
+            terminal.WriteLine(Loc.Get("bank.deposit_amount", $"{currentPlayer.Gold:N0}"));
+            terminal.WriteLine("");
 
-        terminal.SetColor("gray");
-        terminal.WriteLine(Loc.Get("bank.withdraw_prompt"));
+            terminal.SetColor("gray");
+            terminal.WriteLine(Loc.Get("bank.withdraw_prompt"));
+        }
 
         string input = await terminal.GetInput("> ");
 
@@ -1560,4 +1594,46 @@ public class BankLocation : BaseLocation
     /// Get active guard count
     /// </summary>
     public static int GetActiveGuardCount() => _activeGuardNames.Count;
+
+    /// <summary>
+    /// Phase 4: emit Bank menu state for the Electron client. Top-level menu
+    /// only — sub-screens (deposit/withdraw/loan/transfer/robbery) still use
+    /// the text path for now. Pattern B.
+    /// </summary>
+    private void EmitElectronEvents()
+    {
+        var player = GetCurrentPlayer();
+        if (player == null) return;
+
+        ElectronBridge.EmitLocation(
+            name: Loc.Get("bank.header"),
+            description: Loc.Get("bank.tagline"),
+            timeOfDay: "");
+
+        bool isManaClass = player is Player p && p.IsManaClass;
+        ElectronBridge.EmitStats(
+            hp: player.HP, maxHp: player.MaxHP,
+            mana: isManaClass ? player.Mana : 0, maxMana: isManaClass ? player.MaxMana : 0,
+            stamina: isManaClass ? 0 : player.Stamina, maxStamina: isManaClass ? 0 : player.BaseStamina,
+            gold: player.Gold, level: player.Level,
+            className: player.ClassName, raceName: player.Race.ToString(),
+            playerName: player.DisplayName);
+
+        // Build menu — same hotkeys the text DisplayBankMenu offers.
+        var menu = new List<ElectronBridge.MenuItemData>
+        {
+            new() { Key = "D", Label = Loc.Get("bank.menu_deposit"), Category = "core", Icon = "deposit" },
+            new() { Key = "W", Label = Loc.Get("bank.menu_withdraw"), Category = "core", Icon = "withdraw" },
+            new() { Key = "T", Label = Loc.Get("bank.menu_transfer"), Category = "core", Icon = "transfer" },
+            new() { Key = "L", Label = Loc.Get("bank.menu_loans"), Category = "credit", Icon = "loan" },
+            new() { Key = "I", Label = Loc.Get("bank.menu_interest"), Category = "info", Icon = "info" },
+            new() { Key = "A", Label = Loc.Get("bank.menu_account"), Category = "info", Icon = "account" },
+            new() { Key = "G", Label = currentPlayer.BankGuard ? Loc.Get("bank.menu_guard_resign") : Loc.Get("bank.menu_guard"), Category = "duty", Icon = "guard" },
+            new() { Key = "O", Label = Loc.Get("bank.menu_robbery"), Category = "evil", Icon = "robbery" },
+            new() { Key = "R", Label = Loc.Get("ui.return"), Category = "navigate", Icon = "back" },
+        };
+        ElectronBridge.EmitMenu(menu);
+
+        EmitNPCsInLocationToElectron();
+    }
 }
