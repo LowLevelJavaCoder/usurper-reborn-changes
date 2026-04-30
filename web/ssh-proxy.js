@@ -1778,6 +1778,38 @@ async function getAdminOverview() {
     }
   }
 
+  // v0.60.0 beta-launch Rage event memorial. The rage_victims table is
+  // lazy-created by C# the first time a player is erased -- absent until
+  // then. Wrap every read so the absence is silent.
+  let rageEvent = { totalErased: 0, last24h: 0, recent: [] };
+  if (db) {
+    try {
+      const tableCheck = db.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='rage_victims'"
+      ).get();
+      if (tableCheck) {
+        const totalRow = db.prepare("SELECT COUNT(*) as cnt FROM rage_victims").get();
+        rageEvent.totalErased = totalRow ? totalRow.cnt : 0;
+        const last24Row = db.prepare(
+          "SELECT COUNT(*) as cnt FROM rage_victims WHERE erased_at >= datetime('now', '-24 hours')"
+        ).get();
+        rageEvent.last24h = last24Row ? last24Row.cnt : 0;
+        const recentRows = db.prepare(
+          "SELECT username, display_name, level, class_name, erased_at FROM rage_victims ORDER BY erased_at DESC LIMIT 25"
+        ).all();
+        rageEvent.recent = (recentRows || []).map(r => ({
+          username: r.username,
+          displayName: r.display_name,
+          level: r.level,
+          className: r.class_name,
+          erasedAt: r.erased_at
+        }));
+      }
+    } catch (e) {
+      console.error(`[usurper-web] Rage event query error: ${e.message}`);
+    }
+  }
+
   // Web proxy stats
   const webProxy = {
     startTime: new Date(Date.now() - process.uptime() * 1000).toISOString(),
@@ -1786,7 +1818,7 @@ async function getAdminOverview() {
     dashSseClients: dashSseClients ? dashSseClients.size : 0
   };
 
-  adminOverviewCache = { server, disk, players, webProxy };
+  adminOverviewCache = { server, disk, players, webProxy, rageEvent };
   adminOverviewCacheTime = now;
   return adminOverviewCache;
 }

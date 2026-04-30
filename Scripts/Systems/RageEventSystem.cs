@@ -167,22 +167,24 @@ namespace UsurperRemake.Systems
                     $"Cinematic threw for '{username}': {ex.Message}. Continuing to deletion.");
             }
 
-            // Permadelete the character. bypassArchive=true makes this irreversible:
-            // no /restore window, no recovery. The whole point of the event is the
-            // finality, and the entire DB will be wiped wholesale anyway.
+            // Hard-delete the entire account row, not just the character data.
+            // After this runs, AuthenticatePlayer returns "Unknown username" --
+            // the player cannot log back in with their old credentials. Their
+            // password_hash is gone with the row. This is what the user asked
+            // for: divine erasure that takes the SSH account too, not just the
+            // character. The whole DB will be wiped at beta launch anyway, so
+            // there is no recovery path even if we wanted one.
             try
             {
                 if (SaveSystem.Instance?.Backend is SqlSaveBackend sqlBackend && !string.IsNullOrEmpty(username))
                 {
-                    sqlBackend.DeleteGameData(username, bypassArchive: true);
-                    DebugLogger.Instance.LogWarning("RAGE_EVENT",
-                        $"Permadeleted character for '{username}' via Rage event (bypassArchive=true).");
+                    sqlBackend.DeleteAccountCompletely(username);
                 }
             }
             catch (Exception ex)
             {
                 DebugLogger.Instance.LogError("RAGE_EVENT",
-                    $"Permadelete failed for '{username}': {ex.Message}");
+                    $"Account hard-delete failed for '{username}': {ex.Message}");
             }
 
             try
@@ -191,6 +193,7 @@ namespace UsurperRemake.Systems
                 terminal.WriteLine("");
                 terminal.SetColor("gray");
                 terminal.WriteLine("  Your record has been erased from the world.");
+                terminal.WriteLine("  Your name will not answer the door again.");
                 terminal.WriteLine("  Disconnecting.");
                 terminal.WriteLine("");
                 await Task.Delay(2500);

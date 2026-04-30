@@ -412,6 +412,9 @@
   <!-- Overview Cards -->
   <div class="cards" id="overview-cards"></div>
 
+  <!-- v0.60.0 Rage event memorial (auto-hides when no victims) -->
+  <div class="section" id="rage-victims" style="display:none"></div>
+
   <!-- Services + Online Players -->
   <div class="section-grid">
     <div class="section">
@@ -877,7 +880,7 @@ function connTag(type) {
 
 // --- Overview Cards ---
 function renderOverviewCards(data) {
-  const { server, disk, players, webProxy } = data;
+  const { server, disk, players, webProxy, rageEvent } = data;
   const cards = [
     { label: 'System Uptime', value: fmtUptime(server.systemUptime) },
     { label: 'Web Proxy Uptime', value: fmtUptime(server.processUptime) },
@@ -905,6 +908,17 @@ function renderOverviewCards(data) {
     { label: 'SSE Clients', value: webProxy.sseClients + webProxy.dashSseClients },
   ];
 
+  // Append Rage event metrics only when something has actually been erased.
+  // Keeps the dashboard clean during the dormant period.
+  if (rageEvent && rageEvent.totalErased > 0) {
+    cards.push({
+      label: 'Erased by Rage',
+      value: rageEvent.totalErased,
+      cls: 'bad',
+      sub: rageEvent.last24h > 0 ? `${rageEvent.last24h} in last 24h` : 'all-time'
+    });
+  }
+
   const el = document.getElementById('overview-cards');
   el.innerHTML = cards.map(c => `
     <div class="card">
@@ -913,6 +927,34 @@ function renderOverviewCards(data) {
       ${c.sub ? `<div class="sub">${c.sub}</div>` : ''}
     </div>
   `).join('');
+
+  // Render the recent victims list in its own panel (rendered conditionally
+  // -- if the panel doesn't exist in markup, this no-ops).
+  const rageEl = document.getElementById('rage-victims');
+  if (rageEl) {
+    if (rageEvent && rageEvent.totalErased > 0) {
+      const rows = (rageEvent.recent || []).map(v => {
+        const ts = v.erasedAt || '';
+        const lvl = v.level != null ? `Lv.${v.level}` : '?';
+        const cls = v.className || '?';
+        const dn = v.displayName || v.username;
+        return `<tr><td>${escapeHtml(dn)}</td><td>${lvl}</td><td>${escapeHtml(cls)}</td><td>${escapeHtml(ts)}</td></tr>`;
+      }).join('');
+      rageEl.innerHTML = `
+        <h3 style="color:var(--red);margin-top:0">Erased by Rage</h3>
+        <div style="color:var(--dim);font-size:11px;margin-bottom:8px">
+          Total erased: <strong style="color:var(--red)">${rageEvent.totalErased}</strong>
+          (last 24h: <strong>${rageEvent.last24h}</strong>). Most recent 25 below.
+        </div>
+        <table>
+          <tr><th>Name</th><th>Level</th><th>Class</th><th>Erased At</th></tr>
+          ${rows || '<tr><td colspan="4" style="color:var(--dim)">No data</td></tr>'}
+        </table>`;
+      rageEl.style.display = '';
+    } else {
+      rageEl.style.display = 'none';
+    }
+  }
 }
 
 // --- Services ---

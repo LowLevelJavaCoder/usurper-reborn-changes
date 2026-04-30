@@ -686,6 +686,143 @@ namespace UsurperRemake.Systems
         }
 
         /// <summary>
+        /// v0.60.0 beta-launch Rage event: nuke the entire account row, not just
+        /// the player_data column. After this runs, AuthenticatePlayer will return
+        /// "Unknown username" because the row no longer exists. Used by the Rage
+        /// god to make the erasure absolute -- character gone, account gone,
+        /// password_hash gone. The player cannot log back in with their old
+        /// credentials. They can re-register the same username, but it would be
+        /// a brand new account with no connection to the old one.
+        ///
+        /// Also clears related session/state tables (online_players,
+        /// sleeping_players, online_state) so the divine erasure is consistent
+        /// across all server views.
+        /// </summary>
+        public bool DeleteAccountCompletely(string username)
+        {
+            try
+            {
+                using var connection = OpenConnection();
+
+                // Lazy-create the rage_victims memorial table so we can ship this
+                // without a schema-coordinated server restart. One row per erased
+                // account, recording who Rage took and when.
+                try
+                {
+                    using var schema = connection.CreateCommand();
+                    schema.CommandText = @"
+                        CREATE TABLE IF NOT EXISTS rage_victims (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            username TEXT NOT NULL,
+                            display_name TEXT,
+                            level INTEGER,
+                            class_name TEXT,
+                            erased_at TEXT DEFAULT (datetime('now'))
+                        );";
+                    schema.ExecuteNonQuery();
+                }
+                catch (Exception ex) { DebugLogger.Instance.LogWarning("SQL", $"rage_victims schema create failed: {ex.Message}"); }
+
+                // Capture display_name / level / class BEFORE we drop the row,
+                // so the memorial entry has more than just a lowercase username.
+                string? capturedDisplayName = null;
+                int? capturedLevel = null;
+                string? capturedClass = null;
+                try
+                {
+                    using var peek = connection.CreateCommand();
+                    peek.CommandText = "SELECT display_name, player_data FROM players WHERE LOWER(username) = LOWER(@u);";
+                    peek.Parameters.AddWithValue("@u", username);
+                    using var rd = peek.ExecuteReader();
+                    if (rd.Read())
+                    {
+                        capturedDisplayName = rd.IsDBNull(0) ? null : rd.GetString(0);
+                        if (!rd.IsDBNull(1))
+                        {
+                            var json = rd.GetString(1);
+                            if (json != "{}" && !string.IsNullOrWhiteSpace(json))
+                            {
+                                try
+                                {
+                                    var saveData = JsonSerializer.Deserialize<SaveGameData>(json, jsonOptions);
+                                    if (saveData?.Player != null)
+                                    {
+                                        capturedLevel = saveData.Player.Level;
+                                        capturedClass = saveData.Player.Class.ToString();
+                                        if (string.IsNullOrEmpty(capturedDisplayName))
+                                            capturedDisplayName = saveData.Player.Name2 ?? saveData.Player.Name1;
+                                    }
+                                }
+                                catch { /* malformed save -- still record what we have */ }
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex) { DebugLogger.Instance.LogWarning("SQL", $"rage_victims peek failed for '{username}': {ex.Message}"); }
+
+                // Insert the memorial row. Best-effort; a failure here doesn't
+                // prevent the actual account deletion.
+                try
+                {
+                    using var memorial = connection.CreateCommand();
+                    memorial.CommandText = @"
+                        INSERT INTO rage_victims (username, display_name, level, class_name)
+                        VALUES (@u, @d, @l, @c);";
+                    memorial.Parameters.AddWithValue("@u", username);
+                    memorial.Parameters.AddWithValue("@d", (object?)capturedDisplayName ?? DBNull.Value);
+                    memorial.Parameters.AddWithValue("@l", (object?)capturedLevel ?? DBNull.Value);
+                    memorial.Parameters.AddWithValue("@c", (object?)capturedClass ?? DBNull.Value);
+                    memorial.ExecuteNonQuery();
+                }
+                catch (Exception ex) { DebugLogger.Instance.LogWarning("SQL", $"rage_victims insert failed for '{username}': {ex.Message}"); }
+
+                // Cleanup transient/session tables first (best-effort each).
+                try
+                {
+                    using var c1 = connection.CreateCommand();
+                    c1.CommandText = "DELETE FROM online_players WHERE LOWER(username) = LOWER(@u);";
+                    c1.Parameters.AddWithValue("@u", username);
+                    c1.ExecuteNonQuery();
+                }
+                catch (Exception ex) { DebugLogger.Instance.LogWarning("SQL", $"online_players cleanup failed for '{username}': {ex.Message}"); }
+
+                try
+                {
+                    using var c2 = connection.CreateCommand();
+                    c2.CommandText = "DELETE FROM sleeping_players WHERE LOWER(username) = LOWER(@u);";
+                    c2.Parameters.AddWithValue("@u", username);
+                    c2.ExecuteNonQuery();
+                }
+                catch (Exception ex) { DebugLogger.Instance.LogWarning("SQL", $"sleeping_players cleanup failed for '{username}': {ex.Message}"); }
+
+                try
+                {
+                    using var c3 = connection.CreateCommand();
+                    c3.CommandText = "DELETE FROM deleted_characters WHERE LOWER(username) = LOWER(@u);";
+                    c3.Parameters.AddWithValue("@u", username);
+                    c3.ExecuteNonQuery();
+                }
+                catch (Exception ex) { DebugLogger.Instance.LogWarning("SQL", $"deleted_characters cleanup failed for '{username}': {ex.Message}"); }
+
+                // The kill: drop the account row itself.
+                using var cmd = connection.CreateCommand();
+                cmd.CommandText = "DELETE FROM players WHERE LOWER(username) = LOWER(@u);";
+                cmd.Parameters.AddWithValue("@u", username);
+                var affected = cmd.ExecuteNonQuery();
+
+                DebugLogger.Instance.LogWarning("RAGE_EVENT",
+                    $"Hard-deleted account '{username}' (display='{capturedDisplayName}', lv={capturedLevel}, class={capturedClass}). Memorialized in rage_victims.");
+
+                return affected > 0;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Instance.LogError("SQL", $"DeleteAccountCompletely failed for '{username}': {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
         /// Look up the most recent archived character for an SSH account, if
         /// one exists within the 7-day grace window. Returns null if nothing
         /// to restore. Used by the /restore slash command.
