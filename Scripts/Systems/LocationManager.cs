@@ -381,6 +381,15 @@ public class LocationManager
     /// </summary>
     private async Task HandlePlayerDeath(Character player)
     {
+        // v0.60.0 beta: short-circuit if the death has ALREADY been processed
+        // by an upstream handler (eg CombatEngine.HandlePlayerDeath). Without
+        // this guard, a combat death runs the auto-revive / permadeath flow,
+        // then the location loop sees HP=0 still and re-fires the same flow
+        // here -- leading to a second "X has been erased forever, slain by
+        // an unknown end" broadcast (player report). The combat path sets
+        // IsIntentionalExit=true after permadeath; we use that as the marker.
+        if (UsurperRemake.Server.SessionContext.Current?.IsIntentionalExit == true) return;
+
         terminal.ClearScreen();
         terminal.SetColor("bright_red");
         if (!GameConfig.ScreenReaderMode)
@@ -395,7 +404,22 @@ public class LocationManager
         terminal.WriteLine("");
         await Task.Delay(2000);
 
-        // Check if player has resurrections (from items/temple)
+        // v0.60.0 beta: online mode uses the 3-resurrection cap with no
+        // penalty options. PermadeathHelper handles auto-revive or final
+        // erasure including the server-wide broadcast and news entry.
+        // Single-player keeps the legacy Y/N prompt and penalty fallback.
+        if (UsurperRemake.BBS.DoorMode.IsOnlineMode)
+        {
+            bool revived = await PermadeathHelper.HandleOnlineDeath(player, terminal, "an unknown end");
+            if (revived)
+            {
+                player.Location = (int)GameLocation.TheInn;
+                await SaveSystem.Instance.AutoSave(player);
+            }
+            return;
+        }
+
+        // Single-player: legacy Y/N prompt
         if (player.Resurrections > 0)
         {
             terminal.SetColor("yellow");

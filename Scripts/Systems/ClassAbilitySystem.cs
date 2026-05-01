@@ -2549,6 +2549,11 @@ public static class ClassAbilitySystem
         result.AbilityUsed = ability;
         result.CooldownApplied = ability.Cooldown;
 
+        // v0.60.0 alpha audit: track ability uses. Aura's 1918 wins included
+        // hundreds of Backstab firings; counter showed 0 across the entire
+        // alpha cohort because nobody ever wired this up.
+        user.Statistics?.RecordAbilityUsed();
+
         // Calculate scaled effect values
         // BALANCE: Abilities should always be stronger than basic attacks to reward
         // using special moves. Scale is 3% per level and stats contribute significantly

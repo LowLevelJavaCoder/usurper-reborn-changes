@@ -561,6 +561,11 @@ public static class SpellSystem
         result.ManaCost = manaCost;
         caster.Mana -= manaCost;
 
+        // v0.60.0 alpha audit: track spell casts. Stat field existed since
+        // forever but no code ever incremented it -- entire alpha cohort
+        // showed totalSpellsCast=0 including Lv.100 wizards.
+        caster.Statistics?.RecordSpellCast();
+
         // Check for spell failure
         // Spells don't auto-fail on natural 1 (unlike melee attacks) — only the flat fumble
         // chance from inexperience and failing to beat the DC cause failure. This follows

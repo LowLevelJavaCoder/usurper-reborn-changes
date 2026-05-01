@@ -213,6 +213,9 @@ public class ArenaLocation : BaseLocation
             .Where(p => Math.Abs(p.Level - currentPlayer.Level) <= GameConfig.PvPLevelRangeLimit)
             .Where(p => p.Level >= GameConfig.MinPvPLevel)
             .Where(p => !backend.HasAttackedPlayerToday(myUsername, p.Username))
+            // v0.60.0 alpha balance review: defender shield. Skip players who
+            // already lost a PvP today and haven't logged in to clear it.
+            .Where(p => !backend.IsDefenderShielded(p.Username))
             .OrderByDescending(p => p.Level)
             .ToList();
 
@@ -367,6 +370,22 @@ public class ArenaLocation : BaseLocation
             // Calculate gold theft (10% of defender's ACTUAL gold from save)
             goldStolen = (long)(defenderGold * GameConfig.PvPGoldStealPercent);
             goldStolen = Math.Max(0, goldStolen);
+
+            // v0.60.0 alpha balance review: alt-account gold-steal cap. Stops
+            // the alt-as-gold-mule strategy. Alpha had `__alt` accounts running
+            // 25 attacks for 141k gold with no level penalty -- alt-mains were
+            // exploiting the lack of cap to siphon mid-tier players' wealth
+            // back to their main without exposing their main's level/gear.
+            if (myUsername.EndsWith(SqlSaveBackend.GetAltKey("").TrimStart('_'), System.StringComparison.OrdinalIgnoreCase)
+                || myUsername.EndsWith("__alt", System.StringComparison.OrdinalIgnoreCase))
+            {
+                long altCap = GameConfig.PvPAltGoldStealBase + GameConfig.PvPAltGoldStealPerLevel * currentPlayer.Level;
+                if (goldStolen > altCap)
+                {
+                    DebugLogger.Instance.LogInfo("GOLD", $"ARENA ALT CAP: alt '{myUsername}' steal capped {goldStolen:N0} -> {altCap:N0}g");
+                    goldStolen = altCap;
+                }
+            }
 
             // Apply gold reward (XP and kill tracking already handled by CombatEngine)
             currentPlayer.Gold += goldStolen;

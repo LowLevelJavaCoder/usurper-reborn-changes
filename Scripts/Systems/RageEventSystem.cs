@@ -40,9 +40,13 @@ namespace UsurperRemake.Systems
         private static readonly DateTime EventStartUtc = new DateTime(2026, 4, 30, 7, 0, 0, DateTimeKind.Utc);
         private static readonly DateTime EventEndUtc = new DateTime(2026, 5, 1, 7, 0, 0, DateTimeKind.Utc);
 
-        // Sysop-controlled kill switch. Default ON so the date window auto-fires.
-        // Flipped via the /rage admin slash command if anything breaks during the event.
-        private static volatile bool _sysopDisabled = false;
+        // Sysop-controlled kill switch. v0.60.0 beta-launch decision: disabled
+        // by default (the sysop chose to wipe the server early and lift the
+        // rage event rather than wait out the original 24-hour window). The
+        // /rage on slash command can re-enable it within the date window if
+        // the design call changes; outside the window it stays dormant
+        // regardless of this flag.
+        private static volatile bool _sysopDisabled = true;
 
         public static bool IsActive => !_sysopDisabled
             && DateTime.UtcNow >= EventStartUtc

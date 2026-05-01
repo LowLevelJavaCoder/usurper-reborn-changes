@@ -25,6 +25,19 @@ namespace UsurperRemake.Systems
         // Per-player death cooldown tracking (username -> UTC time when they can re-enter)
         private readonly Dictionary<string, DateTime> _deathCooldowns = new();
 
+        // v0.60.0 alpha audit: per-spawn engagement lock. Players were soloing
+        // world bosses by fight->leave->heal->return. The boss HP is persistent
+        // but the player's HP isn't, so a tank build could chip the boss down
+        // across multiple sessions trivially. Now: once you engage a world
+        // boss, leaving (any way except killing it) locks you out of further
+        // engagements with THIS spawn. Encourages commit-to-the-fight gameplay
+        // and forces actual coordination for HP-heavy bosses. Keyed by
+        // bossId so each new spawn starts fresh; in-memory only (server
+        // restart resets, which is fine -- restart is rare and the worst case
+        // is a few extra players get a second chance).
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<int, HashSet<string>> _engagedThisSpawn = new();
+        private readonly object _engagedLock = new();
+
         /// <summary>Last known active boss name for notification display. Set on spawn, cleared on death/despawn.</summary>
         public volatile string? ActiveBossName;
 
@@ -299,6 +312,27 @@ namespace UsurperRemake.Systems
                 return;
             }
 
+            // v0.60.0 alpha audit: per-spawn engagement lockout. Check FIRST
+            // (read-only) so the HP=0 / data-error bounces below don't trip
+            // it. The actual mark-as-engaged write happens once we're past
+            // those entry validations.
+            var engagedSet = _engagedThisSpawn.GetOrAdd(boss.Id, _ => new HashSet<string>());
+            bool alreadyEngaged;
+            lock (_engagedLock)
+            {
+                alreadyEngaged = engagedSet.Contains(playerKey);
+            }
+            if (alreadyEngaged)
+            {
+                terminal.SetColor("dark_red");
+                terminal.WriteLine($"\n  You have already faced this god and chose to leave.");
+                terminal.WriteLine($"  No second chance is given. Wait for the next.");
+                terminal.SetColor("gray");
+                terminal.WriteLine($"  (Your damage already dealt still counts on the leaderboard.)");
+                await Task.Delay(2500);
+                return;
+            }
+
             if (player.HP <= 0)
             {
                 terminal.SetColor("red");
@@ -316,6 +350,16 @@ namespace UsurperRemake.Systems
                 terminal.WriteLine($"\n  {Loc.Get("world_boss.error_load")}");
                 await Task.Delay(1500);
                 return;
+            }
+
+            // v0.60.0: now that all entry validations have passed, mark this
+            // player as having engaged. From this point on, leaving the fight
+            // (any way except killing the boss) locks them out for this spawn.
+            // A disconnect mid-combat still counts as "you committed and bailed"
+            // -- the dict is in-memory and survives the player's session ending.
+            lock (_engagedLock)
+            {
+                engagedSet.Add(playerKey);
             }
 
             // Combat state

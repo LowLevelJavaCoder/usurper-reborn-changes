@@ -725,6 +725,36 @@ namespace UsurperRemake.Systems
         /// sleeping_players, online_state) so the divine erasure is consistent
         /// across all server views.
         /// </summary>
+        /// <summary>
+        /// v0.60.0 beta: mark a username as erased in the in-memory blacklist
+        /// without doing the actual DB delete. Used by PermadeathHelper.
+        /// ExecutePermadeath which uses the soft-delete (DeleteGameData with
+        /// archive=true) but still needs WriteGameData saves to be blocked
+        /// during/after the cinematic so a fire-and-forget autosave or
+        /// disconnect-save can't re-INSERT the player_data the soft-delete
+        /// just cleared. Idempotent.
+        /// </summary>
+        public static void MarkUsernameErased(string username)
+        {
+            if (!string.IsNullOrEmpty(username))
+                RageEventErasedUsernames[username.ToLower()] = 1;
+        }
+
+        /// <summary>
+        /// v0.60.0 beta: clear the in-memory erasure mark. Called when a player
+        /// consciously creates a NEW character on the same SSH account after
+        /// being permadied -- otherwise WriteGameData would keep blocking
+        /// their saves for the rest of the server uptime, and the new
+        /// character's first save throws "Failed to save game!" (player
+        /// report). Also called on session.IsRageKilled clear if that ever
+        /// gets used.
+        /// </summary>
+        public static void ClearErasedMark(string username)
+        {
+            if (!string.IsNullOrEmpty(username))
+                RageEventErasedUsernames.TryRemove(username.ToLower(), out _);
+        }
+
         public bool DeleteAccountCompletely(string username)
         {
             // Mark the username in the process-wide blacklist FIRST. WriteGameData
@@ -3209,6 +3239,43 @@ namespace UsurperRemake.Systems
             {
                 DebugLogger.Instance.LogError("SQL", $"Failed to check PvP attack: {ex.Message}");
                 return true; // Fail safe: prevent attack
+            }
+        }
+
+        /// <summary>
+        /// v0.60.0 alpha balance review: defender shield. Returns true if the
+        /// defender has lost any PvP since their most recent login AND that
+        /// loss happened today. Two-layer semantic: shield drops on next login
+        /// (player has agency to clear it) OR at daily reset (catches the
+        /// case where the defender is offline for a long time). Stops the
+        /// spam-attack-the-same-victim pattern that turned vazren (19 attacks,
+        /// 3.16M gold lost) and shornthesheep (13 attacks, 2.76M gold lost)
+        /// into farming targets.
+        /// </summary>
+        public bool IsDefenderShielded(string defender)
+        {
+            try
+            {
+                using var connection = OpenConnection();
+                using var cmd = connection.CreateCommand();
+                cmd.CommandText = @"
+                    SELECT 1 FROM pvp_log
+                    WHERE LOWER(defender) = LOWER(@defender)
+                      AND created_at >= date('now')
+                      AND created_at > COALESCE(
+                          (SELECT last_login FROM players WHERE LOWER(username) = LOWER(@defender)),
+                          '1900-01-01'
+                      )
+                    LIMIT 1;
+                ";
+                cmd.Parameters.AddWithValue("@defender", defender);
+                var result = cmd.ExecuteScalar();
+                return result != null && result != DBNull.Value;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Instance.LogError("SQL", $"Failed to check defender shield: {ex.Message}");
+                return false;
             }
         }
 

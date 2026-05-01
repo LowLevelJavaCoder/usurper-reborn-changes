@@ -267,6 +267,10 @@ public partial class PrisonLocation : BaseLocation
     private async Task ShowPrisonMenuFull()
     {
         await terminal.ClearScreenAsync();
+        // v0.60.0 beta (player report: prison menu rendering all-red): set
+        // explicit default color at the top so plain WriteLineAsync calls
+        // below don't inherit a leftover color (eg the murder-cinematic red).
+        terminal.SetColor("white");
         await terminal.WriteLineAsync();
 
         // Prison header
@@ -280,6 +284,7 @@ public partial class PrisonLocation : BaseLocation
         {
             await terminal.WriteColorLineAsync(Loc.Get("prison.title"), TerminalEmulator.ColorCyan);
         }
+        terminal.SetColor("white");
         await terminal.WriteLineAsync();
 
         // Prison atmosphere description
@@ -291,6 +296,7 @@ public partial class PrisonLocation : BaseLocation
         await terminal.WriteLineAsync();
 
         // Menu options
+        terminal.SetColor("white");
         if (IsScreenReader)
         {
             await terminal.WriteLineAsync(Loc.Get("prison.sr_menu_who"));
@@ -1006,8 +1012,37 @@ public partial class PrisonLocation : BaseLocation
             return false;
         }
 
+        // v0.60.0 beta: defensive null guards. Player report: pressing [V]
+        // in prison threw "Object reference not set to an instance of an
+        // object" because something in the Vex object chain was null
+        // (DialogueHints, CombatRole, Abilities, BackstoryBrief, etc.) on
+        // a fresh-character context. CanMeetVex passed (vex existed) but
+        // its sub-fields weren't fully initialized. Defensive defaults.
         var companionSystem = CompanionSystem.Instance;
+        if (companionSystem == null)
+        {
+            await terminal.WriteLineAsync();
+            await terminal.WriteColorLineAsync(Loc.Get("prison.no_one_unusual"), TerminalEmulator.ColorDarkGray);
+            return false;
+        }
         var vex = companionSystem.GetCompanion(CompanionId.Vex);
+        if (vex == null)
+        {
+            await terminal.WriteLineAsync();
+            await terminal.WriteColorLineAsync(Loc.Get("prison.no_one_unusual"), TerminalEmulator.ColorDarkGray);
+            return false;
+        }
+        // Pre-extract sub-fields with safe fallbacks so the cinematic
+        // never crashes on a missing piece of companion metadata.
+        string vexName = vex.Name ?? "Vex";
+        string vexTitle = vex.Title ?? "";
+        string vexRole = vex.CombatRole.ToString();
+        string vexAbilities = vex.Abilities != null ? string.Join(", ", vex.Abilities) : "";
+        string vexBackstory = vex.BackstoryBrief ?? "";
+        var hints = vex.DialogueHints;
+        string hint0 = (hints != null && hints.Length > 0) ? hints[0] : "...";
+        string hint1 = (hints != null && hints.Length > 1) ? hints[1] : "...";
+        string hint2 = (hints != null && hints.Length > 2) ? hints[2] : "...";
 
         await terminal.ClearScreenAsync();
         await terminal.WriteLineAsync();
@@ -1030,7 +1065,7 @@ public partial class PrisonLocation : BaseLocation
         await terminal.WriteLineAsync();
         await Task.Delay(1500);
 
-        await terminal.WriteColorAsync($"\"{vex!.DialogueHints[0]}\"", TerminalEmulator.ColorCyan);
+        await terminal.WriteColorAsync($"\"{hint0}\"", TerminalEmulator.ColorCyan);
         await terminal.WriteLineAsync();
         await terminal.WriteLineAsync();
         await Task.Delay(2000);
@@ -1041,18 +1076,18 @@ public partial class PrisonLocation : BaseLocation
         await terminal.WriteLineAsync();
         await Task.Delay(1500);
 
-        await terminal.WriteColorAsync($"\"{vex.DialogueHints[1]}\"", TerminalEmulator.ColorCyan);
+        await terminal.WriteColorAsync($"\"{hint1}\"", TerminalEmulator.ColorCyan);
         await terminal.WriteLineAsync();
         await terminal.WriteLineAsync();
         await Task.Delay(1500);
 
         // Show his details
-        await terminal.WriteColorLineAsync(Loc.Get("prison.vex_intro", vex.Name, vex.Title), TerminalEmulator.ColorYellow);
-        await terminal.WriteColorLineAsync(Loc.Get("prison.vex_role", vex.CombatRole), TerminalEmulator.ColorYellow);
-        await terminal.WriteColorLineAsync(Loc.Get("prison.vex_abilities", string.Join(", ", vex.Abilities)), TerminalEmulator.ColorYellow);
+        await terminal.WriteColorLineAsync(Loc.Get("prison.vex_intro", vexName, vexTitle), TerminalEmulator.ColorYellow);
+        await terminal.WriteColorLineAsync(Loc.Get("prison.vex_role", vexRole), TerminalEmulator.ColorYellow);
+        await terminal.WriteColorLineAsync(Loc.Get("prison.vex_abilities", vexAbilities), TerminalEmulator.ColorYellow);
         await terminal.WriteLineAsync();
 
-        await terminal.WriteColorLineAsync(vex.BackstoryBrief, TerminalEmulator.ColorDarkGray);
+        await terminal.WriteColorLineAsync(vexBackstory, TerminalEmulator.ColorDarkGray);
         await terminal.WriteLineAsync();
         await Task.Delay(1500);
 

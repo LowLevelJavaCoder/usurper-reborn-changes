@@ -548,6 +548,46 @@ public class PlayerStatistics
         TotalTrapsDisarmed++;
     }
 
+    // === v0.60.0 alpha audit: missing Record helpers. The fields existed on
+    // PlayerStatistics but no method ever incremented them, so the dashboard
+    // and achievement triggers saw 0 across the entire alpha cohort. Wired
+    // into combat/dialogue/intimacy/dungeon code via separate edits.
+
+    public void RecordSpellCast()
+    {
+        TotalSpellsCast++;
+    }
+
+    public void RecordAbilityUsed()
+    {
+        TotalAbilitiesUsed++;
+    }
+
+    public void RecordNPCInteraction()
+    {
+        TotalNPCInteractions++;
+    }
+
+    public void RecordConversation()
+    {
+        TotalConversations++;
+    }
+
+    public void RecordRomance()
+    {
+        TotalRomances++;
+    }
+
+    public void RecordGiftGiven()
+    {
+        TotalGiftsGiven++;
+    }
+
+    public void RecordRoomExplored()
+    {
+        TotalRoomsExplored++;
+    }
+
     // === DARK ALLEY TRACKING (v0.41.0) ===
 
     public void RecordGamblingWin(long amount)

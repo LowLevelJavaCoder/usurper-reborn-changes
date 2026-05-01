@@ -9265,6 +9265,33 @@ public partial class CombatEngine
             }
 
             var currentEquip = teammate.GetEquipment(actualSlot);
+
+            // v0.60.0 beta: defense in depth. If the slot has an item of the
+            // WRONG type for the slot we're considering (eg a Chain Shirt
+            // stuck in MainHand from some legacy save bug), the cross-type
+            // power comparison produces nonsense like "Mace [WP:19] is a
+            // 1800% upgrade over Chain Shirt [AP:17]" because we'd score the
+            // armor as a weapon and read 0+0+0+DEF=2 vs Mace's 19*3=57.
+            // Skip such teammates entirely; the broken slot will need a
+            // manual unequip-and-re-equip from the player.
+            if (currentEquip != null)
+            {
+                bool slotIsHand = actualSlot == EquipmentSlot.MainHand || actualSlot == EquipmentSlot.OffHand;
+                bool currentIsWeaponLike = currentEquip.Handedness != WeaponHandedness.None;
+                if (slotIsHand && !currentIsWeaponLike)
+                {
+                    DebugLogger.Instance.LogWarning("COMPANION_EQUIP",
+                        $"Auto-pickup: {teammate.DisplayName} {actualSlot} contains '{currentEquip.Name}' (type {currentEquip.Slot}, handedness {currentEquip.Handedness}) -- mismatched slot. Skipping cross-type comparison.");
+                    continue;
+                }
+                if (!slotIsHand && currentEquip.Slot != actualSlot)
+                {
+                    DebugLogger.Instance.LogWarning("COMPANION_EQUIP",
+                        $"Auto-pickup: {teammate.DisplayName} {actualSlot} contains '{currentEquip.Name}' (natural slot {currentEquip.Slot}) -- mismatched. Skipping.");
+                    continue;
+                }
+            }
+
             int currentPower = 0;
             if (currentEquip != null)
             {
@@ -18902,10 +18929,184 @@ public partial class CombatEngine
     }
 
     /// <summary>
+    /// v0.60.0 beta: when a player exceeds the playthrough death cap
+    /// (GameConfig.MaxPlaythroughDeaths, default 5), the character is
+    /// permadeleted instead of getting the normal Veil-of-Death menu.
+    /// Plays a short cinematic naming the cap, then archives + hard-deletes
+    /// the account row. Archive lets the player /restore within 7 days
+    /// (per v0.57.22 deleted_characters table) so a single bad afternoon
+    /// isn't unrecoverable.
+    /// </summary>
+    private async Task HandleExcessiveDeathsPermadeath(CombatResult result)
+    {
+        // v0.60.0 beta: delegate to the shared PermadeathHelper. Earlier this
+        // method had its own ~115-line inline implementation that duplicated
+        // PermadeathHelper.ExecutePermadeath. The duplicates drifted (this
+        // path was missing the SuppressDisconnectSave + MarkUsernameErased
+        // save-blocking logic that PermadeathHelper has). Single source of
+        // truth fixes the "player can log straight back into permadied
+        // character" report.
+        string actualKiller = result.Monster?.Name ?? "an unknown end";
+        await UsurperRemake.Systems.PermadeathHelper.ExecutePermadeath(result.Player, terminal, actualKiller);
+        return;
+
+        // Unreachable -- legacy duplicate kept below the return for
+        // documentation only. Will be removed in a future cleanup pass.
+#pragma warning disable CS0162 // Unreachable code
+        var player = result.Player;
+        try
+        {
+            terminal.ClearScreen();
+        }
+        catch { /* ignore */ }
+
+        try
+        {
+            terminal.SetColor("dark_red");
+            terminal.WriteLine("");
+            terminal.WriteLine("");
+            terminal.WriteLine($"  You have died for the {GameConfig.MaxPlaythroughDeaths + 1}th time.");
+            await Task.Delay(2000);
+            terminal.WriteLine("");
+            terminal.WriteLine("  The threads that bind your soul to the world fray.");
+            await Task.Delay(2000);
+            terminal.WriteLine("  No temple will receive you. No god will bargain.");
+            await Task.Delay(2000);
+            terminal.WriteLine("  No coin will buy your return.");
+            await Task.Delay(2500);
+
+            terminal.WriteLine("");
+            terminal.SetColor("bright_red");
+            terminal.WriteLine($"  {player.Name2 ?? player.Name1 ?? "Mortal"}, you have exhausted your lives.");
+            await Task.Delay(2500);
+
+            terminal.WriteLine("");
+            terminal.SetColor("gray");
+            terminal.WriteLine("  The Veil closes for the last time.");
+            await Task.Delay(2000);
+            terminal.WriteLine("  Your record is being erased.");
+            await Task.Delay(2500);
+        }
+        catch (Exception ex)
+        {
+            DebugLogger.Instance.LogError("DEATH_CAP",
+                $"Cinematic threw for '{player.Name}': {ex.Message}. Continuing to deletion.");
+        }
+
+        // Archive + soft-delete (NOT hard-delete). Keeps the players row with
+        // password_hash intact and player_data='{}', and writes a copy of the
+        // pre-death player_data into deleted_characters with 7-day expiry.
+        // This makes /restore work cleanly (player-self via MudChatSystem, or
+        // sysop via WizardCommandSystem). After 7 days the archive purges and
+        // the character is irretrievable. Hard-delete is reserved for the
+        // rage event where finality is the design intent.
+        try
+        {
+            var ctx = UsurperRemake.Server.SessionContext.Current;
+            string username = ctx?.Username ?? player.Name1 ?? player.Name2 ?? "";
+            string displayName = player.Name2 ?? player.Name1 ?? username;
+            string killerName = result.Monster?.Name ?? "an unknown end";
+            int finalLevel = player.Level;
+            string className = player.Class.ToString();
+
+            if (SaveSystem.Instance?.Backend is SqlSaveBackend sqlBackend && !string.IsNullOrEmpty(username))
+            {
+                sqlBackend.DeleteGameData(username, bypassArchive: false);
+                DebugLogger.Instance.LogWarning("DEATH_CAP",
+                    $"Permadeleted '{username}' (display='{displayName}', lv={finalLevel}, class={className}) for excessive deaths ({player.PlaythroughDeaths} total, killed by {killerName}). 7-day /restore window active.");
+            }
+
+            // v0.60.0 beta: server-wide broadcast + news entry. Other players
+            // see the eulogy in real-time and the news feed records the death
+            // for posterity.
+            if (UsurperRemake.BBS.DoorMode.IsOnlineMode)
+            {
+                string eulogy = $"\r\n  *** {displayName} the Lv.{finalLevel} {className} has been erased forever, slain by {killerName}. ***\r\n";
+                try
+                {
+                    UsurperRemake.Server.MudServer.Instance?.BroadcastToAll(
+                        $"[1;31m{eulogy}[0m", excludeUsername: username);
+                }
+                catch (Exception ex) { DebugLogger.Instance.LogError("DEATH_CAP", $"Broadcast failed: {ex.Message}"); }
+
+                try
+                {
+                    if (UsurperRemake.Systems.OnlineStateManager.IsActive)
+                    {
+                        _ = UsurperRemake.Systems.OnlineStateManager.Instance!.AddNews(
+                            $"{displayName} the Lv.{finalLevel} {className} fell forever to {killerName}. Their soul has left the world.",
+                            "permadeath");
+                    }
+                }
+                catch (Exception ex) { DebugLogger.Instance.LogError("DEATH_CAP", $"News post failed: {ex.Message}"); }
+            }
+        }
+        catch (Exception ex)
+        {
+            DebugLogger.Instance.LogError("DEATH_CAP",
+                $"Permadelete failed for '{player.Name}': {ex.Message}");
+        }
+
+        try
+        {
+            terminal.WriteLine("");
+            terminal.SetColor("dark_gray");
+            terminal.WriteLine("  Your character has been erased.");
+            terminal.WriteLine("  If this was a mistake, type /restore within 7 days to recover,");
+            terminal.WriteLine("  or contact a sysop on Discord.");
+            terminal.WriteLine("  Disconnecting.");
+            terminal.WriteLine("");
+            await Task.Delay(3000);
+        }
+        catch { /* ignore */ }
+
+        // Mark session as clean-exit so the disconnect doesn't trip the
+        // crash-warning path. Set via SessionContext directly since the
+        // GameEngine.IsIntentionalExit setter is private.
+        var sessionCtx = UsurperRemake.Server.SessionContext.Current;
+        if (sessionCtx != null) sessionCtx.IsIntentionalExit = true;
+#pragma warning restore CS0162
+    }
+
+    /// <summary>
     /// Handle player death with resurrection options
     /// </summary>
     private async Task HandlePlayerDeath(CombatResult result)
     {
+        // v0.60.0 beta: arrest combat is non-lethal. When the Royal Guards
+        // subdue a murderer in ApplyMurderConsequences, the player should
+        // be hauled off to prison, NOT use a resurrection and trigger the
+        // death cinematic. ApplyMurderConsequences sets IsArrestCombat=true
+        // before the fight; we short-circuit here. HP=1 keeps the player
+        // technically alive so the murder-consequences flow continues with
+        // captured=true (the subdued path).
+        if (result.Player.IsArrestCombat)
+        {
+            result.Player.HP = 1;
+            result.Outcome = CombatOutcome.PlayerEscaped;
+            DebugLogger.Instance.LogInfo("ARREST",
+                $"{result.Player.Name} subdued by guards (no resurrection consumed).");
+            return;
+        }
+
+        // v0.60.0 beta: track total deaths for stats/analytics. The cap that
+        // actually triggers permadeath is the Resurrections counter check
+        // below (online mode only).
+        result.Player.PlaythroughDeaths++;
+        DebugLogger.Instance.LogInfo("DEATH",
+            $"{result.Player.Name} died (lifetime deaths: {result.Player.PlaythroughDeaths}, resurrections left: {result.Player.Resurrections})");
+
+        // v0.60.0 beta: in online mode, permadeath fires when Resurrections
+        // hits 0. No Veil-of-Death menu, no Temple/Deal/Accept fallbacks.
+        // Three free resurrections, then erasure. Single-player keeps the
+        // legacy menu where players can trade XP/gold/levels for a return.
+        bool isOnlinePermadeathMode = UsurperRemake.BBS.DoorMode.IsOnlineMode;
+        if (isOnlinePermadeathMode && result.Player.Resurrections <= 0)
+        {
+            await HandleExcessiveDeathsPermadeath(result);
+            return;
+        }
+
         // Save immediately with HP=0 to prevent save cheesing (close game to avoid death penalties)
         if (GameEngine.Instance != null)
             _ = GameEngine.Instance.SaveCurrentGame();
@@ -19038,8 +19239,49 @@ public partial class CombatEngine
             return;
         }
 
-        // Present resurrection options
-        var resurrectionResult = await PresentResurrectionChoices(result);
+        // v0.60.0 beta: online mode skips the Veil-of-Death menu entirely.
+        // No Temple/Deal/Accept choices -- you have 3 free resurrections per
+        // playthrough, that's it. The death cap (Resurrections == 0) was
+        // already checked above and routed to permadeath. From here we just
+        // auto-consume one resurrection.
+        ResurrectionResult resurrectionResult;
+        if (UsurperRemake.BBS.DoorMode.IsOnlineMode)
+        {
+            result.Player.Resurrections--;
+            result.Player.ResurrectionsUsed++;
+            int rezLeft = result.Player.Resurrections;
+            int restoredHP = (int)(result.Player.MaxHP * 0.5);
+
+            terminal.SetColor("bright_yellow");
+            terminal.WriteLine("");
+            terminal.WriteLine($"  Divine intervention restores you. ({restoredHP}/{result.Player.MaxHP} HP)");
+            if (rezLeft == 0)
+            {
+                terminal.SetColor("bright_red");
+                terminal.WriteLine($"  WARNING: This was your final resurrection.");
+                terminal.WriteLine($"  The next death will erase your character permanently.");
+            }
+            else
+            {
+                terminal.SetColor("yellow");
+                terminal.WriteLine($"  Resurrections remaining: {rezLeft} of 3");
+            }
+            terminal.WriteLine("");
+            await Task.Delay(2000);
+
+            resurrectionResult = new ResurrectionResult
+            {
+                WasResurrected = true,
+                RestoredHP = restoredHP,
+                Method = "Divine Intervention (auto)",
+                ShouldReturnToTemple = true
+            };
+        }
+        else
+        {
+            // Single-player: existing Veil-of-Death menu with full options.
+            resurrectionResult = await PresentResurrectionChoices(result);
+        }
 
         if (resurrectionResult.WasResurrected)
         {
@@ -19148,6 +19390,33 @@ public partial class CombatEngine
         terminal.WriteLine(Loc.Get("death.veil_intro"));
         terminal.WriteLine(Loc.Get("death.choose_path"));
         terminal.WriteLine("");
+
+        // v0.60.0 beta: death-cap warning. Show counter status above the menu
+        // so players know their tolerance is dwindling. Loud "FINAL DEATH"
+        // banner on death == cap (next death deletes the character).
+        int deathsLeft = GameConfig.MaxPlaythroughDeaths - player.PlaythroughDeaths;
+        if (player.PlaythroughDeaths >= GameConfig.MaxPlaythroughDeaths)
+        {
+            terminal.SetColor("bright_red");
+            terminal.WriteLine($"  ! FINAL DEATH WARNING !");
+            terminal.SetColor("red");
+            terminal.WriteLine($"  You have died {player.PlaythroughDeaths} times. The next death will erase you.");
+            terminal.SetColor("yellow");
+            terminal.WriteLine($"  Choose your path with care, mortal.");
+            terminal.WriteLine("");
+        }
+        else if (deathsLeft <= 2)
+        {
+            terminal.SetColor("yellow");
+            terminal.WriteLine($"  You have died {player.PlaythroughDeaths} of {GameConfig.MaxPlaythroughDeaths} times. {deathsLeft} death(s) remain before erasure.");
+            terminal.WriteLine("");
+        }
+        else
+        {
+            terminal.SetColor("dark_gray");
+            terminal.WriteLine($"  ({player.PlaythroughDeaths}/{GameConfig.MaxPlaythroughDeaths} deaths used this playthrough)");
+            terminal.WriteLine("");
+        }
 
         for (int i = 0; i < choices.Count; i++)
         {
@@ -24857,12 +25126,19 @@ public partial class CombatEngine
     }
 
     /// <summary>
-    /// Armor power passes through uncapped — defense was never the balance problem.
-    /// Kept as a method so all call sites remain consistent if we need to tune later.
+    /// v0.60.0 alpha balance review found ArmPow IS a balance problem at the
+    /// top end. Aura Maximillion at Lv.100 had AP 3522 (35.2 per level) and
+    /// took 0-14 damage per fight. WP got a 1200 soft cap in v0.54.0 for the
+    /// same reason. Cap at 1500 with 50% diminishing returns above. Aura's
+    /// 3522 -> effective 2511. Tank builds still scale, just not to absurdity.
+    /// Display/UI code should still show raw ArmPow.
     /// </summary>
     private static long GetEffectiveArmPow(long armPow)
     {
-        return armPow;
+        const long SoftCap = 1500;
+        const float DiminishingRate = 0.50f;
+        if (armPow <= SoftCap) return armPow;
+        return SoftCap + (long)((armPow - SoftCap) * DiminishingRate);
     }
 
     /// <summary>

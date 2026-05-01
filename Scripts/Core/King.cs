@@ -156,7 +156,7 @@ public class King
         {
             npcCount = Math.Max(GameConfig.PermadeathPopulationFloor, activeNPCs?.Count ?? GameConfig.PermadeathPopulationFloor);
         }
-        long baseIncome = TaxRate * Math.Max(1, npcCount);
+        long baseIncome = (long)(TaxRate * Math.Max(1, npcCount) * GameConfig.KingTaxIncomeMultiplier);
 
         // Sales tax revenue (actual amount collected today via ProcessSaleTax)
         long salesTaxIncome = DailyTaxRevenue;

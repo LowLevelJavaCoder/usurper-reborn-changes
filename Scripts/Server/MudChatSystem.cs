@@ -118,8 +118,15 @@ public static class MudChatSystem
 
             // v0.57.22 Tier 1: restore an accidentally-deleted character from
             // the same SSH account, if within the 7-day grace window.
-            case "restore":
-                return HandleRestore(username, terminal);
+            // v0.60.0 beta: player-side /restore disabled. /restore is now an
+            // admin-only command (WizardCommandSystem). Players who want a
+            // restore must contact an admin on Discord. Removing the
+            // player-self path because (a) the new permadeath flow makes
+            // /restore feel like a free undo to players who don't realize
+            // it's only for genuine accidents, and (b) admins should gate
+            // restorations to maintain the weight of the death cap.
+            // case "restore":
+            //     return HandleRestore(username, terminal);
 
             case "group":
                 return await HandleGroup(username, args, terminal);
@@ -1435,16 +1442,21 @@ public static class MudChatSystem
             return true;
         }
 
+        // v0.60.0 beta (Coosh report): /ginvite was account-name only, but
+        // /who shows display names. Resolve either form via the same helper
+        // /tell uses.
         string target = args.Trim();
-        var targetSession = MudServer.Instance?.ActiveSessions.TryGetValue(target.ToLowerInvariant(), out var ts) == true ? ts : null;
+        var targetSession = FindSessionByNameOrUsername(target);
         if (targetSession == null)
         {
             terminal.WriteLine($"  {Systems.Loc.Get("guild.player_not_online", target)}", "yellow");
             return true;
         }
+        // Use the resolved login username for downstream guild operations.
+        string targetUsername = targetSession.Username;
 
         // Check if target is already in a guild
-        if (guild.GetPlayerGuild(target.ToLowerInvariant()) != null)
+        if (guild.GetPlayerGuild(targetUsername) != null)
         {
             terminal.WriteLine($"  {Systems.Loc.Get("guild.player_already_in_guild", target)}", "yellow");
             return true;
@@ -1454,7 +1466,7 @@ public static class MudChatSystem
         var guildInfo = guild.GetGuildInfo(guildName);
         string guildDisplayName = guildInfo?.DisplayName ?? guildName;
 
-        guild.SendInvite(target, guildName, GetChatDisplayName(username), guildDisplayName);
+        guild.SendInvite(targetUsername, guildName, GetChatDisplayName(username), guildDisplayName);
 
         // Notify target
         try
@@ -1523,28 +1535,32 @@ public static class MudChatSystem
             return true;
         }
 
+        // v0.60.0 beta (Coosh report): accept display name OR account name.
         string target = args.Trim();
-        if (string.Equals(target, username, StringComparison.OrdinalIgnoreCase))
+        var resolved = FindSessionByNameOrUsername(target);
+        string targetUsername = resolved?.Username ?? target.ToLowerInvariant();
+
+        if (string.Equals(targetUsername, username, StringComparison.OrdinalIgnoreCase))
         {
             terminal.WriteLine($"  {Systems.Loc.Get("guild.cannot_kick_self")}", "yellow");
             return true;
         }
 
-        var targetGuild = guild.GetPlayerGuild(target);
+        var targetGuild = guild.GetPlayerGuild(targetUsername);
         if (!string.Equals(targetGuild, guildName, StringComparison.OrdinalIgnoreCase))
         {
             terminal.WriteLine($"  {Systems.Loc.Get("guild.not_in_your_guild", target)}", "yellow");
             return true;
         }
 
-        var error = guild.RemoveMember(target);
+        var error = guild.RemoveMember(targetUsername);
         if (error != null) { terminal.WriteLine($"  {error}", "red"); return true; }
 
         terminal.SetColor("bright_green");
         terminal.WriteLine($"  {Systems.Loc.Get("guild.player_kicked", target)}");
 
-        // Notify kicked player
-        var targetSession = MudServer.Instance?.ActiveSessions.TryGetValue(target.ToLowerInvariant(), out var ts) == true ? ts : null;
+        // Notify kicked player (if online)
+        var targetSession = resolved;
         try
         {
             targetSession?.Context?.Terminal?.SetColor("bright_red");
@@ -1920,28 +1936,47 @@ public static class MudChatSystem
             return true;
         }
 
-        var parts = args.Trim().Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length < 2)
+        // v0.60.0 beta (Coosh report): greedy multi-word target resolution.
+        // Try the longest prefix as the target name (matching display name OR
+        // account name), then fall back to first-word interpretation. The
+        // remaining tail is the rank.
+        var trimmed = args.Trim();
+        var words = trimmed.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length < 2)
         {
             terminal.WriteLine($"  {Systems.Loc.Get("guild.usage_grank")}", "yellow");
             terminal.WriteLine($"  {Systems.Loc.Get("guild.ranks_list")}", "gray");
             return true;
         }
 
-        string targetPlayer = parts[0];
-        string newRank = parts[1].Trim();
+        string targetPlayer = words[0];
+        string targetUsername = targetPlayer.ToLowerInvariant();
+        string newRank = string.Join(' ', words, 1, words.Length - 1);
+        for (int prefix = words.Length - 1; prefix >= 1; prefix--)
+        {
+            string candidate = string.Join(' ', words, 0, prefix);
+            var sess = FindSessionByNameOrUsername(candidate);
+            if (sess != null)
+            {
+                targetPlayer = candidate;
+                targetUsername = sess.Username;
+                newRank = string.Join(' ', words, prefix, words.Length - prefix);
+                break;
+            }
+        }
+        newRank = newRank.Trim();
         // Normalize rank casing
         if (newRank.Equals("officer", StringComparison.OrdinalIgnoreCase)) newRank = "Officer";
         else if (newRank.Equals("member", StringComparison.OrdinalIgnoreCase)) newRank = "Member";
 
-        var error = guild.SetMemberRank(username, targetPlayer, newRank);
+        var error = guild.SetMemberRank(username, targetUsername, newRank);
         if (error != null) { terminal.WriteLine($"  {error}", "yellow"); return true; }
 
         terminal.SetColor("bright_green");
         terminal.WriteLine($"  {Systems.Loc.Get("guild.rank_set", targetPlayer, newRank)}");
 
-        // Notify target
-        var targetSession = MudServer.Instance?.ActiveSessions.TryGetValue(targetPlayer.ToLowerInvariant(), out var ts) == true ? ts : null;
+        // Notify target (if online)
+        var targetSession = MudServer.Instance?.ActiveSessions.TryGetValue(targetUsername, out var ts) == true ? ts : null;
         try
         {
             targetSession?.Context?.Terminal?.SetColor("bright_yellow");
@@ -1967,8 +2002,12 @@ public static class MudChatSystem
             return true;
         }
 
+        // v0.60.0 beta (Coosh report): accept display name OR account name.
         string target = args.Trim();
-        var error = guild.TransferLeadership(username, target);
+        var resolved = FindSessionByNameOrUsername(target);
+        string targetUsername = resolved?.Username ?? target.ToLowerInvariant();
+
+        var error = guild.TransferLeadership(username, targetUsername);
         if (error != null) { terminal.WriteLine($"  {error}", "yellow"); return true; }
 
         terminal.SetColor("bright_green");
@@ -1980,7 +2019,7 @@ public static class MudChatSystem
         foreach (var member in onlineTransfer)
         {
             if (string.Equals(member, username, StringComparison.OrdinalIgnoreCase)) continue;
-            if (string.Equals(member, target, StringComparison.OrdinalIgnoreCase)) continue;
+            if (string.Equals(member, targetUsername, StringComparison.OrdinalIgnoreCase)) continue;
             var memberSession = MudServer.Instance?.ActiveSessions.TryGetValue(member.ToLowerInvariant(), out var ms) == true ? ms : null;
             try
             {
@@ -1991,7 +2030,7 @@ public static class MudChatSystem
         }
 
         // Notify the new leader directly with a personalized message
-        var targetSession = MudServer.Instance?.ActiveSessions.TryGetValue(target.ToLowerInvariant(), out var ts) == true ? ts : null;
+        var targetSession = resolved;
         try
         {
             targetSession?.Context?.Terminal?.SetColor("bright_yellow");

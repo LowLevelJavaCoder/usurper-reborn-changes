@@ -4322,6 +4322,9 @@ public class DungeonLocation : BaseLocation
         {
             targetRoom.IsExplored = true;
             roomsExploredThisFloor++;
+            // v0.60.0 alpha audit: track rooms explored. Counter was always 0
+            // because nothing ever incremented it.
+            currentPlayer?.Statistics?.RecordRoomExplored();
 
             // Advance game time for room exploration (single-player)
             if (!UsurperRemake.BBS.DoorMode.IsOnlineMode)
@@ -6078,7 +6081,7 @@ public class DungeonLocation : BaseLocation
     {
         var player = GetCurrentPlayer();
         var playerLevel = player?.Level ?? 1;
-        int maxAccessible = Math.Min(maxDungeonLevel, playerLevel + 10);
+        int maxAccessible = Math.Min(maxDungeonLevel, playerLevel + GetFloorReachAllowance(playerLevel));
 
         // Old God floors are hard gates - must defeat the god before descending
         if (RequiresFloorClear() && !IsFloorCleared())
@@ -6347,17 +6350,36 @@ public class DungeonLocation : BaseLocation
     /// <summary>
     /// Change dungeon level from overview
     /// </summary>
+    /// <summary>
+    /// v0.60.0 alpha balance review: scaled floor-reach allowance. The flat
+    /// +10 was lenient enough that a Lv.3 player could enter Floor 13 and get
+    /// one-shot by a Drake (Miyabi's death in alpha). Newbies need a tighter
+    /// leash; veterans keep the +10 they had. Curve: +3 at Lv.1-5, +5 at
+    /// Lv.6-15, +8 at Lv.16-30, +10 at Lv.31+.
+    /// </summary>
+    private static int GetFloorReachAllowance(int playerLevel)
+    {
+        if (playerLevel <= 5) return 3;
+        if (playerLevel <= 15) return 5;
+        if (playerLevel <= 30) return 8;
+        return 10;
+    }
+
     private async Task ChangeDungeonLevel()
     {
         var playerLevel = GetCurrentPlayer()?.Level ?? 1;
 
-        // Players can always ascend (go up) to any floor, but can only descend to playerLevel + 10
-        int maxAccessible = Math.Min(maxDungeonLevel, playerLevel + 10);
+        // v0.60.0 beta: scaled-floor-reach. Allowance is +3 at Lv.1-5, +5 at
+        // Lv.6-15, +8 at Lv.16-30, +10 at Lv.31+. Pass actual allowance to
+        // the loc string so the parenthetical ("your level + N") matches the
+        // real number instead of hard-coding "+10" (Coosh report at Lv.12).
+        int reachAllowance = GetFloorReachAllowance(playerLevel);
+        int maxAccessible = Math.Min(maxDungeonLevel, playerLevel + reachAllowance);
 
         terminal.WriteLine("");
         terminal.WriteLine(Loc.Get("dungeon.current_level", currentDungeonLevel), "white");
         terminal.WriteLine(Loc.Get("dungeon.your_level", playerLevel), "cyan");
-        terminal.WriteLine(Loc.Get("dungeon.deepest_accessible", maxAccessible), "yellow");
+        terminal.WriteLine(Loc.Get("dungeon.deepest_accessible", maxAccessible, reachAllowance), "yellow");
         terminal.WriteLine("");
 
         var input = await terminal.GetInput(Loc.Get("dungeon.enter_target_level"));
@@ -9379,7 +9401,7 @@ public class DungeonLocation : BaseLocation
     {
         var player = GetCurrentPlayer();
         var playerLevel = player?.Level ?? 1;
-        int maxAccessible = Math.Min(maxDungeonLevel, playerLevel + 10);
+        int maxAccessible = Math.Min(maxDungeonLevel, playerLevel + GetFloorReachAllowance(playerLevel));
 
         // Old God floors are hard gates - must defeat the god before descending
         if (RequiresFloorClear() && !IsFloorCleared())
@@ -14319,7 +14341,7 @@ public class DungeonLocation : BaseLocation
     private async Task IncreaseDifficulty()
     {
         var playerLevel = GetCurrentPlayer()?.Level ?? 1;
-        int maxAccessible = Math.Min(maxDungeonLevel, playerLevel + 10);
+        int maxAccessible = Math.Min(maxDungeonLevel, playerLevel + GetFloorReachAllowance(playerLevel));
 
         // Jump 10 floors deeper, but capped at player level + 10
         int targetLevel = Math.Min(currentDungeonLevel + 10, maxAccessible);

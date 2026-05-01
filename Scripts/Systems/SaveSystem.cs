@@ -395,6 +395,7 @@ namespace UsurperRemake.Systems
                 Resurrections = player.Resurrections,
                 ResurrectionsUsed = player.ResurrectionsUsed,
                 MaxResurrections = player.MaxResurrections,
+                PlaythroughDeaths = player.PlaythroughDeaths,
                 BannedFromChurch = player.BannedFromChurch,
                 BlessingsReceived = player.BlessingsReceived,
                 ChurchDonations = player.ChurchDonations,

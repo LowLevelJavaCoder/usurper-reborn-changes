@@ -228,6 +228,8 @@ namespace UsurperRemake.Systems
         public int Resurrections { get; set; }
         public int ResurrectionsUsed { get; set; }
         public int MaxResurrections { get; set; } = 3;
+        // v0.60.0 beta: total deaths this playthrough (resets on NG+).
+        public int PlaythroughDeaths { get; set; }
         public bool BannedFromChurch { get; set; }
         public int BlessingsReceived { get; set; }
         public long ChurchDonations { get; set; }

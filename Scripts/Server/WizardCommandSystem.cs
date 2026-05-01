@@ -59,8 +59,11 @@ public static class WizardCommandSystem
                 if (wizLevel < WizardLevel.Immortal) return NotEnoughPower(terminal);
                 return HandleHeal(username, args, terminal);
             case "restore":
+                // v0.60.0 beta: /restore now does archive-restore by username
+                // (rescue death-capped players). The old HP/Mana heal behavior
+                // moved entirely to /heal which was already there.
                 if (wizLevel < WizardLevel.Immortal) return NotEnoughPower(terminal);
-                return HandleRestore(username, args, terminal);
+                return HandleRestoreArchive(username, args, terminal);
             case "echo":
                 if (wizLevel < WizardLevel.Immortal) return NotEnoughPower(terminal);
                 return HandleEcho(username, args, terminal);
@@ -94,6 +97,9 @@ public static class WizardCommandSystem
             case "thaw":
                 if (wizLevel < WizardLevel.Wizard) return NotEnoughPower(terminal);
                 return await HandleThaw(username, args, terminal);
+            case "pardon":
+                if (wizLevel < WizardLevel.Wizard) return NotEnoughPower(terminal);
+                return await HandlePardon(username, args, terminal);
             case "mute":
                 if (wizLevel < WizardLevel.Wizard) return NotEnoughPower(terminal);
                 return await HandleMute(username, args, terminal);
@@ -137,10 +143,180 @@ public static class WizardCommandSystem
             case "rage":
                 if (wizLevel < WizardLevel.God) return NotEnoughPower(terminal);
                 return HandleRageEvent(args, terminal);
+            case "wipe":
+                if (wizLevel < WizardLevel.God) return NotEnoughPower(terminal);
+                return await HandleWipeWithCinematic(username, args, terminal);
 
             default:
                 return false; // Not a wizard command
         }
+    }
+
+    /// <summary>
+    /// v0.60.0 beta-launch: dramatic-wipe slash command. Broadcasts the Rage
+    /// cinematic to every connected player, lets them see their own death,
+    /// then detach-spawns the nuke script which stops services and wipes the
+    /// DB. The sysop's own session dies with everyone else's. Pairs with the
+    /// admin-dashboard nuke button -- this is the in-game alternative when
+    /// the sysop wants to be "in the moment" with the players.
+    /// </summary>
+    private static async Task<bool> HandleWipeWithCinematic(string sysopUsername, string args, TerminalEmulator terminal)
+    {
+        var arg = args?.Trim() ?? "";
+        if (arg != "WIPE THE WORLD")
+        {
+            terminal.SetColor("bright_red");
+            terminal.WriteLine("");
+            terminal.WriteLine("  /wipe runs the beta-launch nuke and broadcasts the Rage cinematic");
+            terminal.WriteLine("  to ALL connected players. Your own session dies with everyone else's.");
+            terminal.WriteLine("  There is no undo.");
+            terminal.WriteLine("");
+            terminal.SetColor("yellow");
+            terminal.WriteLine("  To proceed, type:");
+            terminal.SetColor("white");
+            terminal.WriteLine("    /wipe WIPE THE WORLD");
+            terminal.WriteLine("");
+            return true;
+        }
+
+        var server = UsurperRemake.Server.MudServer.Instance;
+        if (server == null)
+        {
+            terminal.SetColor("red");
+            terminal.WriteLine("  /wipe unavailable: MUD server instance not found.");
+            return true;
+        }
+
+        DebugLogger.Instance.LogWarning("WIPE",
+            $"Sysop '{sysopUsername}' triggered /wipe with cinematic. Nuke imminent.");
+
+        // ── The Cinematic ──────────────────────────────────────────────
+        // Broadcast line-by-line with pacing so every connected player has
+        // time to read each beat. Mirrors the per-player Rage event
+        // cinematic but in plural-mortal voice (RAGE addressing the world).
+        string[] act1 =
+        {
+            "",
+            "",
+            "  [1;31mThe world holds its breath.[0m",
+        };
+        foreach (var line in act1) { server.BroadcastToAll(line); }
+        await Task.Delay(3000);
+
+        string[] act2 =
+        {
+            "",
+            "  [31mA presence forms in the void.[0m",
+            "  [31mVast.[0m",
+            "  [31mAncient.[0m",
+            "  [1;31mFurious.[0m",
+            "",
+        };
+        foreach (var line in act2) { server.BroadcastToAll(line); await Task.Delay(900); }
+        await Task.Delay(1500);
+
+        string[] act3 =
+        {
+            "  [1;31mThe god RAGE strides into the realm,[0m",
+            "  [1;31mhis eyes burning with the heat of a thousand reborn worlds.[0m",
+            "  [31mHe has been silent for centuries, watching.[0m",
+            "",
+            "  [1;31mTonight, the watching ends.[0m",
+            "",
+        };
+        foreach (var line in act3) { server.BroadcastToAll(line); await Task.Delay(1200); }
+        await Task.Delay(2500);
+
+        string[] act4 =
+        {
+            "  [1;33mHe looks upon you. All of you.[0m",
+            "  [33mHe sees every choice. Every grudge. Every shortcut.[0m",
+            "  [33mEvery cheese. Every petty victory and every act of cowardice.[0m",
+            "",
+            "  [31mHe is not impressed.[0m",
+            "",
+        };
+        foreach (var line in act4) { server.BroadcastToAll(line); await Task.Delay(1500); }
+        await Task.Delay(2500);
+
+        string[] act5 =
+        {
+            "  [1;31m\"Mortals,\" Rage rumbles, and the sky cracks open.[0m",
+            "  [1;31m\"You have lived as you saw fit.\"[0m",
+            "",
+            "  [1;31m\"Now you will die as I see fit.\"[0m",
+            "",
+        };
+        foreach (var line in act5) { server.BroadcastToAll(line); await Task.Delay(1500); }
+        await Task.Delay(2500);
+
+        string[] act6 =
+        {
+            "  [37mYou raise your weapons.[0m",
+            "  [31mHe laughs.[0m",
+            "  [31mThe laugh sounds like the end of an age.[0m",
+            "",
+        };
+        foreach (var line in act6) { server.BroadcastToAll(line); await Task.Delay(1500); }
+        await Task.Delay(2000);
+
+        string[] act7 =
+        {
+            "  [1;31mA blow falls.[0m",
+            "  [1;31mJust one.[0m",
+            "",
+        };
+        foreach (var line in act7) { server.BroadcastToAll(line); await Task.Delay(1800); }
+        await Task.Delay(2500);
+
+        string[] act8 =
+        {
+            "  [1;30mYou are unmade.[0m",
+            "",
+            "",
+            "  [37mWhen the sun rises on the new world,[0m",
+            "  [37mno one will remember your names.[0m",
+            "",
+            "",
+            "  [1;30m[3mThe world ends.[0m",
+            "",
+        };
+        foreach (var line in act8) { server.BroadcastToAll(line); await Task.Delay(1500); }
+        await Task.Delay(4000);
+
+        // Final silence.
+        server.BroadcastToAll("  [1;30m...[0m");
+        await Task.Delay(3000);
+
+        // ── The Nuke ───────────────────────────────────────────────────
+        // Detach-spawn so the script outlives this process. The nuke script
+        // will systemctl-stop usurper-mud and sshd-usurper, severing every
+        // connected player (including this sysop session). The bash &
+        // backgrounding + nohup-style I/O redirect prevents systemd from
+        // reaping the script when it kills the parent.
+        try
+        {
+            DebugLogger.Instance.LogWarning("WIPE", "Spawning nuke-server.sh detached.");
+            DebugLogger.Instance.Flush();
+
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "/bin/bash",
+                Arguments = "-c \"nohup sudo /opt/usurper/scripts/nuke-server.sh > /var/log/usurper-nuke/cli-$(date -u +%Y%m%d_%H%M%S).log 2>&1 &\"",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            System.Diagnostics.Process.Start(psi);
+        }
+        catch (Exception ex)
+        {
+            DebugLogger.Instance.LogError("WIPE", $"Failed to spawn nuke script: {ex.Message}");
+            terminal.SetColor("red");
+            terminal.WriteLine("  Cinematic ran, but nuke script failed to spawn:");
+            terminal.WriteLine($"  {ex.Message}");
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -208,6 +384,65 @@ public static class WizardCommandSystem
         return session;
     }
 
+    /// <summary>
+    /// v0.60.0 beta: greedy longest-prefix username resolver. Account names
+    /// can contain spaces (e.g. "xian maximillion"), and the older
+    /// first-word-then-rest parsing in /kick, /ban, /freeze, etc. broke for
+    /// any multi-word name. This walks live sessions trying the full string,
+    /// then progressively shorter prefixes. First match wins; the remainder
+    /// is returned as `rest` for handlers that take target + extra args
+    /// (ban-reason, promote-level, force-command). Handlers that only need
+    /// the target call ResolveTargetOnly. Same pattern as v0.57.21 /tell.
+    /// </summary>
+    private static (string targetName, string rest) ResolveTargetAndRest(string args, string defaultRest = "")
+    {
+        if (string.IsNullOrWhiteSpace(args)) return ("", defaultRest);
+        args = args.Trim();
+        var server = MudServer.Instance;
+        if (server == null) return (args, defaultRest);
+
+        var tokens = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        for (int take = tokens.Length; take >= 1; take--)
+        {
+            var candidate = string.Join(' ', tokens, 0, take);
+            if (server.ActiveSessions.ContainsKey(candidate.ToLowerInvariant()))
+            {
+                var rest = tokens.Length > take
+                    ? string.Join(' ', tokens, take, tokens.Length - take)
+                    : defaultRest;
+                return (candidate, string.IsNullOrWhiteSpace(rest) ? defaultRest : rest);
+            }
+        }
+
+        // No live session matched any prefix; fall back to first-word so
+        // the "not found" error message reads naturally.
+        return (tokens[0], tokens.Length > 1 ? string.Join(' ', tokens, 1, tokens.Length - 1) : defaultRest);
+    }
+
+    /// <summary>
+    /// Single-target resolver. Uses the same greedy-longest-prefix matching
+    /// against live sessions. If args fully matches an online username
+    /// (including multi-word like "xian maximillion"), returns it as-is.
+    /// Otherwise returns the trimmed input so the "not found" message
+    /// reflects what was typed. For commands that take ONLY a target name
+    /// (heal, slay, freeze, thaw, mute, unmute, snoop, summon, transfer).
+    /// </summary>
+    private static string ResolveTargetOnly(string args)
+    {
+        if (string.IsNullOrWhiteSpace(args)) return "";
+        args = args.Trim();
+        var server = MudServer.Instance;
+        if (server != null && server.ActiveSessions.ContainsKey(args.ToLowerInvariant()))
+            return args;
+        return args; // first-word fallback handled by caller via FindSession
+    }
+
+    /// <summary>
+    /// Backwards-compat alias for ResolveTargetAndRest with kick-default reason.
+    /// </summary>
+    private static (string targetName, string reason) ResolveKickTargetAndReason(string args)
+        => ResolveTargetAndRest(args, "Kicked by wizard");
+
     // ═══════════════════════════════════════════════════════════════════
     // Builder+ Commands (Level 1)
     // ═══════════════════════════════════════════════════════════════════
@@ -251,7 +486,7 @@ public static class WizardCommandSystem
             terminal.WriteLine(sr ? "  /goto <loc|player>    - Teleport to location or player" : "║  /goto <loc|player>    - Teleport to location or player                    ║");
             terminal.WriteLine(sr ? "  /godmode              - Toggle invulnerability" : "║  /godmode              - Toggle invulnerability                             ║");
             terminal.WriteLine(sr ? "  /heal [player]        - Heal self or player" : "║  /heal [player]        - Heal self or player                               ║");
-            terminal.WriteLine(sr ? "  /restore [player]     - Full HP + Mana restore" : "║  /restore [player]     - Full HP + Mana restore                            ║");
+            terminal.WriteLine(sr ? "  /restore <player>     - Restore deleted character from 7-day archive" : "║  /restore <player>     - Restore deleted character from 7-day archive       ║");
             terminal.WriteLine(sr ? "  /echo <message>       - Send room message as narrator" : "║  /echo <message>       - Send room message as narrator                     ║");
         }
 
@@ -268,6 +503,7 @@ public static class WizardCommandSystem
             terminal.WriteLine(sr ? "  /slay <player>        - Instantly kill a player" : "║  /slay <player>        - Instantly kill a player                            ║");
             terminal.WriteLine(sr ? "  /freeze / /thaw <p>   - Freeze/unfreeze a player" : "║  /freeze / /thaw <p>   - Freeze/unfreeze a player                          ║");
             terminal.WriteLine(sr ? "  /mute / /unmute <p>   - Mute/unmute a player" : "║  /mute / /unmute <p>   - Mute/unmute a player                              ║");
+            terminal.WriteLine(sr ? "  /pardon <player>      - Release a player from prison instantly" : "║  /pardon <player>      - Release a player from prison instantly             ║");
         }
 
         if (level >= WizardLevel.Archwizard)
@@ -292,6 +528,8 @@ public static class WizardCommandSystem
             terminal.WriteLine(sr ? "  /reboot <sec> [rsn]   - Alias for shutdown" : "║  /reboot <sec> [rsn]   - Alias for shutdown                                ║");
             terminal.WriteLine(sr ? "  /admin                - Open full admin console" : "║  /admin                - Open full admin console                            ║");
             terminal.WriteLine(sr ? "  /wizlog               - View wizard audit log" : "║  /wizlog               - View wizard audit log                             ║");
+            terminal.WriteLine(sr ? "  /rage [on|off|status] - Beta-launch Rage event kill switch" : "║  /rage [on|off|status] - Beta-launch Rage event kill switch                ║");
+            terminal.WriteLine(sr ? "  /wipe WIPE THE WORLD  - Cinematic + nuke (DESTROYS EVERYTHING)" : "║  /wipe WIPE THE WORLD  - Cinematic + nuke (DESTROYS EVERYTHING)            ║");
         }
 
         if (!sr)
@@ -642,7 +880,10 @@ public static class WizardCommandSystem
         return true;
     }
 
-    private static bool HandleRestore(string username, string args, TerminalEmulator terminal)
+    // v0.60.0 beta: HandleRestore (HP/Mana heal) deleted -- /restore now does
+    // archive-restore by username. See HandleRestoreArchive below. The HP-heal
+    // duplicate of /heal is gone.
+    private static bool HandleRestore_DEAD(string username, string args, TerminalEmulator terminal)
     {
         var targetName = string.IsNullOrWhiteSpace(args) ? username : args.Trim();
         var session = FindSession(targetName);
@@ -662,7 +903,87 @@ public static class WizardCommandSystem
         if (!targetName.Equals(username, StringComparison.OrdinalIgnoreCase))
         {
             session.EnqueueMessage($"\u001b[1;32m  Divine energy floods through you. You feel completely restored.\u001b[0m");
-            LogAction(username, "restore", targetName, $"HP: {player.MaxHP}, Mana: {player.MaxMana}");
+            LogAction(username, "restore_heal_legacy", targetName, $"HP: {player.MaxHP}, Mana: {player.MaxMana}");
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// v0.60.0 beta: sysop archive-restore. Different from player-side
+    /// /restore in MudChatSystem (caller-self only). Takes an explicit
+    /// username and restores any archived character within the 7-day
+    /// grace window. Used to rescue players who got death-capped in error.
+    /// </summary>
+    private static bool HandleRestoreArchive(string username, string args, TerminalEmulator terminal)
+    {
+        var targetName = args?.Trim();
+        if (string.IsNullOrWhiteSpace(targetName))
+        {
+            terminal.SetColor("gray");
+            terminal.WriteLine("  Usage: /restore <username>");
+            terminal.WriteLine("  Restores a deleted character from the 7-day archive.");
+            terminal.WriteLine("  For HP/Mana heal of an online player, use /heal instead.");
+            return true;
+        }
+
+        var sql = GetSqlBackend();
+        if (sql == null)
+        {
+            terminal.SetColor("red");
+            terminal.WriteLine("  /restore unavailable: SQL backend not active.");
+            return true;
+        }
+
+        var info = sql.GetMostRecentDeletedCharacter(targetName);
+        if (info == null)
+        {
+            terminal.SetColor("gray");
+            terminal.WriteLine($"  No archived character for '{targetName}' (or 7-day window expired).");
+            return true;
+        }
+
+        terminal.SetColor("yellow");
+        terminal.WriteLine($"  Found archived character:");
+        terminal.SetColor("white");
+        terminal.WriteLine($"    Display name: {info.DisplayName}");
+        terminal.WriteLine($"    Deleted at:   {info.DeletedAt} UTC");
+        terminal.WriteLine($"    Expires at:   {info.ExpiresAt} UTC");
+        terminal.WriteLine("");
+
+        if (sql.RestoreFromDeleted(targetName, out string failureReason))
+        {
+            terminal.SetColor("bright_green");
+            terminal.WriteLine($"  '{info.DisplayName}' has been restored.");
+            terminal.SetColor("gray");
+            terminal.WriteLine("  The player must log out and log back in to resume play.");
+
+            var notifySession = FindSession(targetName);
+            if (notifySession != null)
+            {
+                notifySession.EnqueueMessage("[1;32m  A sysop has restored your previous character. Log out and log back in.[0m");
+            }
+            LogAction(username, "restore_archive", targetName, $"Restored '{info.DisplayName}'");
+            return true;
+        }
+
+        terminal.SetColor("red");
+        switch (failureReason)
+        {
+            case "active_character_exists":
+                terminal.WriteLine($"  '{targetName}' has an active character on file.");
+                terminal.WriteLine("  They must delete their current character (via [N] at the slot menu)");
+                terminal.WriteLine("  before /restore can put the archived one back.");
+                break;
+            case "no_archived_character":
+                terminal.WriteLine("  Archive entry vanished between probe and restore. Try again.");
+                break;
+            case "no_player_row":
+                terminal.WriteLine($"  Player row for '{targetName}' not found.");
+                terminal.WriteLine("  Account was hard-deleted (rage event). Direct SQL needed.");
+                break;
+            default:
+                terminal.WriteLine($"  Restore failed: {failureReason}");
+                break;
         }
         return true;
     }
@@ -920,17 +1241,33 @@ public static class WizardCommandSystem
 
     private static bool HandleForce(string username, string args, TerminalEmulator terminal)
     {
-        // Parse: /force <player> <command>
-        var parts = args.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length < 2)
+        // v0.60.0 beta: greedy multi-word resolver. /force <player> <command>
+        var (targetName, command) = ResolveTargetAndRest(args, "");
+        if (string.IsNullOrWhiteSpace(targetName) || string.IsNullOrWhiteSpace(command))
         {
             terminal.SetColor("gray");
             terminal.WriteLine("  Usage: /force <player> <command>");
             return true;
         }
 
-        var targetName = parts[0];
-        var command = parts[1];
+        // v0.60.0 beta: blacklist privileged slash-commands so /force can't
+        // be used to escalate (force a higher-tier wizard to /promote me, or
+        // make a victim run /wipe, /shutdown, /restore on themselves). Check
+        // the FIRST token of the forced command, lowercase.
+        var firstWord = command.TrimStart('/').Split(' ', 2)[0].ToLowerInvariant();
+        var forbidden = new[] {
+            "force", "wipe", "promote", "demote", "admin", "shutdown",
+            "reboot", "restore", "ban", "unban", "rage", "set"
+        };
+        if (System.Array.IndexOf(forbidden, firstWord) >= 0)
+        {
+            terminal.SetColor("bright_red");
+            terminal.WriteLine($"  /force cannot inject privileged command '/{firstWord}'.");
+            terminal.SetColor("gray");
+            terminal.WriteLine("  Forbidden: " + string.Join(", ", forbidden));
+            LogAction(username, "force_blocked", targetName, command);
+            return true;
+        }
 
         var targetSession = FindSession(targetName);
         if (targetSession == null)
@@ -960,9 +1297,11 @@ public static class WizardCommandSystem
 
     private static async Task<bool> HandleSet(string username, string args, TerminalEmulator terminal)
     {
-        // Parse: /set <player> <field> <value>
-        var parts = args.Split(' ', 3, StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length < 3)
+        // v0.60.0 beta: greedy multi-word resolver. /set <player> <field> <value>
+        // The remainder ("<field> <value>") is split as a normal 2-part list.
+        var (targetName, rest) = ResolveTargetAndRest(args, "");
+        var fvParts = (rest ?? "").Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+        if (string.IsNullOrWhiteSpace(targetName) || fvParts.Length < 2)
         {
             terminal.SetColor("gray");
             terminal.WriteLine("  Usage: /set <player> <field> <value>");
@@ -970,12 +1309,11 @@ public static class WizardCommandSystem
             return true;
         }
 
-        var targetName = parts[0];
-        var field = parts[1].ToLowerInvariant();
-        if (!long.TryParse(parts[2], out long value))
+        var field = fvParts[0].ToLowerInvariant();
+        if (!long.TryParse(fvParts[1], out long value))
         {
             terminal.SetColor("gray");
-            terminal.WriteLine($"  Invalid value: '{parts[2]}'. Must be a number.");
+            terminal.WriteLine($"  Invalid value: '{fvParts[1]}'. Must be a number.");
             return true;
         }
 
@@ -1003,7 +1341,12 @@ public static class WizardCommandSystem
         string? oldValue = null;
         if (isOnline && player != null)
         {
-            // Modify live Character object
+            // v0.60.0 beta: stat fields write to BaseXxx as well as the
+            // runtime field. RecalculateStats() runs at every load and
+            // resets runtime fields from Base*, so /set without writing
+            // Base would silently revert on next reload. Also call
+            // RecalculateStats at the end so the display reflects the
+            // change immediately.
             switch (field)
             {
                 case "level": oldValue = player.Level.ToString(); player.Level = (int)value; break;
@@ -1011,21 +1354,25 @@ public static class WizardCommandSystem
                 case "hp": oldValue = player.HP.ToString(); player.HP = (int)value; break;
                 case "mana": oldValue = player.Mana.ToString(); player.Mana = (int)value; break;
                 case "xp" or "exp" or "experience": oldValue = player.Experience.ToString(); player.Experience = value; break;
-                case "str" or "strength": oldValue = player.Strength.ToString(); player.Strength = (int)value; break;
-                case "def" or "defence" or "defense": oldValue = player.Defence.ToString(); player.Defence = (int)value; break;
-                case "sta" or "stamina": oldValue = player.Stamina.ToString(); player.Stamina = (int)value; break;
-                case "agi" or "agility": oldValue = player.Agility.ToString(); player.Agility = (int)value; break;
-                case "cha" or "charisma": oldValue = player.Charisma.ToString(); player.Charisma = (int)value; break;
-                case "dex" or "dexterity": oldValue = player.Dexterity.ToString(); player.Dexterity = (int)value; break;
-                case "wis" or "wisdom": oldValue = player.Wisdom.ToString(); player.Wisdom = (int)value; break;
-                case "int" or "intelligence": oldValue = player.Intelligence.ToString(); player.Intelligence = (int)value; break;
-                case "con" or "constitution": oldValue = player.Constitution.ToString(); player.Constitution = (int)value; break;
+                case "str" or "strength": oldValue = player.Strength.ToString(); player.BaseStrength = (int)value; player.Strength = (int)value; break;
+                case "def" or "defence" or "defense": oldValue = player.Defence.ToString(); player.BaseDefence = (int)value; player.Defence = (int)value; break;
+                case "sta" or "stamina": oldValue = player.Stamina.ToString(); player.BaseStamina = (int)value; player.Stamina = (int)value; break;
+                case "agi" or "agility": oldValue = player.Agility.ToString(); player.BaseAgility = (int)value; player.Agility = (int)value; break;
+                case "cha" or "charisma": oldValue = player.Charisma.ToString(); player.BaseCharisma = (int)value; player.Charisma = (int)value; break;
+                case "dex" or "dexterity": oldValue = player.Dexterity.ToString(); player.BaseDexterity = (int)value; player.Dexterity = (int)value; break;
+                case "wis" or "wisdom": oldValue = player.Wisdom.ToString(); player.BaseWisdom = (int)value; player.Wisdom = (int)value; break;
+                case "int" or "intelligence": oldValue = player.Intelligence.ToString(); player.BaseIntelligence = (int)value; player.Intelligence = (int)value; break;
+                case "con" or "constitution": oldValue = player.Constitution.ToString(); player.BaseConstitution = (int)value; player.Constitution = (int)value; break;
+                case "maxhp": oldValue = player.MaxHP.ToString(); player.BaseMaxHP = (int)value; player.MaxHP = (int)value; break;
+                case "maxmana": oldValue = player.MaxMana.ToString(); player.BaseMaxMana = (int)value; player.MaxMana = (int)value; break;
                 default:
                     terminal.SetColor("gray");
                     terminal.WriteLine($"  Unknown field: '{field}'");
-                    terminal.WriteLine("  Fields: level, gold, hp, mana, xp, str, def, sta, agi, cha, dex, wis, int, con");
+                    terminal.WriteLine("  Fields: level, gold, hp, mana, maxhp, maxmana, xp, str, def, sta, agi, cha, dex, wis, int, con");
                     return true;
             }
+            // Recompute derived fields so the change is visible and persists.
+            try { player.RecalculateStats(); } catch { /* best effort */ }
         }
         else if (offlineSaveData != null)
         {
@@ -1178,6 +1525,86 @@ public static class WizardCommandSystem
         return true;
     }
 
+    /// <summary>
+    /// v0.60.0 beta: /pardon <player> -- immediately release a player or NPC
+    /// from prison. Sets DaysInPrison=0 on the live Character if online and
+    /// on the player_data via SqlSaveBackend.ImprisonPlayer(username, 0)
+    /// regardless of online status. Also clears the same field on any NPC
+    /// matching the name (useful when the king imprisoned someone the sysop
+    /// wants to free). The pardoned player gets a divine notification on
+    /// their next location loop and is released from the Prison location
+    /// the next time they try to interact with it (PrisonLocation already
+    /// checks DaysInPrison<=0 at every entry).
+    /// </summary>
+    private static async Task<bool> HandlePardon(string username, string args, TerminalEmulator terminal)
+    {
+        var targetName = args?.Trim();
+        if (string.IsNullOrWhiteSpace(targetName))
+        {
+            terminal.SetColor("gray");
+            terminal.WriteLine("  Usage: /pardon <player>");
+            terminal.WriteLine("  Releases a player or NPC from prison instantly.");
+            return true;
+        }
+
+        bool didSomething = false;
+
+        // ── Online player ──────────────────────────────────────────────
+        var session = FindSession(targetName);
+        var player = session?.Context?.Engine?.CurrentPlayer;
+        if (player != null && player.DaysInPrison > 0)
+        {
+            player.DaysInPrison = 0;
+            didSomething = true;
+            session?.EnqueueMessage("[1;33m  By divine decree, your sentence is commuted. The cell door swings open.[0m");
+        }
+
+        // ── DB row (online or offline) ─────────────────────────────────
+        var sql = GetSqlBackend();
+        if (sql != null)
+        {
+            try
+            {
+                await sql.ImprisonPlayer(targetName, 0);
+                didSomething = true;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Instance.LogError("WIZARD", $"/pardon DB write failed for '{targetName}': {ex.Message}");
+            }
+        }
+
+        // ── NPC entry (kings imprison NPCs too) ────────────────────────
+        var npcSpawn = UsurperRemake.Systems.NPCSpawnSystem.Instance;
+        if (npcSpawn != null)
+        {
+            foreach (var npc in npcSpawn.ActiveNPCs)
+            {
+                bool nameMatch =
+                    string.Equals(npc.Name1, targetName, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(npc.Name2, targetName, StringComparison.OrdinalIgnoreCase);
+                if (nameMatch && npc.DaysInPrison > 0)
+                {
+                    npc.DaysInPrison = 0;
+                    didSomething = true;
+                }
+            }
+        }
+
+        if (!didSomething)
+        {
+            terminal.SetColor("gray");
+            terminal.WriteLine($"  '{targetName}' is not in prison (or no record found).");
+            return true;
+        }
+
+        terminal.SetColor("bright_green");
+        terminal.WriteLine($"  {targetName} has been pardoned. Sentence cleared.");
+        LogAction(username, "pardon", targetName, null);
+        WizNet.ActionNotify(username, $"pardoned {targetName}");
+        return true;
+    }
+
     private static async Task<bool> HandleMute(string username, string args, TerminalEmulator terminal)
     {
         if (string.IsNullOrWhiteSpace(args))
@@ -1242,9 +1669,8 @@ public static class WizardCommandSystem
 
     private static async Task<bool> HandleBan(string username, string args, TerminalEmulator terminal)
     {
-        var spaceIndex = args.IndexOf(' ');
-        var targetName = spaceIndex > 0 ? args.Substring(0, spaceIndex).Trim() : args.Trim();
-        var reason = spaceIndex > 0 ? args.Substring(spaceIndex + 1).Trim() : "Banned by wizard";
+        // v0.60.0 beta: greedy multi-word resolver replaces first-word parser.
+        var (targetName, reason) = ResolveTargetAndRest(args, "Banned by wizard");
 
         if (string.IsNullOrWhiteSpace(targetName))
         {
@@ -1296,9 +1722,13 @@ public static class WizardCommandSystem
 
     private static async Task<bool> HandleKick(string username, string args, TerminalEmulator terminal)
     {
-        var spaceIndex = args.IndexOf(' ');
-        var targetName = spaceIndex > 0 ? args.Substring(0, spaceIndex).Trim() : args.Trim();
-        var reason = spaceIndex > 0 ? args.Substring(spaceIndex + 1).Trim() : "Kicked by wizard";
+        // v0.60.0 beta: greedy longest-prefix matching for multi-word account
+        // names. Earlier the parser took the first space-delimited token as
+        // the target which broke on accounts like "xian maximillion". Now we
+        // try progressively shorter prefixes against the live session list,
+        // longest first. The remainder becomes the reason. Same shape as the
+        // v0.57.21 /tell fix.
+        var (targetName, reason) = ResolveKickTargetAndReason(args);
 
         if (string.IsNullOrWhiteSpace(targetName))
         {
@@ -1356,9 +1786,9 @@ public static class WizardCommandSystem
 
     private static async Task<bool> HandlePromote(string username, WizardLevel myLevel, string args, TerminalEmulator terminal)
     {
-        // Parse: /promote <player> <level>
-        var parts = args.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length < 2)
+        // v0.60.0 beta: greedy multi-word resolver. /promote <player> <level>
+        var (targetName, levelStr) = ResolveTargetAndRest(args, "");
+        if (string.IsNullOrWhiteSpace(targetName) || string.IsNullOrWhiteSpace(levelStr))
         {
             terminal.SetColor("gray");
             terminal.WriteLine("  Usage: /promote <player> <level>");
@@ -1366,11 +1796,10 @@ public static class WizardCommandSystem
             return true;
         }
 
-        var targetName = parts[0];
-        if (!Enum.TryParse<WizardLevel>(parts[1], ignoreCase: true, out var targetLevel))
+        if (!Enum.TryParse<WizardLevel>(levelStr, ignoreCase: true, out var targetLevel))
         {
             terminal.SetColor("gray");
-            terminal.WriteLine($"  Unknown wizard level: '{parts[1]}'");
+            terminal.WriteLine($"  Unknown wizard level: '{levelStr}'");
             terminal.WriteLine("  Levels: builder, immortal, wizard, archwizard, god");
             return true;
         }

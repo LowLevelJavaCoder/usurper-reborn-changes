@@ -1,0 +1,187 @@
+using System;
+using System.Threading.Tasks;
+using UsurperRemake.UI;
+
+namespace UsurperRemake.Systems
+{
+    /// <summary>
+    /// v0.60.0 beta: shared online-mode permadeath logic. Three duplicate
+    /// death handlers exist (CombatEngine.HandlePlayerDeath,
+    /// LocationManager.HandlePlayerDeath, GameEngine.HandlePlayerDeath).
+    /// Each needs the same auto-revive-or-permadeath behavior. Rather than
+    /// triple-inline it, the shared cinematic + delete + broadcast +
+    /// news-post lives here and the death handlers just call into it.
+    /// </summary>
+    public static class PermadeathHelper
+    {
+        /// <summary>
+        /// Online-mode death-handling. If the player has Resurrections > 0,
+        /// consumes one and returns true (caller should restore HP and
+        /// continue play). If Resurrections == 0, plays the permadeath
+        /// cinematic, archives + deletes the account, broadcasts to all
+        /// online players, posts news, sets IsIntentionalExit, and returns
+        /// false (caller should NOT continue play -- session is over).
+        /// </summary>
+        public static async Task<bool> HandleOnlineDeath(global::Character player, TerminalEmulator terminal, string killerName)
+        {
+            if (player.Resurrections > 0)
+            {
+                player.Resurrections--;
+                player.ResurrectionsUsed++;
+                int restoredHP = (int)(player.MaxHP * 0.5);
+                player.HP = restoredHP;
+
+                terminal.SetColor("bright_yellow");
+                terminal.WriteLine("");
+                terminal.WriteLine($"  Divine intervention restores you. ({restoredHP}/{player.MaxHP} HP)");
+                int rezLeft = player.Resurrections;
+                if (rezLeft == 0)
+                {
+                    terminal.SetColor("bright_red");
+                    terminal.WriteLine($"  WARNING: This was your final resurrection.");
+                    terminal.WriteLine($"  The next death will erase your character permanently.");
+                }
+                else
+                {
+                    terminal.SetColor("yellow");
+                    terminal.WriteLine($"  Resurrections remaining: {rezLeft} of 3");
+                }
+                terminal.WriteLine("");
+                await Task.Delay(2000);
+                return true;
+            }
+
+            // Permadeath flow
+            await ExecutePermadeath(player, terminal, killerName);
+            return false;
+        }
+
+        /// <summary>
+        /// The cinematic + erasure + broadcast. Standalone so any death
+        /// path can invoke it directly when bypassing the resurrection
+        /// check (eg the rage event).
+        /// </summary>
+        public static async Task ExecutePermadeath(global::Character player, TerminalEmulator terminal, string killerName)
+        {
+            try { terminal.ClearScreen(); } catch { /* ignore */ }
+
+            try
+            {
+                terminal.SetColor("dark_red");
+                terminal.WriteLine("");
+                terminal.WriteLine("");
+                terminal.WriteLine($"  You have died with no resurrections remaining.");
+                await Task.Delay(2000);
+                terminal.WriteLine("");
+                terminal.WriteLine("  The threads that bind your soul to the world fray.");
+                await Task.Delay(2000);
+                terminal.WriteLine("  No temple will receive you. No god will bargain.");
+                await Task.Delay(2000);
+                terminal.WriteLine("  No coin will buy your return.");
+                await Task.Delay(2500);
+
+                terminal.WriteLine("");
+                terminal.SetColor("bright_red");
+                terminal.WriteLine($"  {player.Name2 ?? player.Name1 ?? "Mortal"}, you have exhausted your lives.");
+                await Task.Delay(2500);
+
+                terminal.WriteLine("");
+                terminal.SetColor("gray");
+                terminal.WriteLine("  The Veil closes for the last time.");
+                await Task.Delay(2000);
+                terminal.WriteLine("  Your record is being erased.");
+                await Task.Delay(2500);
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Instance.LogError("DEATH_CAP",
+                    $"Cinematic threw for '{player.Name}': {ex.Message}. Continuing to deletion.");
+            }
+
+            try
+            {
+                var ctx = UsurperRemake.Server.SessionContext.Current;
+                string username = ctx?.Username ?? player.Name1 ?? player.Name2 ?? "";
+                string displayName = player.Name2 ?? player.Name1 ?? username;
+                int finalLevel = player.Level;
+                string className = player.Class.ToString();
+
+                // v0.60.0 beta: BEFORE the DB delete, suppress every possible
+                // future save for this username:
+                //   1. In-memory blacklist (WriteGameData checks it on every
+                //      save attempt, blocks if present). Stops fire-and-forget
+                //      autosaves that started before the cinematic.
+                //   2. Session SuppressDisconnectSave flag. Stops the
+                //      emergency-save-on-disconnect from re-INSERTing the
+                //      character's data when the session terminates.
+                // Without these, players reported being able to log straight
+                // back into their permadied characters because something
+                // re-saved between the soft-delete and the disconnect.
+                if (!string.IsNullOrEmpty(username))
+                {
+                    SqlSaveBackend.MarkUsernameErased(username);
+                    try
+                    {
+                        var session = UsurperRemake.Server.MudServer.Instance?.ActiveSessions
+                            .TryGetValue(username.ToLowerInvariant(), out var s) == true ? s : null;
+                        if (session != null) session.SuppressDisconnectSave = true;
+                    }
+                    catch (Exception ex) { DebugLogger.Instance.LogWarning("DEATH_CAP", $"SuppressDisconnectSave set failed: {ex.Message}"); }
+                }
+
+                if (SaveSystem.Instance?.Backend is SqlSaveBackend sqlBackend && !string.IsNullOrEmpty(username))
+                {
+                    sqlBackend.DeleteGameData(username, bypassArchive: false);
+                    DebugLogger.Instance.LogWarning("DEATH_CAP",
+                        $"Permadeleted '{username}' (display='{displayName}', lv={finalLevel}, class={className}, killer={killerName}). 7-day /restore window active.");
+                }
+
+                if (UsurperRemake.BBS.DoorMode.IsOnlineMode)
+                {
+                    string eulogy = $"\r\n  *** {displayName} the Lv.{finalLevel} {className} has been erased forever, slain by {killerName}. ***\r\n";
+                    try
+                    {
+                        // ANSI: bright red ([1;31m) ... reset ([0m).
+                        // Earlier write missed the ESC byte and rendered as
+                        // literal "[1;31m" text in clients.
+                        UsurperRemake.Server.MudServer.Instance?.BroadcastToAll(
+                            "[1;31m" + eulogy + "[0m", excludeUsername: username);
+                    }
+                    catch (Exception ex) { DebugLogger.Instance.LogError("DEATH_CAP", $"Broadcast failed: {ex.Message}"); }
+
+                    try
+                    {
+                        if (OnlineStateManager.IsActive)
+                        {
+                            _ = OnlineStateManager.Instance!.AddNews(
+                                $"{displayName} the Lv.{finalLevel} {className} fell forever to {killerName}. Their soul has left the world.",
+                                "permadeath");
+                        }
+                    }
+                    catch (Exception ex) { DebugLogger.Instance.LogError("DEATH_CAP", $"News post failed: {ex.Message}"); }
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Instance.LogError("DEATH_CAP",
+                    $"Permadelete failed for '{player.Name}': {ex.Message}");
+            }
+
+            try
+            {
+                terminal.WriteLine("");
+                terminal.SetColor("dark_gray");
+                terminal.WriteLine("  Your character has been erased.");
+                terminal.WriteLine("  If this was a mistake, contact an admin on Discord");
+                terminal.WriteLine("  within 7 days for a possible restoration.");
+                terminal.WriteLine("  Disconnecting.");
+                terminal.WriteLine("");
+                await Task.Delay(3000);
+            }
+            catch { /* ignore */ }
+
+            var sessionCtx = UsurperRemake.Server.SessionContext.Current;
+            if (sessionCtx != null) sessionCtx.IsIntentionalExit = true;
+        }
+    }
+}

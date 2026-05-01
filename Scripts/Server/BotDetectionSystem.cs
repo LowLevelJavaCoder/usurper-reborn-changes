@@ -44,9 +44,14 @@ namespace UsurperRemake.Server
     public static class BotDetectionSystem
     {
         public const int WindowSize = 30;
-        public const double FastThresholdMs = 50.0;
-        public const double SuspectMeanMs = 80.0;
-        public const double SuspectStdDevMs = 30.0;
+        // v0.60.0 alpha balance review: tightened thresholds. Original 80ms
+        // mean / 30ms stddev never tripped during alpha (Aura at 3 min/fight
+        // wasn't fast enough to flag). Lowered slightly so we get actual
+        // signal when beta opens. Still well above human reaction-time
+        // floors so legitimate fast-clickers don't false-positive.
+        public const double FastThresholdMs = 40.0;
+        public const double SuspectMeanMs = 60.0;
+        public const double SuspectStdDevMs = 20.0;
         public const int SuspectConsecutiveCount = 20;
         public const int FlagCooldownSeconds = 60;
 

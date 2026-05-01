@@ -2922,8 +2922,8 @@ public class MainStreetLocation : BaseLocation
                 {
                     terminal.WriteLine(Loc.Get("main_street.delete_success"), "green");
                     terminal.WriteLine("");
-                    terminal.WriteLine("  Reminder: type /restore from this same SSH account within 7 days", "bright_cyan");
-                    terminal.WriteLine("  to bring this character back. After 7 days it is permanent.", "bright_cyan");
+                    terminal.WriteLine("  Reminder: contact an admin on Discord within 7 days to recover this", "bright_cyan");
+                    terminal.WriteLine("  character. After 7 days it is permanent.", "bright_cyan");
                 }
                 else
                 {

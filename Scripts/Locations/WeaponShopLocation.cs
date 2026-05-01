@@ -1124,6 +1124,10 @@ public class WeaponShopLocation : BaseLocation
         }
 
         long cost = (long)currentPlayer.Level * currentPlayer.Level * GameConfig.ReforgeCostMultiplier;
+        // v0.60.0 alpha balance review: endgame surcharge so reforging is an
+        // actual sink for rich high-level players. Below Lv.80 unchanged.
+        if (currentPlayer.Level > GameConfig.ReforgeEndgameThreshold)
+            cost += (currentPlayer.Level - GameConfig.ReforgeEndgameThreshold) * GameConfig.ReforgeEndgameSurchargePerLevel;
 
         terminal.SetColor("cyan");
         terminal.WriteLine(Loc.Get("weapon_shop.reforge_desc", shopkeeperName));

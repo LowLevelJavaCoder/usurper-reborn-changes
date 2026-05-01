@@ -537,14 +537,17 @@ namespace UsurperConsole
             {
                 e.Cancel = true;
                 Console.Error.WriteLine("[MUD] Shutdown signal received (Ctrl+C)...");
-                cts.Cancel();
+                // v0.60.0 alpha audit: guard against ObjectDisposedException.
+                // The using-block can dispose cts before this handler fires
+                // during shutdown, causing a fatal core-dump on the way out.
+                try { cts.Cancel(); } catch (ObjectDisposedException) { }
             };
             AppDomain.CurrentDomain.ProcessExit += (sender, e) =>
             {
                 if (!cts.IsCancellationRequested)
                 {
                     Console.Error.WriteLine("[MUD] Process exit signal received...");
-                    cts.Cancel();
+                    try { cts.Cancel(); } catch (ObjectDisposedException) { }
                 }
             };
 

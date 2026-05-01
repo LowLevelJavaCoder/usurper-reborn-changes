@@ -4706,6 +4706,10 @@ public abstract class BaseLocation
                     case "5":
                         // Full visual novel style conversation
                         await UsurperRemake.Systems.VisualNovelDialogueSystem.Instance.StartConversation(currentPlayer, npc, terminal);
+                        // v0.60.0 alpha audit: track conversations + interactions.
+                        // Counters were always 0 because nothing ever incremented them.
+                        currentPlayer.Statistics?.RecordConversation();
+                        currentPlayer.Statistics?.RecordNPCInteraction();
                         break;
                     case "6":
                         if (npc.Level > 0 && npc.IsAlive && !npc.IsStoryNPC && !npc.King)
@@ -5251,21 +5255,13 @@ public abstract class BaseLocation
             terminal.SetColor("gray");
             terminal.WriteLine(Loc.Get("base.attack_remember"));
             currentPlayer.PDefeats++;
-            // v0.57.0 — failed murder attempt also goes through paired movement (intent matters).
-            UsurperRemake.Systems.AlignmentSystem.Instance.ChangeAlignment(currentPlayer, 10, isGood: false, reason: "attempted murder");
-
-            // Even failed murder attempts have consequences
-            if (!isBountyTarget)
-            {
-                terminal.SetColor("bright_red");
-                terminal.WriteLine($"\n  {Loc.Get("base.murder_guards_arrest")}");
-                if (currentPlayer is Player p)
-                {
-                    p.DaysInPrison = 1; // 1 day for attempted murder
-                    terminal.SetColor("yellow");
-                    terminal.WriteLine($"  {Loc.Get("base.murder_prison_1_day")}");
-                }
-            }
+            // v0.60.0 beta: failed murder attempts trigger no extra consequences.
+            // Player report: the old code printed "Guards rush to the scene! You
+            // are arrested for attempted murder!" and set DaysInPrison=1, but
+            // the death-and-resurrection flow that runs immediately after
+            // discards the prison sentence (player wakes at Inn). The phantom
+            // arrest message confused players. Now: dying IS the consequence.
+            // No alignment hit (they paid in HP), no prison, no arrest text.
         }
 
         await Task.Delay(2000);
@@ -5347,16 +5343,27 @@ public abstract class BaseLocation
                 guards[i] = guard;
             }
 
-            var combatEngine = new CombatEngine(terminal);
-            var result = await combatEngine.PlayerVsMonsters(player, guards.ToList());
+            // v0.60.0 beta: arrest combat is non-lethal. Set IsArrestCombat
+            // so CombatEngine.HandlePlayerDeath short-circuits (no
+            // resurrection consumed, no death cinematic). Guards "subdue"
+            // the player who is then hauled to prison.
+            player.IsArrestCombat = true;
+            CombatResult result;
+            try
+            {
+                var combatEngine = new CombatEngine(terminal);
+                result = await combatEngine.PlayerVsMonsters(player, guards.ToList());
+            }
+            finally
+            {
+                player.IsArrestCombat = false;
+            }
 
             // v0.57.6: PR #82 checked result.Victory, but that flag is only set
             // by the berserker-mode combat path. Normal PlayerVsMonsters victory
             // only populates result.Outcome, so result.Victory stayed false even
             // after the player killed all 5 guards — they'd fall through to
-            // "arrested" and still go to prison. Player report: "I killed all
-            // the guards, but still got sent to prison." Fixed by checking
-            // Outcome, the actual canonical signal.
+            // "arrested" and still go to prison. Fixed by checking Outcome.
             bool playerWon = result.Outcome == CombatOutcome.Victory;
             if (playerWon)
             {
@@ -5366,19 +5373,16 @@ public abstract class BaseLocation
 
                 captured = false;
             }
-            else if (player.IsAlive)
+            else
             {
-                // Lost the fight but survived — arrested
+                // Lost the fight (subdued) — arrested. With IsArrestCombat
+                // the player can't die here; HP is forced to 1 by the
+                // short-circuit so they're always IsAlive at this point.
                 terminal.SetColor("yellow");
                 terminal.WriteLine("");
                 terminal.WriteLine(Loc.Get("street_encounter.guard.overpowered"));
 
                 captured = true;
-            }
-            else
-            {
-                // Lost the fight and died
-                captured = false; // Died, so resurrect at temple
             }
         }
 
@@ -5512,6 +5516,14 @@ public abstract class BaseLocation
             terminal.SetColor("gray");
             terminal.WriteLine($"  {Loc.Get("base.press_key_continue")}");
             await terminal.PressAnyKey();
+
+            // v0.60.0 beta: navigate immediately to Prison so the outer
+            // location-loop's "DaysInPrison > 0" check (BaseLocation:594)
+            // doesn't fire its own redundant arrest cinematic over the top
+            // of the murder consequences. Without this, players got two
+            // back-to-back "Royal guards surround you!" messages and the
+            // session sometimes dropped during the handoff (player report).
+            throw new LocationExitException(GameLocation.Prison);
         }
     }
 

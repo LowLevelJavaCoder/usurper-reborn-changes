@@ -483,6 +483,11 @@ public static partial class GameConfig
     public const long DefaultTaxRateNew = 40;          // Default tax rate per citizen (was 20)
     public const long KingDailyStipend = 500;          // Base daily gold stipend for player kings
     public const int KingStipendPerLevel = 100;        // Additional stipend per king's level
+    // v0.60.0 alpha audit: king bled 12k/day on net (income 8k, expenses 20k)
+    // forcing tax-hike-then-unrest cycle. Multiply base tax income so the
+    // baseline kingdom is solvent. Players who play smart can still create
+    // surplus or run deficit; the floor just isn't 60% loss anymore.
+    public const float KingTaxIncomeMultiplier = 2.5f;
     
     // Prison System (integrated with Castle)
     public const int MaxPrisonEscapeAttempts = 3;    // Daily escape attempts
@@ -588,6 +593,12 @@ public static partial class GameConfig
 
     // Reforging constants (endgame gold sink)
     public const int ReforgeCostMultiplier = 50;       // Cost = level * level * this
+    // v0.60.0 alpha balance review: endgame gold sink. Pre-cap formula gave
+    // Lv.100 reforge a flat 500k, trivial for hoarders sitting on 30M+ gold.
+    // Past Lv.80 each level adds this much extra. Lv.100 reforge becomes
+    // 500k + 1M = 1.5M -- meaningful at the top end without hurting mid-tier.
+    public const long ReforgeEndgameSurchargePerLevel = 50_000;
+    public const int ReforgeEndgameThreshold = 80;
     public const double ReforgeUpgradeChance = 0.20;   // 20% chance to upgrade rarity
     public const double ReforgeVariance = 0.15;        // +/-15% stat variance on reroll
 
@@ -614,6 +625,12 @@ public static partial class GameConfig
     public const long SacrificeGoldBaseReturn = 10;    // Base power points per gold sacrificed
     public const int MaxBelieversPerGod = 1000;        // Maximum believers per deity
     public const long ResurrectionBaseCost = 5000;     // Base cost for resurrection
+    // v0.60.0 beta: hard cap on deaths per playthrough. Death N+1 triggers
+    // permadeath (account hard-deleted, archived to deleted_characters for
+    // 7-day /restore). Resets to 0 on NG+. Designed to make boss fights and
+    // PvP carry real weight in beta -- alpha had several characters with
+    // 7+ deaths and no consequence.
+    public const int MaxPlaythroughDeaths = 5;
     
     // Alignment and Morality Constants
     // v0.57.12: MaxChivalry and MaxDarkness were 30000 (dead / contradictory — no callers referenced them).
@@ -865,17 +882,23 @@ public static partial class GameConfig
     // ============================================================
     public const int WorldBossMinPlayersToSpawn = 2;            // Min online players to trigger spawn
     public const int WorldBossSpawnCooldownTicks = 120;         // ~1 hour (120 ticks * 30s) between bosses (unused, see Hours)
-    public const double WorldBossSpawnCooldownHours = 4.0;      // Hours between boss spawns after defeat/expire
+    // v0.60.0 alpha audit: 92% of bosses (387/422) expired without being
+    // killed during alpha. Spawned during empty hours, fight window too short
+    // for the offline cohort to even notice. Bumping cooldown so spawns are
+    // less frequent (less wasted spawns), extending the fight window to give
+    // peak-hour players room to coordinate, and dropping HP scaling so the
+    // bosses are actually killable by 2-3 players instead of demanding 5+.
+    public const double WorldBossSpawnCooldownHours = 8.0;      // was 4.0 -- fewer wasted spawns
 
     // Knighthood bonuses
     public const float KnightDamageBonus = 0.05f;              // +5% damage for knighted players
     public const float KnightDefenseBonus = 0.05f;             // +5% defense for knighted players
     public const int KnightFameDecayResistance = 2;            // Fame loss reduced by this amount for knights
-    public const int WorldBossDurationHours = 1;                // Fight window in hours before despawn
+    public const int WorldBossDurationHours = 6;                // was 1 -- fight window extended for peak-hour pile-on
     public const int WorldBossMinLevel = 10;                    // Min player level to participate
     public const int WorldBossMaxRoundsPerSession = 50;         // Max combat rounds per session
     public const int WorldBossDeathCooldownSeconds = 60;        // Cooldown after dying before re-entry
-    public const float WorldBossHPScalePerPlayer = 0.10f;       // +10% HP per online player
+    public const float WorldBossHPScalePerPlayer = 0.07f;       // was 0.10 -- HP eased so 2-3 players can finish
     public const float WorldBossAuraBaseDamage = 0.05f;         // 5% MaxHP unavoidable damage per round
     public const float WorldBossAuraPhase2Mult = 1.5f;          // Aura x1.5 in Phase 2
     public const float WorldBossAuraPhase3Mult = 2.0f;          // Aura x2.0 in Phase 3
@@ -2008,6 +2031,16 @@ Mystic Shaman - Tribal caster who summons totems and enchants weapons. Troll/Orc
     public const int PvPLevelRangeLimit = 20;           // Can't attack someone more than 20 levels different
     public const long PvPMinXPReward = 25;              // Minimum XP reward for PvP win
     public const long PvPMaxXPReward = 5000;            // Maximum XP reward for PvP win
+    // v0.60.0 alpha balance review: defender shield. After ANY PvP loss, the
+    // defender is immune from all attackers until either (a) the daily reset,
+    // or (b) the defender logs in next. Stops the spam-target pattern (alpha
+    // had vazren attacked 19 times, 3.16M gold lost). Lets a victim regroup,
+    // re-equip, or just have agency before being farmed again.
+    // Alt accounts caught stealing gold are capped to this much per attack.
+    // Stops the alt-as-gold-mule strategy (alts dealt 25 attacks for 141k
+    // gold in alpha, no level penalty).
+    public const long PvPAltGoldStealBase = 1000;
+    public const long PvPAltGoldStealPerLevel = 100;
 
     // Daily Limits and Resets (Pascal daily parameter resets)
     public const int DailyResetHourEastern = 19;          // 7 PM Eastern Time — online mode daily reset

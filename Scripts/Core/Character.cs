@@ -853,6 +853,20 @@ public class Character
                     return false;
                 }
             }
+            else
+            {
+                // v0.60.0 beta: non-weapon items (Handedness == None) must go in
+                // their NATURAL slot. Without this check, a Chain Shirt (Body)
+                // could be slammed into MainHand if some upstream path passed
+                // the wrong slot. Player report: Vex's MainHand had a Chain
+                // Shirt and the auto-equip prompt offered to "replace" it
+                // with a Mace at 1800% upgrade.
+                if (slot != item.Slot)
+                {
+                    message = $"This item belongs in the {item.Slot} slot, not {slot}.";
+                    return false;
+                }
+            }
         }
         else
         {
@@ -1388,6 +1402,21 @@ public class Character
     public byte PrisonEscapes { get; set; }         // escape attempts allowed
     public byte FileType { get; set; }              // file type (1=player, 2=npc)
     public int Resurrections { get; set; }          // resurrections left
+
+    // v0.60.0 beta: total deaths this playthrough (resets on NG+). Beta gates
+    // characters to GameConfig.MaxPlaythroughDeaths (5). Death #6 triggers
+    // permadeath via DeleteAccountForExcessiveDeaths. This is "five strikes
+    // and you're erased" -- harsh by design to make late-game decisions
+    // matter and to discourage hit-and-run cheese against bosses.
+    public int PlaythroughDeaths { get; set; }
+
+    // v0.60.0 beta: transient flag set by ApplyMurderConsequences before the
+    // Royal Guard arrest-combat. When true, CombatEngine.HandlePlayerDeath
+    // short-circuits: HP set to 1, no resurrection consumed, no permadeath.
+    // The guards "subdue" the player and the murder-consequences flow then
+    // hauls them to prison. Cleared after the fight. Not serialized.
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsArrestCombat { get; set; }
     
     // New for version 0.20+
     public int PickPocketAttempts { get; set; }     // pick pocket attempts

@@ -386,7 +386,7 @@ namespace UsurperRemake.Data
                 DisplayName = "Aura Maximillion",
                 ClassName = "Assassin",
                 RaceName = "Mutant",
-                FinalLevel = 95,
+                FinalLevel = 100,
                 DivineName = "Aura the Veiled",
                 CycleReached = 1,
                 EndingTag = "Pre-NG+",
@@ -394,7 +394,7 @@ namespace UsurperRemake.Data
                 AchievementTag = "Immortal",
                 CustomArt = ART_AURA,
                 ArtColor = "bright_white",
-                Inscription = "An outcast in mortal flesh, she walked these streets with a precise blade and a quiet purpose. She did not wait for the summit. At ninety-five she stepped into Manwe's silence and stepped out crowned. The veil now hangs on her own terms."
+                Inscription = "An outcast in mortal flesh, she walked these streets with a precise blade and a quiet purpose. She reached the summit, and Manwe struck her down for the offense of arriving. She rose. She climbed five levels back. She faced him again, and this time she did not flinch. The veil now hangs on her own terms."
             },
 
             // ─── Castle Courtyard (Manwe-Slayers, NG+ at least 2) ─────
@@ -576,6 +576,19 @@ namespace UsurperRemake.Data
                 CustomArt = ART_FASTFINGE,
                 ArtColor = "cyan",
                 Inscription = "The shortest path ever walked."
+            },
+            new()
+            {
+                Username = "james maximillion",
+                DisplayName = "Aura Maximillion",
+                ClassName = "Assassin",
+                RaceName = "Mutant",
+                FinalLevel = 100,
+                Location = StatueLocationTag.MainStreetMini,
+                AchievementTag = "Lv.100 Founder",
+                CustomArt = ART_AURA,
+                ArtColor = "bright_white",
+                Inscription = "Reached the summit. Manwe knocked her down. She got back up."
             },
         };
 

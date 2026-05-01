@@ -4336,6 +4336,38 @@ public partial class GameEngine
             return;
         }
 
+        // v0.60.0 beta: if this account was permadied earlier this server
+        // uptime, the in-memory erasure blacklist still has their username
+        // and would block every WriteGameData call for the new character
+        // (player report: "Failed to save game!" on first creation save).
+        // Conscious new-character creation is the user-intended override.
+        // Clear both the per-session IsRageKilled flag and the global blacklist.
+        var ctxClear = UsurperRemake.Server.SessionContext.Current;
+        if (ctxClear != null)
+        {
+            ctxClear.IsRageKilled = false;
+            ctxClear.IsIntentionalExit = false;
+            if (!string.IsNullOrEmpty(ctxClear.Username))
+                UsurperRemake.Systems.SqlSaveBackend.ClearErasedMark(ctxClear.Username);
+        }
+        // Also clear the username we were called with, in case it differs
+        // (alt-character paths use a different key).
+        if (!string.IsNullOrEmpty(playerName))
+            UsurperRemake.Systems.SqlSaveBackend.ClearErasedMark(playerName);
+
+        // Re-enable disconnect-save for the new character.
+        try
+        {
+            var sessKey = (UsurperRemake.Server.SessionContext.Current?.Username ?? playerName)?.ToLowerInvariant();
+            if (!string.IsNullOrEmpty(sessKey)
+                && UsurperRemake.Server.MudServer.Instance?.ActiveSessions.TryGetValue(sessKey, out var newSess) == true
+                && newSess != null)
+            {
+                newSess.SuppressDisconnectSave = false;
+            }
+        }
+        catch { /* ignore */ }
+
         // Reset per-player session systems for new game
         var storyDbg = StoryProgressionSystem.Instance;
         bool isNgPlus = storyDbg.CurrentCycle > 1;
@@ -4718,6 +4750,7 @@ public partial class GameEngine
             Resurrections = playerData.Resurrections,
             ResurrectionsUsed = playerData.ResurrectionsUsed,
             MaxResurrections = playerData.MaxResurrections > 0 ? playerData.MaxResurrections : 3,
+            PlaythroughDeaths = playerData.PlaythroughDeaths,
             BannedFromChurch = playerData.BannedFromChurch,
             BlessingsReceived = playerData.BlessingsReceived,
             ChurchDonations = playerData.ChurchDonations,
@@ -6677,6 +6710,10 @@ public partial class GameEngine
     /// </summary>
     private async Task HandleDeath()
     {
+        // v0.60.0 beta: short-circuit if upstream handler already processed
+        // permadeath. Avoids duplicate broadcast/news entries.
+        if (UsurperRemake.Server.SessionContext.Current?.IsIntentionalExit == true) return;
+
         terminal.ClearScreen();
         terminal.ShowANSIArt("DEATH");
         terminal.SetColor("bright_red");
@@ -6697,7 +6734,21 @@ public partial class GameEngine
         terminal.WriteLine("");
         await Task.Delay(2000);
 
-        // Check if player has resurrections (from items/temple)
+        // v0.60.0 beta: online mode = 3-resurrection cap, no penalty options.
+        // Single-player keeps the Y/N prompt with XP/gold penalty fallback.
+        if (UsurperRemake.BBS.DoorMode.IsOnlineMode)
+        {
+            bool revived = await UsurperRemake.Systems.PermadeathHelper.HandleOnlineDeath(
+                currentPlayer, terminal, "an unknown end");
+            if (revived)
+            {
+                currentPlayer.Location = (int)GameLocation.TheInn;
+                await SaveSystem.Instance.AutoSave(currentPlayer);
+            }
+            return;
+        }
+
+        // Single-player: legacy Y/N prompt
         if (currentPlayer.Resurrections > 0)
         {
             terminal.SetColor("yellow");
