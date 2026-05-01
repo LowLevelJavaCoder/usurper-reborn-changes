@@ -308,6 +308,7 @@ jobs:
           restore-keys: ${{ runner.os }}-nuget-
 
       - name: Publish C# binary for ${{ matrix.rid }}
+        shell: bash
         run: |
           dotnet publish usurper-reloaded.csproj -c Release -r ${{ matrix.rid }} \
             --self-contained -o publish/${{ matrix.rid }}
@@ -878,32 +879,39 @@ jobs:
           HOST: ${{ vars.SERVER_HOST || '3.150.229.205' }}
           VERSION: ${{ steps.version.outputs.tag }}
         run: |
+          set -x
+
           # Setup SSH
           mkdir -p ~/.ssh
           echo "$SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
 
           SSH="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new ubuntu@$HOST"
           SCP="scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new"
+
+          # Verify tarball exists locally
+          ls -la server.tar.gz
 
           # Upload tarball
           $SCP server.tar.gz "ubuntu@$HOST:/tmp/usurper-reborn-server.tar.gz"
 
           # Warn players: insert shutdown command into admin_commands table (2 minute countdown)
-          # The MUD server polls admin_commands every 3 seconds and will broadcast warnings
+          # The MUD server polls admin_commands every 3 seconds and will broadcast warnings.
+          # Failures here are non-fatal — the table may not exist on a freshly-wiped DB.
           $SSH "sudo sqlite3 /var/usurper/usurper_online.db \
             \"INSERT INTO admin_commands (command, args) VALUES ('shutdown', '{\\\"seconds\\\": 120, \\\"reason\\\": \\\"Server update to ${VERSION}\\\"}');\"" \
-            || echo "Warning: Could not send shutdown warning (server may not be running)"
+            || echo "Warning: Could not send shutdown warning (server may not be running or table missing)"
 
           # Wait for the 2-minute countdown plus a small buffer
           echo "Waiting 130 seconds for graceful shutdown..."
           sleep 130
 
-          # Stop services, extract, restart
+          # Stop services -- tolerate "unit not active" (exit 5) and other stop errors.
+          # The critical path is extract/chmod/chown/start, which still uses &&.
           $SSH "\
-            sudo systemctl stop sshd-usurper && \
-            sudo systemctl stop usurper-mud && \
+            sudo systemctl stop sshd-usurper || true; \
+            sudo systemctl stop usurper-mud || true; \
             sudo tar -xzf /tmp/usurper-reborn-server.tar.gz -C /opt/usurper/ && \
             sudo chmod +x /opt/usurper/UsurperReborn && \
             sudo chown -R usurper:usurper /opt/usurper && \
