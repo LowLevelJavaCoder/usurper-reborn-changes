@@ -25,9 +25,7 @@ env:
 #          │                                  ├── bundle-desktop (WezTerm, release only)
 #          │                                  ├── deploy-server (release or manual)
 #          │                                  │
-#          ├── build-steam    (matrix: 4, rel) ──┤
-#          │                                     │
-#          └── build-electron (matrix: 4, rel) ──┤
+#          └── build-steam    (matrix: 4, rel) ──┤
 #                                                │
 #                                       attach-to-release (release only)
 #                                       steam-package (release only) ── steam-upload
@@ -266,72 +264,6 @@ jobs:
           name: ${{ matrix.artifact }}
           path: build/
 
-  # ─── BUILD ELECTRON (graphical client, native runner per platform) ──
-  # Phase 1 of the graphical-client roadmap. Each row builds the C# game
-  # binary for its target RID, then runs electron-builder --dir to produce
-  # an unpacked Electron tree containing the bundled .NET runtime.
-  # Output is consumed by steam-package which slots it into the Steam
-  # depot alongside the WezTerm classic build as an additional launch
-  # option. No code-signing — Steam handles distribution + cert concerns.
-  # Steam app is unchanged; we just add a launch-option entry in the
-  # Steamworks partner site that points at electron/<binary>.
-  build-electron:
-    name: Build Electron ${{ matrix.name }}
-    runs-on: ${{ matrix.os }}
-    needs: [test]
-    if: github.event_name == 'release'
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { os: windows-latest, rid: win-x64,    name: Windows,        artifact: electron-windows,     unpacked: dist/win-unpacked }
-          - { os: ubuntu-latest,  rid: linux-x64,  name: Linux,          artifact: electron-linux,       unpacked: dist/linux-unpacked }
-          - { os: macos-13,       rid: osx-x64,    name: macOS Intel,    artifact: electron-macos-x64,   unpacked: dist/mac }
-          - { os: macos-14,       rid: osx-arm64,  name: macOS ARM64,    artifact: electron-macos-arm64, unpacked: dist/mac-arm64 }
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: electron-client/package-lock.json
-
-      - uses: actions/cache@v4
-        with:
-          path: ~/.nuget/packages
-          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
-          restore-keys: ${{ runner.os }}-nuget-
-
-      - name: Publish C# binary for ${{ matrix.rid }}
-        shell: bash
-        run: |
-          dotnet publish usurper-reloaded.csproj -c Release -r ${{ matrix.rid }} \
-            --self-contained -o publish/${{ matrix.rid }}
-
-      - name: Install Electron deps
-        working-directory: electron-client
-        run: npm ci
-
-      - name: Build Electron unpacked tree
-        working-directory: electron-client
-        # CSC_IDENTITY_AUTO_DISCOVERY=false skips the codesign-cache extraction
-        # that fails on Windows runners without dev mode and isn't needed since
-        # we're not signing anyway.
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: false
-        run: |
-          npx electron-builder --${{ runner.os == 'macOS' && 'mac' || (runner.os == 'Linux' && 'linux' || 'win') }} --dir
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.artifact }}
-          path: electron-client/${{ matrix.unpacked }}
-
   # ─── BUNDLE DESKTOP (WezTerm + plain builds, release only) ──────
   bundle-desktop:
     name: Bundle Desktop (WezTerm)
@@ -468,7 +400,7 @@ jobs:
   steam-package:
     name: Package Steam Depots
     runs-on: ubuntu-latest
-    needs: [build-steam, bundle-desktop, build-electron]
+    needs: [build-steam, bundle-desktop]
     if: github.event_name == 'release'
     steps:
       - uses: actions/checkout@v4
@@ -477,11 +409,6 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           pattern: "steam-*"
-
-      - name: Download Electron build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: "electron-*"
 
       - name: Resolve WezTerm version
         id: wezterm
@@ -580,73 +507,6 @@ jobs:
             cp wezterm.lua "$dir/"
             cp -r fonts "$dir/"
           done
-
-      - name: Bundle Electron client into Steam depots
-        # Phase 1 of the graphical-client roadmap. Each platform's
-        # depot gets an electron/ subdir containing the unpacked Electron
-        # tree. Steamworks launch options can then point at the binary
-        # inside (Usurper Reborn.exe / .app / unpacked Linux dir) as an
-        # additional launch option alongside the WezTerm classic launcher.
-        run: |
-          # Windows
-          if [ -d "electron-windows" ]; then
-            mkdir -p steam-build/depot-windows/electron
-            cp -r electron-windows/* steam-build/depot-windows/electron/
-            echo "Bundled Electron Windows: $(du -sh steam-build/depot-windows/electron | cut -f1)"
-          fi
-
-          # Linux
-          if [ -d "electron-linux" ]; then
-            mkdir -p steam-build/depot-linux/electron
-            cp -r electron-linux/* steam-build/depot-linux/electron/
-            chmod +x steam-build/depot-linux/electron/usurper-reborn 2>/dev/null || true
-            echo "Bundled Electron Linux: $(du -sh steam-build/depot-linux/electron | cut -f1)"
-          fi
-
-          # macOS x64 (Intel)
-          if [ -d "electron-macos-x64" ]; then
-            mkdir -p steam-build/depot-macos/electron-x64
-            cp -r electron-macos-x64/* steam-build/depot-macos/electron-x64/
-            echo "Bundled Electron macOS x64: $(du -sh steam-build/depot-macos/electron-x64 | cut -f1)"
-          fi
-
-          # macOS arm64 (Apple Silicon)
-          if [ -d "electron-macos-arm64" ]; then
-            mkdir -p steam-build/depot-macos/electron-arm64
-            cp -r electron-macos-arm64/* steam-build/depot-macos/electron-arm64/
-            echo "Bundled Electron macOS arm64: $(du -sh steam-build/depot-macos/electron-arm64 | cut -f1)"
-          fi
-
-      - name: Copy Steamworks libs into Electron game subdirs
-        # Phase 1 followup: the Electron-bundled C# binary lives at
-        # <depot>/electron/resources/game/UsurperReborn.exe (Win/Linux) or
-        # <depot>/electron-{x64,arm64}/Usurper Reborn.app/Contents/Resources/game/
-        # UsurperReborn (macOS). .NET PInvoke looks for steam_api*.dll in the
-        # binary's own directory; without copies into game/ subdirs Steamworks
-        # calls from the Electron launcher fail to load even though they work
-        # for the WezTerm launcher. Re-uses the libs that the Steamworks step
-        # already placed at the depot root — no re-download.
-        run: |
-          # Find every game/ subdir under the electron* trees and drop the
-          # right native lib in. Path globs handle both unpacked-tree layout
-          # (Win/Linux) and macOS .app bundle layout.
-          for game_dir in $(find steam-build -type d -path "*/electron*/resources/game" 2>/dev/null) \
-                          $(find steam-build -type d -path "*/electron*/Contents/Resources/game" 2>/dev/null); do
-            if [[ "$game_dir" == *depot-windows* ]] && [ -f "steam-build/depot-windows/steam_api64.dll" ]; then
-              cp "steam-build/depot-windows/steam_api64.dll" "$game_dir/" \
-                && echo "Copied steam_api64.dll into $game_dir"
-            elif [[ "$game_dir" == *depot-linux* ]] && [ -f "steam-build/depot-linux/libsteam_api.so" ]; then
-              cp "steam-build/depot-linux/libsteam_api.so" "$game_dir/" \
-                && echo "Copied libsteam_api.so into $game_dir"
-            elif [[ "$game_dir" == *depot-macos* ]] && [ -f "steam-build/depot-macos/libsteam_api.dylib" ]; then
-              cp "steam-build/depot-macos/libsteam_api.dylib" "$game_dir/" \
-                && echo "Copied libsteam_api.dylib into $game_dir"
-            fi
-          done
-
-          # Diagnostic: list all electron game dirs so we can verify in the run log
-          echo "--- Electron game dirs after Steamworks copy:"
-          find steam-build -type d \( -path "*/electron*/resources/game" -o -path "*/electron*/Contents/Resources/game" \) -exec ls -la {} \; 2>/dev/null
 
       # NOTE: macOS WezTerm icon patching intentionally skipped.
       # Modifying files inside a .app bundle invalidates the code signature,
@@ -879,39 +739,32 @@ jobs:
           HOST: ${{ vars.SERVER_HOST || '3.150.229.205' }}
           VERSION: ${{ steps.version.outputs.tag }}
         run: |
-          set -x
-
           # Setup SSH
           mkdir -p ~/.ssh
           echo "$SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
           SSH="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new ubuntu@$HOST"
           SCP="scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new"
-
-          # Verify tarball exists locally
-          ls -la server.tar.gz
 
           # Upload tarball
           $SCP server.tar.gz "ubuntu@$HOST:/tmp/usurper-reborn-server.tar.gz"
 
           # Warn players: insert shutdown command into admin_commands table (2 minute countdown)
-          # The MUD server polls admin_commands every 3 seconds and will broadcast warnings.
-          # Failures here are non-fatal — the table may not exist on a freshly-wiped DB.
+          # The MUD server polls admin_commands every 3 seconds and will broadcast warnings
           $SSH "sudo sqlite3 /var/usurper/usurper_online.db \
             \"INSERT INTO admin_commands (command, args) VALUES ('shutdown', '{\\\"seconds\\\": 120, \\\"reason\\\": \\\"Server update to ${VERSION}\\\"}');\"" \
-            || echo "Warning: Could not send shutdown warning (server may not be running or table missing)"
+            || echo "Warning: Could not send shutdown warning (server may not be running)"
 
           # Wait for the 2-minute countdown plus a small buffer
           echo "Waiting 130 seconds for graceful shutdown..."
           sleep 130
 
-          # Stop services -- tolerate "unit not active" (exit 5) and other stop errors.
-          # The critical path is extract/chmod/chown/start, which still uses &&.
+          # Stop services, extract, restart
           $SSH "\
-            sudo systemctl stop sshd-usurper || true; \
-            sudo systemctl stop usurper-mud || true; \
+            sudo systemctl stop sshd-usurper && \
+            sudo systemctl stop usurper-mud && \
             sudo tar -xzf /tmp/usurper-reborn-server.tar.gz -C /opt/usurper/ && \
             sudo chmod +x /opt/usurper/UsurperReborn && \
             sudo chown -R usurper:usurper /opt/usurper && \
