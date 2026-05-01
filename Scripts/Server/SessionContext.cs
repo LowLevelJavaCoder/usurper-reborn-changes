@@ -49,6 +49,40 @@ public class SessionContext : IDisposable
     /// </summary>
     public bool GmcpEnabled { get; set; }
 
+    // v0.60.3: per-session delta tracking for GMCP Char.Vitals so the bridge can
+    // emit only when something actually changed. Previously these lived as instance
+    // fields on BaseLocation, which meant combat (which doesn't re-enter LocationLoop
+    // mid-fight) and other long-lived flows couldn't dedupe their own emits. Hoisted
+    // here so any caller of GmcpBridge.EmitVitalsIfChanged shares the same baseline.
+    public long LastGmcpHp { get; set; } = -1;
+    public long LastGmcpMaxHp { get; set; } = -1;
+    public long LastGmcpMana { get; set; } = -1;
+    public long LastGmcpMaxMana { get; set; } = -1;
+    public long LastGmcpStamina { get; set; } = -1;
+
+    /// <summary>
+    /// v0.60.3: consecutive emit failure counter. Reset to 0 on every successful
+    /// emit; after GmcpBridge.MaxConsecutiveErrors failures in a row the bridge
+    /// flips GmcpEnabled off so a broken session stops spamming the warning log.
+    /// </summary>
+    public int GmcpConsecutiveErrors { get; set; } = 0;
+
+    /// <summary>
+    /// v0.60.3: set of GMCP package names the client has subscribed to via
+    /// Core.Supports.Set / Add (Iron Realms convention). Currently informational --
+    /// the server emits all packages regardless. Tracked so future selective-emit
+    /// logic has the data ready, and so we can log unknown subscriptions.
+    /// </summary>
+    public HashSet<string> GmcpSubscribedPackages { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// v0.60.3: true once we've emitted Char.StatusVars for this session. The
+    /// schema descriptor only needs to ship once -- it tells the client the type
+    /// and label of every Char.Status field so generic mappers (Mudlet's StatusVars
+    /// plugin, for example) can render fresh fields without bespoke scripting.
+    /// </summary>
+    public bool GmcpStatusVarsSent { get; set; } = false;
+
     // --- Per-Session Terminal ---
     public TerminalEmulator Terminal { get; set; } = null!;
 

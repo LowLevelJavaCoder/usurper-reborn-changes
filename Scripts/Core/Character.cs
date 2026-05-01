@@ -861,7 +861,24 @@ public class Character
                 // the wrong slot. Player report: Vex's MainHand had a Chain
                 // Shirt and the auto-equip prompt offered to "replace" it
                 // with a Mace at 1800% upgrade.
-                if (slot != item.Slot)
+                //
+                // v0.60.3: rings are the multi-slot exception -- a ring's natural
+                // Slot is stored as LFinger, but it's perfectly legal to wear it
+                // on either finger. Without this carve-out, the loot-prompt's
+                // "(R) Right Finger" branch was rejecting every ring with the
+                // misleading "This item belongs in the LFinger slot, not RFinger"
+                // error. Mirrors the existing weapon multi-slot handling above.
+                bool isRingItem = item.Slot == EquipmentSlot.LFinger
+                    || item.Slot == EquipmentSlot.RFinger;
+                if (isRingItem)
+                {
+                    if (slot != EquipmentSlot.LFinger && slot != EquipmentSlot.RFinger)
+                    {
+                        message = $"Rings can only go on a finger slot, not {slot}.";
+                        return false;
+                    }
+                }
+                else if (slot != item.Slot)
                 {
                     message = $"This item belongs in the {item.Slot} slot, not {slot}.";
                     return false;

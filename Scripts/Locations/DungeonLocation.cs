@@ -31,6 +31,14 @@ public class DungeonLocation : BaseLocation
     private DungeonFloor currentFloor = null!;
     private bool inRoomMode = false; // Are we exploring a room?
 
+    /// <summary>
+    /// v0.60.3: public accessor for the currently-occupied dungeon room. Used by
+    /// LocationManager when building the GMCP Room.Info exits map and by other
+    /// out-of-band emitters that need to read the live navigation graph without
+    /// reaching into the private currentFloor field.
+    /// </summary>
+    public DungeonRoom? CurrentRoom => currentFloor?.GetCurrentRoom();
+
     // Player state tracking for tension
     private int consecutiveMonsterRooms = 0;
     private int roomsExploredThisFloor = 0;
@@ -4300,6 +4308,27 @@ public class DungeonLocation : BaseLocation
 
         // Update current room
         currentFloor.CurrentRoomId = targetRoomId;
+
+        // v0.60.3: GMCP Room.Info push so MUD client mappers (Mudlet etc.) see the
+        // new room with its real cardinal exits the moment the player crosses the
+        // threshold, not just at top-level location entry. Cheap no-op when GMCP
+        // isn't negotiated.
+        if (UsurperRemake.Server.GmcpBridge.IsActive)
+        {
+            var exits = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (targetRoom.Exits != null)
+            {
+                foreach (var (direction, exit) in targetRoom.Exits)
+                    exits[direction.ToString().ToLowerInvariant()] = exit.TargetRoomId;
+            }
+            UsurperRemake.Server.GmcpBridge.Emit("Room.Info", new
+            {
+                num = targetRoom.Id,
+                name = targetRoom.Name ?? "Dungeon Room",
+                area = $"Dungeon Floor {currentDungeonLevel}",
+                exits
+            });
+        }
 
         // Auto-clear rooms without monsters on entry (even if already explored from
         // knowledge events or floor respawn — IsCleared resets on respawn but IsExplored persists)

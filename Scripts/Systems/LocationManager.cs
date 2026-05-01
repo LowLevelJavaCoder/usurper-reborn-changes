@@ -123,6 +123,52 @@ public class LocationManager
     /// Initialize Pascal-compatible navigation table
     /// Exact match with ONLINE.PAS navigation case statements
     /// </summary>
+    /// <summary>
+    /// v0.60.3: build a GMCP-friendly exits map for the given location. Returns a
+    /// dictionary keyed by lowercase destination name with the destination location's
+    /// numeric ID as the value -- Mudlet/MUSHclient mappers consume this shape natively.
+    /// For dungeon rooms (which have their own per-room exit graph) returns the four
+    /// cardinal exits if a current room is set; otherwise falls back to the static
+    /// navigation table. Returns an empty dictionary if neither is available.
+    /// </summary>
+    private Dictionary<string, int> BuildGmcpExitsForLocation(GameLocation locationId)
+    {
+        var exits = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        // Dungeon: emit the per-room cardinal exit graph from the active floor's
+        // current room. This is the only location with directional exits players
+        // can actually traverse with N/S/E/W commands.
+        if (locationId == GameLocation.Dungeons && locations.TryGetValue(locationId, out var dungeon)
+            && dungeon is DungeonLocation dungeonLoc)
+        {
+            var room = dungeonLoc.CurrentRoom;
+            if (room?.Exits != null)
+            {
+                foreach (var (direction, exit) in room.Exits)
+                {
+                    string dirName = direction.ToString().ToLowerInvariant();
+                    exits[dirName] = (int)GameLocation.Dungeons;
+                }
+                if (exits.Count > 0) return exits;
+            }
+        }
+
+        // Town locations: pull from the static navigation table. Key by the
+        // destination's enum name so Mudlet's mapper script can label edges
+        // sensibly (Inn, Church, Bank, etc.) -- single-word locations are the
+        // common case and read cleanly.
+        if (navigationTable != null && navigationTable.TryGetValue(locationId, out var dests))
+        {
+            foreach (var dest in dests)
+            {
+                string destName = dest.ToString().ToLowerInvariant();
+                exits[destName] = (int)dest;
+            }
+        }
+
+        return exits;
+    }
+
     private void InitializeNavigationTable()
     {
         navigationTable = new Dictionary<GameLocation, List<GameLocation>>();
@@ -282,6 +328,8 @@ public class LocationManager
 
         // v0.57.21: GMCP — emit Room.Info and Char.Status on every location change.
         // Bridge no-ops when GMCP is not negotiated, so this is free for non-MUD clients.
+        // v0.60.3: Room.Info now carries a real exits map keyed by destination name.
+        // Mudlet's mapper consumes this to draw the navigation graph automatically.
         if (UsurperRemake.Server.GmcpBridge.IsActive)
         {
             UsurperRemake.Server.GmcpBridge.Emit("Room.Info", new
@@ -289,8 +337,30 @@ public class LocationManager
                 num = (int)locationId,
                 name = currentLocation?.LocationName ?? locationId.ToString(),
                 area = "Usurper Reborn",
-                exits = new { } // placeholder — full exit list requires per-location enumeration; v1 ships name+id only
+                exits = BuildGmcpExitsForLocation(locationId)
             });
+
+            // v0.60.3: Char.StatusVars schema descriptor, emitted once per session
+            // before the first Char.Status. Tells generic GMCP clients how to
+            // interpret each field -- Achaea / Iron Realms convention. After this
+            // initial emit, plain Char.Status updates carry just the values.
+            var gmcpCtx = UsurperRemake.Server.SessionContext.Current;
+            if (gmcpCtx != null && !gmcpCtx.GmcpStatusVarsSent)
+            {
+                UsurperRemake.Server.GmcpBridge.Emit("Char.StatusVars", new
+                {
+                    name = "Character Name",
+                    @class = "Class",
+                    level = "Level",
+                    race = "Race",
+                    gold = "Gold (carried)",
+                    bank = "Bank Balance",
+                    xp = "Experience",
+                    location = "Current Location"
+                });
+                gmcpCtx.GmcpStatusVarsSent = true;
+            }
+
             UsurperRemake.Server.GmcpBridge.Emit("Char.Status", new
             {
                 name = player.Name2 ?? player.Name1,

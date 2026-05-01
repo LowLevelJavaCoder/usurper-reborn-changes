@@ -448,6 +448,26 @@ public partial class CombatEngine
         // Store player reference for combat speed setting
         currentPlayer = player;
 
+        // v0.60.3: GMCP Char.Combat.Start with the enemy list so MUD client scripts
+        // can flip into combat-mode triggers (status panes, sound effects, hotbar
+        // expansion, etc.) without text-pattern matching the "you are attacked!" line.
+        if (UsurperRemake.Server.GmcpBridge.IsActive)
+        {
+            var enemyData = monsters.Select(m => new
+            {
+                name = m.Name,
+                level = m.Level,
+                hp = m.HP,
+                maxHp = m.MaxHP,
+                isBoss = m.IsBoss || m.IsMiniBoss
+            }).ToList();
+            UsurperRemake.Server.GmcpBridge.Emit("Char.Combat.Start", new
+            {
+                enemies = enemyData,
+                ambush = isAmbush
+            });
+        }
+
         // Store teammates for healing/support actions
         currentTeammates = teammates ?? new List<Character>();
 
@@ -1352,6 +1372,11 @@ public partial class CombatEngine
                 }
             }
 
+            // v0.60.3: GMCP Char.Vitals push at end-of-round so MUD clients see live
+            // HP/MP/SP throughout the fight instead of frozen pre-combat values until
+            // the menu redraws. Cheap no-op when GMCP isn't negotiated.
+            UsurperRemake.Server.GmcpBridge.EmitVitalsIfChanged(player);
+
             // Short pause between rounds
             await Task.Delay(GetCombatDelay(1000));
         }
@@ -1563,6 +1588,27 @@ public partial class CombatEngine
         player.UnmakingCooldown = 0;
         player.DelugeCooldown = 0;
 
+        // v0.60.3: GMCP Char.Combat.End — single return point for PlayerVsMonsters
+        // means MUD client scripts get a clean "leaving combat" signal regardless
+        // of whether the player won, fled, was subdued, or died. Outcome string
+        // matches CombatOutcome enum values for easy script switching.
+        // Also re-emit Items.List + Skills.List + Vitals so any loot picked up
+        // and any cooldowns ticked are reflected immediately rather than waiting
+        // for the next location transition.
+        if (UsurperRemake.Server.GmcpBridge.IsActive)
+        {
+            UsurperRemake.Server.GmcpBridge.Emit("Char.Combat.End", new
+            {
+                outcome = result.Outcome.ToString(),
+                kills = result.DefeatedMonsters?.Count ?? 0,
+                xpGained = result.ExperienceGained,
+                goldGained = result.GoldGained
+            });
+            UsurperRemake.Server.GmcpBridge.EmitItemsList(player);
+            UsurperRemake.Server.GmcpBridge.EmitSkillsList(player);
+            UsurperRemake.Server.GmcpBridge.EmitVitalsIfChanged(player);
+        }
+
         return result;
     }
 
@@ -1673,6 +1719,12 @@ public partial class CombatEngine
 
             // Decrement Calm Waters debuff shield
             DecrementCalmWatersShield(player, result);
+
+            // v0.60.3: GMCP Char.Vitals push at the start of every player-turn prompt
+            // so MUD clients see fresh HP/MP/SP values when deciding their next action.
+            // Covers single-monster combat (which doesn't go through the multi-monster
+            // end-of-round path above). Cheap no-op when GMCP isn't negotiated.
+            UsurperRemake.Server.GmcpBridge.EmitVitalsIfChanged(player);
 
             // Check if player can act due to status effects
             if (!player.CanAct())
@@ -10838,10 +10890,34 @@ public partial class CombatEngine
     {
         var statuses = new List<string>();
 
-        if (monster.PoisonRounds > 0) statuses.Add($"PSN({monster.PoisonRounds})");
-        if (monster.CorruptingDotRounds > 0) statuses.Add($"COR({monster.CorruptingDotRounds})");
-        if (monster.StunRounds > 0) statuses.Add($"STN({monster.StunRounds})");
+        // DoTs. PoisonRounds is shared between poison and fire burn -- IsBurning
+        // disambiguates so the display reads "BURN(3)" instead of "PSN(3)" when
+        // the enemy is on fire.
+        if (monster.PoisonRounds > 0)
+        {
+            if (monster.IsBurning) statuses.Add($"BURN({monster.PoisonRounds})");
+            else statuses.Add($"PSN({monster.PoisonRounds})");
+        }
+        if (monster.CorruptingDotRounds > 0) statuses.Add($"CRPT({monster.CorruptingDotRounds})");
+
+        // Hard-CC statuses. v0.60.3: Freeze/Sleep/Fear/Stun/Confused were all
+        // missing from the monster status line -- player report: "After I cast
+        // Freeze at an enemy, it does not show on the status. I only know Freeze
+        // is still active when the enemy is unable to act."
+        int stunRemaining = Math.Max(monster.StunRounds, monster.StunDuration);
+        if (stunRemaining > 0 || monster.IsStunned) statuses.Add($"STN({Math.Max(1, stunRemaining)})");
+        if (monster.IsFrozen || monster.FrozenDuration > 0) statuses.Add($"FRZ({Math.Max(1, monster.FrozenDuration)})");
+        if (monster.IsSleeping || monster.SleepDuration > 0) statuses.Add($"SLP({Math.Max(1, monster.SleepDuration)})");
+        if (monster.IsFeared || monster.FearDuration > 0) statuses.Add($"FEAR({Math.Max(1, monster.FearDuration)})");
+        if (monster.IsConfused || monster.ConfusedDuration > 0) statuses.Add($"CONF({Math.Max(1, monster.ConfusedDuration)})");
+
+        // Soft debuffs.
         if (monster.WeakenRounds > 0) statuses.Add($"WEK({monster.WeakenRounds})");
+        if (monster.IsSlowed || monster.SlowDuration > 0) statuses.Add($"SLOW({Math.Max(1, monster.SlowDuration)})");
+        if (monster.IsMarked || monster.MarkedDuration > 0) statuses.Add($"MARK({Math.Max(1, monster.MarkedDuration)})");
+        if (monster.IsCorroded || monster.CorrodedDuration > 0) statuses.Add($"COR({Math.Max(1, monster.CorrodedDuration)})");
+        if (!string.IsNullOrEmpty(monster.TauntedBy) && monster.TauntRoundsLeft > 0) statuses.Add($"TNT({monster.TauntRoundsLeft})");
+
         if (monster.IsBoss) statuses.Add("[BOSS]");
 
         return string.Join(" ", statuses);
@@ -18149,6 +18225,22 @@ public partial class CombatEngine
                 var monsterNames = string.Join(", ", result.DefeatedMonsters.Select(m => m.Name).Distinct());
                 UsurperRemake.Server.RoomRegistry.BroadcastAction($"{result.Player.DisplayName} has defeated the mighty {monsterNames}!");
             }
+
+            // v0.60.3: GMCP Char.Combat.Killed -- one frame per defeated monster so
+            // MUD client scripts can attribute XP/loot to the kill, increment counters,
+            // play victory sounds per-kill rather than once-per-fight, etc.
+            if (UsurperRemake.Server.GmcpBridge.IsActive)
+            {
+                foreach (var dead in result.DefeatedMonsters)
+                {
+                    UsurperRemake.Server.GmcpBridge.Emit("Char.Combat.Killed", new
+                    {
+                        name = dead.Name,
+                        level = dead.Level,
+                        isBoss = dead.IsBoss || dead.IsMiniBoss
+                    });
+                }
+            }
         }
 
         terminal.WriteLine("");
@@ -19105,6 +19197,18 @@ public partial class CombatEngine
     /// </summary>
     private async Task HandlePlayerDeath(CombatResult result)
     {
+        // v0.60.3: GMCP Char.Death — emit BEFORE the resurrection / permadeath
+        // path runs so MUD clients see the death event regardless of which
+        // branch handles it. Char.Combat.End follows in the normal exit flow.
+        if (UsurperRemake.Server.GmcpBridge.IsActive)
+        {
+            UsurperRemake.Server.GmcpBridge.Emit("Char.Death", new
+            {
+                killer = result.Monster?.Name ?? "unknown",
+                resurrectionsLeft = result.Player.Resurrections
+            });
+        }
+
         // v0.60.0 beta: arrest combat is non-lethal. When the Royal Guards
         // subdue a murderer in ApplyMurderConsequences, the player should
         // be hauled off to prison, NOT use a resurrection and trigger the

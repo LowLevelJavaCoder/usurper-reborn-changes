@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using UsurperRemake.Systems;
 
 namespace UsurperRemake.Server;
@@ -42,8 +43,24 @@ public static class GmcpBridge
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         // GMCP payloads are tiny (one Char.Vitals = ~80 bytes); compact serialization
         // matches conventions of every other GMCP-speaking server (Achaea, Iron Realms).
-        WriteIndented = false
+        WriteIndented = false,
+        // v0.60.3: cap nesting at 8 levels so a hostile or buggy caller can't pass a
+        // self-referential object graph that blows the stack inside the serializer.
+        MaxDepth = 8,
+        // Skip null-valued properties to keep frames compact -- the GMCP convention
+        // is omit-when-empty, and clients (Mudlet/MUSHclient/TT++) treat missing
+        // fields the same as null.
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
     };
+
+    // v0.60.3: hardening constants. Frames larger than MaxPayloadBytes are dropped
+    // with a warning rather than blasted at the client; per-session consecutive
+    // errors are tracked on SessionContext and after MaxConsecutiveErrors successive
+    // emit failures, GMCP is disabled for that session to stop spamming the log.
+    private const int MaxPayloadBytes = 16384;
+    private const int MaxConsecutiveErrors = 5;
+    private static readonly Regex PackageNameValidator = new(
+        @"^[A-Za-z][A-Za-z0-9._-]*$", RegexOptions.Compiled);
 
     /// <summary>
     /// True if there's an active GMCP-enabled session on the current async flow.
@@ -59,6 +76,135 @@ public static class GmcpBridge
     }
 
     /// <summary>
+    /// v0.60.3: emit Char.Vitals if any tracked stat changed since the last emit on
+    /// this session. Cheap no-op when GMCP isn't negotiated. Combat, dungeon room
+    /// loops, and any other flow that doesn't re-enter BaseLocation.LocationLoop can
+    /// call this directly so MUD clients see live HP/MP/SP gauges throughout the fight
+    /// instead of frozen pre-combat values until the menu redraws.
+    /// </summary>
+    public static void EmitVitalsIfChanged(global::Character? player)
+    {
+        if (player == null || !IsActive) return;
+        var ctx = SessionContext.Current;
+        if (ctx == null) return;
+
+        long hp = player.HP, maxHp = player.MaxHP;
+        long mana = player.Mana, maxMana = player.MaxMana;
+        long sta = player.Stamina;
+        if (hp == ctx.LastGmcpHp && maxHp == ctx.LastGmcpMaxHp
+            && mana == ctx.LastGmcpMana && maxMana == ctx.LastGmcpMaxMana
+            && sta == ctx.LastGmcpStamina)
+            return;
+
+        ctx.LastGmcpHp = hp; ctx.LastGmcpMaxHp = maxHp;
+        ctx.LastGmcpMana = mana; ctx.LastGmcpMaxMana = maxMana;
+        ctx.LastGmcpStamina = sta;
+
+        Emit("Char.Vitals", new { hp, maxHp, mp = mana, maxMp = maxMana, sp = sta });
+    }
+
+    /// <summary>
+    /// v0.60.3: emit Char.Items.List with the full backpack contents and equipped
+    /// items. Called at character login and on combat end (post-loot pickup).
+    /// MUD client scripts can wire this to inventory panes / equipment displays
+    /// without text-pattern parsing the [I]nventory output. Cheap no-op when GMCP
+    /// isn't negotiated.
+    /// </summary>
+    public static void EmitItemsList(global::Character? player)
+    {
+        if (player == null || !IsActive) return;
+
+        // Backpack
+        var inv = new System.Collections.Generic.List<object>();
+        if (player.Inventory != null)
+        {
+            for (int i = 0; i < player.Inventory.Count; i++)
+            {
+                var it = player.Inventory[i];
+                if (it == null) continue;
+                inv.Add(new
+                {
+                    idx = i,
+                    name = it.Name ?? "?",
+                    type = it.Type.ToString(),
+                    minLevel = it.MinLevel
+                });
+            }
+        }
+
+        // Equipped slots — emit slot name + item name only (not the full item blob).
+        // Clients that need item details can reference the inventory by name.
+        var equipped = new System.Collections.Generic.Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (player.EquippedItems != null)
+        {
+            foreach (var (slot, id) in player.EquippedItems)
+            {
+                if (id <= 0) continue;
+                var eq = player.GetEquipment(slot);
+                if (eq != null && !string.IsNullOrEmpty(eq.Name))
+                    equipped[slot.ToString().ToLowerInvariant()] = eq.Name;
+            }
+        }
+
+        Emit("Char.Items.List", new
+        {
+            inventory = inv,
+            equipped,
+            count = inv.Count,
+            max = GameConfig.MaxInventoryItems
+        });
+    }
+
+    /// <summary>
+    /// v0.60.3: emit Char.Skills.List with the player's learned class abilities
+    /// and current cooldown state. Called at character login and after each
+    /// combat round (cooldowns tick down per round). Spells emitted as a separate
+    /// 'spells' array so MUD client scripts can render the two skill types
+    /// independently if they want. Cheap no-op when GMCP isn't negotiated.
+    /// </summary>
+    public static void EmitSkillsList(global::Character? player)
+    {
+        if (player == null || !IsActive) return;
+
+        var abilities = new System.Collections.Generic.List<object>();
+        foreach (var ability in ClassAbilitySystem.GetAvailableAbilities(player))
+        {
+            if (ability == null) continue;
+            abilities.Add(new
+            {
+                id = ability.Id,
+                name = ability.Name,
+                type = ability.Type.ToString(),
+                cooldown = ability.Cooldown,
+                staminaCost = ability.StaminaCost,
+                manaCost = ability.ManaCost,
+                requiresLevel = ability.LevelRequired
+            });
+        }
+
+        var spells = new System.Collections.Generic.List<object>();
+        foreach (var spell in SpellSystem.GetAvailableSpells(player))
+        {
+            if (spell == null) continue;
+            spells.Add(new
+            {
+                name = spell.Name,
+                manaCost = spell.ManaCost,
+                requiresLevel = spell.LevelRequired
+            });
+        }
+
+        Emit("Char.Skills.List", new
+        {
+            abilities,
+            spells,
+            mana = player.Mana,
+            maxMana = player.MaxMana,
+            stamina = player.Stamina
+        });
+    }
+
+    /// <summary>
     /// Emit a GMCP frame to the current session's output stream.
     /// Package format follows the GMCP convention: "Module.Submodule" (e.g. "Char.Vitals",
     /// "Room.Info", "Comm.Channel.Text"). Payload is JSON-serialized with camelCase property
@@ -68,36 +214,7 @@ public static class GmcpBridge
     {
         var ctx = SessionContext.Current;
         if (ctx == null || !ctx.GmcpEnabled) return;
-
-        var stream = ctx.OutputStream;
-        if (stream == null || !stream.CanWrite) return;
-
-        try
-        {
-            var frame = BuildFrame(package, payload);
-            // Synchronous Write — GMCP frames are small (<200 bytes) and writing them
-            // async would interleave with other output unpredictably. Locks on the
-            // stream are handled by the underlying NetworkStream.
-            lock (stream)
-            {
-                stream.Write(frame, 0, frame.Length);
-                stream.Flush();
-            }
-        }
-        catch (IOException)
-        {
-            // Connection dropped mid-emit — ignore. The session's main read/write loop
-            // will detect the disconnect and clean up.
-        }
-        catch (ObjectDisposedException)
-        {
-            // Stream closed while we held the reference. Same handling as IOException.
-        }
-        catch (Exception ex)
-        {
-            DebugLogger.Instance.LogWarning("GMCP",
-                $"Emit '{package}' failed: {ex.GetType().Name}: {ex.Message}");
-        }
+        TryWriteFrame(ctx, package, payload, ctx.Username);
     }
 
     /// <summary>
@@ -109,24 +226,100 @@ public static class GmcpBridge
     public static void EmitTo(PlayerSession? session, string package, object? payload)
     {
         if (session?.Context == null || !session.Context.GmcpEnabled) return;
-        var stream = session.Context.OutputStream;
+        TryWriteFrame(session.Context, package, payload, session.Username);
+    }
+
+    /// <summary>
+    /// v0.60.3: centralized frame-write path used by Emit and EmitTo. Validates the
+    /// package name, builds the frame, enforces the payload size cap, writes under
+    /// the per-stream lock, and updates the per-session consecutive-error counter.
+    /// After MaxConsecutiveErrors successive failures the session's GmcpEnabled flag
+    /// is flipped off so we stop hammering a broken connection. Successful writes
+    /// reset the counter to zero.
+    /// </summary>
+    private static void TryWriteFrame(SessionContext ctx, string package, object? payload, string label)
+    {
+        var stream = ctx.OutputStream;
         if (stream == null || !stream.CanWrite) return;
+
+        // Validate package name format. Bad input here is a programmer error -- log
+        // once and refuse to emit so we don't put garbage on the wire.
+        if (string.IsNullOrEmpty(package) || !PackageNameValidator.IsMatch(package))
+        {
+            DebugLogger.Instance.LogWarning("GMCP",
+                $"Refusing to emit invalid package name '{package}' for session '{label}'");
+            RecordEmitError(ctx);
+            return;
+        }
+
+        byte[] frame;
+        try
+        {
+            frame = BuildFrame(package, payload);
+        }
+        catch (Exception ex)
+        {
+            // JSON serialization can throw on circular graphs, MaxDepth violations,
+            // or types JsonSerializer doesn't handle. Don't propagate -- the GMCP
+            // emit is fire-and-forget, callers don't expect exceptions.
+            DebugLogger.Instance.LogWarning("GMCP",
+                $"BuildFrame '{package}' for '{label}' failed: {ex.GetType().Name}: {ex.Message}");
+            RecordEmitError(ctx);
+            return;
+        }
+
+        if (frame.Length > MaxPayloadBytes)
+        {
+            DebugLogger.Instance.LogWarning("GMCP",
+                $"Dropping oversized frame: package='{package}', size={frame.Length}b > cap={MaxPayloadBytes}b, session='{label}'");
+            RecordEmitError(ctx);
+            return;
+        }
 
         try
         {
-            var frame = BuildFrame(package, payload);
+            // Synchronous Write — GMCP frames are small and writing async would
+            // interleave with other output unpredictably. Per-stream lock prevents
+            // concurrent writes from different emit sites within the same session.
             lock (stream)
             {
                 stream.Write(frame, 0, frame.Length);
                 stream.Flush();
             }
+            // Successful emit -- reset the consecutive-error counter.
+            if (ctx.GmcpConsecutiveErrors != 0) ctx.GmcpConsecutiveErrors = 0;
         }
-        catch (IOException) { }
-        catch (ObjectDisposedException) { }
+        catch (IOException)
+        {
+            // Connection dropped mid-emit — main read/write loop will clean up.
+            // Don't count toward error threshold (this is normal disconnect).
+        }
+        catch (ObjectDisposedException)
+        {
+            // Stream closed while we held the reference. Same handling as IOException.
+        }
         catch (Exception ex)
         {
             DebugLogger.Instance.LogWarning("GMCP",
-                $"EmitTo[{session.Username}] '{package}' failed: {ex.GetType().Name}: {ex.Message}");
+                $"Emit '{package}' for '{label}' failed: {ex.GetType().Name}: {ex.Message}");
+            RecordEmitError(ctx);
+        }
+    }
+
+    /// <summary>
+    /// Increment the per-session consecutive-error counter. After MaxConsecutiveErrors
+    /// failures in a row, GmcpEnabled is flipped off so we stop spamming the log on a
+    /// session that's clearly not handling our frames. The session can re-enable GMCP
+    /// only by negotiating it again (which would require reconnect in current design).
+    /// </summary>
+    private static void RecordEmitError(SessionContext ctx)
+    {
+        ctx.GmcpConsecutiveErrors++;
+        if (ctx.GmcpConsecutiveErrors >= MaxConsecutiveErrors && ctx.GmcpEnabled)
+        {
+            ctx.GmcpEnabled = false;
+            DebugLogger.Instance.LogWarning("GMCP",
+                $"Disabling GMCP for session '{ctx.Username}' after {ctx.GmcpConsecutiveErrors} consecutive emit failures.");
         }
     }
 

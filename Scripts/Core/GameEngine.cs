@@ -2882,6 +2882,15 @@ public partial class GameEngine
             if (playerSession != null)
                 playerSession.IsInGame = true;
 
+            // v0.60.3: GMCP Char.Items.List + Char.Skills.List one-shot at character
+            // load so MUD clients populate inventory and skill panes immediately.
+            // Subsequent updates fire on Combat.End and location changes.
+            if (UsurperRemake.Server.GmcpBridge.IsActive && currentPlayer != null)
+            {
+                UsurperRemake.Server.GmcpBridge.EmitItemsList(currentPlayer);
+                UsurperRemake.Server.GmcpBridge.EmitSkillsList(currentPlayer);
+            }
+
             // NOW register online presence and broadcast login — deferred from auth time
             // so players sitting at the main menu don't appear as "in the game"
             if (OnlineStateManager.IsActive)

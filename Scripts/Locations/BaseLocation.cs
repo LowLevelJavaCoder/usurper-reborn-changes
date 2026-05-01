@@ -65,32 +65,13 @@ public abstract class BaseLocation
 
     // v0.57.21: GMCP last-emitted vitals for delta detection. Per-instance because
     // each location has its own loop; resets implicitly on location change.
-    private long _lastGmcpHp = -1, _lastGmcpMaxHp = -1, _lastGmcpMana = -1, _lastGmcpMaxMana = -1, _lastGmcpStamina = -1;
-
     /// <summary>
     /// v0.57.21: emit GMCP Char.Vitals if any tracked stat changed since last emit.
-    /// Cheap no-op when GMCP isn't negotiated (early return on bridge IsActive check).
-    /// Frame format matches the conventional GMCP Char.Vitals shape used by Achaea
-    /// and other Iron Realms muds — clients with off-the-shelf scripts work without
-    /// custom mapping.
+    /// v0.60.3: hoisted to GmcpBridge so combat and other non-LocationLoop flows can
+    /// share the same delta tracking via SessionContext-scoped state.
     /// </summary>
     private void EmitGmcpVitals(Character player)
-    {
-        if (player == null || !UsurperRemake.Server.GmcpBridge.IsActive) return;
-        long hp = player.HP, maxHp = player.MaxHP;
-        long mana = player.Mana, maxMana = player.MaxMana;
-        long sta = player.Stamina;
-        if (hp == _lastGmcpHp && maxHp == _lastGmcpMaxHp && mana == _lastGmcpMana
-            && maxMana == _lastGmcpMaxMana && sta == _lastGmcpStamina)
-            return;
-        _lastGmcpHp = hp; _lastGmcpMaxHp = maxHp;
-        _lastGmcpMana = mana; _lastGmcpMaxMana = maxMana;
-        _lastGmcpStamina = sta;
-        UsurperRemake.Server.GmcpBridge.Emit("Char.Vitals", new
-        {
-            hp, maxHp, mp = mana, maxMp = maxMana, sp = sta
-        });
-    }
+        => UsurperRemake.Server.GmcpBridge.EmitVitalsIfChanged(player);
 
     /// <summary>
     /// True when this session should use compact BBS menus (80x24 terminal).
@@ -620,6 +601,10 @@ public abstract class BaseLocation
 
                     // Show Level Master hint on first level-up
                     HintSystem.Instance.TryShowHint(HintSystem.HINT_LEVEL_MASTER, terminal, currentPlayer.HintsShown);
+
+                    // v0.60.3: GMCP Char.Skills.List re-emit on level-up so MUD clients
+                    // see newly-unlocked abilities and spells without manual refresh.
+                    UsurperRemake.Server.GmcpBridge.EmitSkillsList(currentPlayer);
 
                     await terminal.PressAnyKey();
                 }
