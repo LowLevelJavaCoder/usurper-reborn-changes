@@ -2362,6 +2362,13 @@ Mystic Shaman - Tribal caster who summons totems and enchants weapons. Troll/Orc
     public const string CombatColor = "`C";            // Bright red for combat
     public const string HealColor = "`A";              // Bright green for healing
     public const string TauntColor = "`D";             // Bright magenta for taunts
+
+    // v0.60.2: AoE class-ability taunts (Thundering Roar, Shield Wall Formation, Divine Mandate, Rage Challenge,
+    // Undertow Stance, Abyssal Anchor) roll this percent chance per round to force the taunted monster onto
+    // the tank. 75% means a tank with 100% taunt uptime still leaks ~25% of attacks to the rest of the party
+    // each round, preserving threat without "invincible wall of flesh" gameplay. Basic [T] action and
+    // Eternal Vigil cooldown stay at 100% (hard taunt).
+    public const int SoftTauntStickChance = 75;
     public const string GoldColor = "`E";              // Bright yellow for gold
     public const string LocationColor = "`9";          // Bright blue for locations
     public const string EmptyColor = "`8";             // Gray for empty slots

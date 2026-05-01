@@ -4187,9 +4187,30 @@ public partial class CombatEngine
         // === SMART MONSTER TARGETING ===
         // Monsters intelligently choose targets based on threat, class roles, and positioning
         var aliveTeammates = result.Teammates?.Where(t => t.IsAlive).ToList();
+        Character? targetChoice = null;
         if (aliveTeammates != null && aliveTeammates.Count > 0)
         {
-            var targetChoice = SelectMonsterTarget(player, aliveTeammates, monster, random);
+            targetChoice = SelectMonsterTarget(player, aliveTeammates, monster, random);
+        }
+
+        // Tick down taunt duration AFTER target selection (so taunt applies for the full
+        // duration) but BEFORE branching to companion vs player attack paths -- the previous
+        // ordering put the decrement after early-return points, so taunts that landed on a
+        // teammate (Aldric tank casting Thundering Roar / Shield Wall Formation, NPC Paladin
+        // Divine Mandate, etc.) never decremented and locked monster aggro for the entire
+        // fight. Only player-self-taunts decremented because the player branch falls through.
+        if (monster.TauntRoundsLeft > 0)
+        {
+            monster.TauntRoundsLeft--;
+            if (monster.TauntRoundsLeft <= 0)
+            {
+                monster.TauntedBy = null;
+                monster.TauntStickChance = 100;
+            }
+        }
+
+        if (aliveTeammates != null && aliveTeammates.Count > 0)
+        {
             if (targetChoice != null && targetChoice != player)
             {
                 if (targetChoice.IsGroupedPlayer) _lastMonsterTargetedGroupPlayer = true;
@@ -4204,14 +4225,6 @@ public partial class CombatEngine
                 await MonsterAttacksCompanion(monster, fallbackTarget, result);
                 return;
             }
-        }
-
-        // Tick down taunt duration AFTER target selection (so taunt applies for the full duration)
-        if (monster.TauntRoundsLeft > 0)
-        {
-            monster.TauntRoundsLeft--;
-            if (monster.TauntRoundsLeft <= 0)
-                monster.TauntedBy = null;
         }
 
         // If leader is dead and no teammates, skip (shouldn't happen — loop should have exited)
@@ -12411,6 +12424,7 @@ public partial class CombatEngine
         target.ArmPow = Math.Max(0, target.ArmPow - 2);
         target.TauntedBy = player.DisplayName;
         target.TauntRoundsLeft = 2;
+        target.TauntStickChance = 100; // basic [T] = hard taunt
 
         await Task.Delay(GetCombatDelay(1000));
     }
@@ -13059,12 +13073,13 @@ public partial class CombatEngine
                 break;
 
             case "aoe_taunt":
-                // AoE taunt — force all living monsters to attack the taunter
+                // AoE taunt — soft-stick (75%) per-round threat on the taunter (Thundering Roar)
                 int tauntDuration = abilityResult.Duration > 0 ? abilityResult.Duration : 3;
                 foreach (var m in monsters.Where(m => m.IsAlive))
                 {
                     m.TauntedBy = player.DisplayName;
                     m.TauntRoundsLeft = tauntDuration;
+                    m.TauntStickChance = GameConfig.SoftTauntStickChance;
                 }
                 terminal.SetColor("bright_yellow");
                 terminal.WriteLine(Loc.Get(isPlayer ? "combat.taunt_aoe" : "combat.taunt_aoe_npc", actorName));
@@ -13663,12 +13678,13 @@ public partial class CombatEngine
             // TIDESWORN PRESTIGE ABILITIES
             // ═══════════════════════════════════════════════════════════════════════
             case "undertow":
-                // -20% enemy damage for duration (apply Weakened) + taunt (force target to attack you)
+                // -20% enemy damage (Weakened) + soft AoE taunt (75% stick per round)
                 if (target != null && target.IsAlive)
                 {
                     target.WeakenRounds = Math.Max(target.WeakenRounds, abilityResult.Duration);
                     target.TauntedBy = player.DisplayName;
                     target.TauntRoundsLeft = Math.Max(target.TauntRoundsLeft, abilityResult.Duration);
+                    target.TauntStickChance = GameConfig.SoftTauntStickChance;
                     terminal.SetColor("cyan");
                     terminal.WriteLine(Loc.Get("combat.ability_undertow", target.Name));
                 }
@@ -13679,6 +13695,7 @@ public partial class CombatEngine
                     {
                         m.TauntedBy = player.DisplayName;
                         m.TauntRoundsLeft = Math.Max(m.TauntRoundsLeft, abilityResult.Duration);
+                        m.TauntStickChance = GameConfig.SoftTauntStickChance;
                         m.WeakenRounds = Math.Max(m.WeakenRounds, abilityResult.Duration);
                     }
                 }
@@ -13724,7 +13741,7 @@ public partial class CombatEngine
 
             case "abyssal_anchor":
             {
-                // AoE taunt + weaken: force all monsters to attack caster, -20% damage
+                // Soft AoE taunt (75% stick) + weaken: threaten caster, -20% damage
                 int tauntDur = abilityResult.Duration > 0 ? abilityResult.Duration : 3;
                 if (monsters != null)
                 {
@@ -13732,6 +13749,7 @@ public partial class CombatEngine
                     {
                         m.TauntedBy = player.DisplayName;
                         m.TauntRoundsLeft = Math.Max(m.TauntRoundsLeft, tauntDur);
+                        m.TauntStickChance = GameConfig.SoftTauntStickChance;
                         m.WeakenRounds = Math.Max(m.WeakenRounds, tauntDur);
                     }
                 }
@@ -13832,6 +13850,7 @@ public partial class CombatEngine
                     {
                         m.TauntedBy = player.DisplayName;
                         m.TauntRoundsLeft = vigilDuration;
+                        m.TauntStickChance = 100; // Eternal Vigil = hard taunt (invuln cooldown)
                     }
                 }
                 terminal.SetColor("bright_white");
@@ -17368,18 +17387,31 @@ public partial class CombatEngine
     /// </summary>
     private Character? SelectMonsterTarget(Character player, List<Character> aliveTeammates, Monster monster, Random random)
     {
-        // Taunt override — if this monster is taunted, force it to attack the taunter
+        // Taunt override — if this monster is taunted, force it to attack the taunter,
+        // gated on TauntStickChance (100 = hard taunt always sticks, 75 = soft AoE class-ability
+        // taunt sometimes leaks). v0.60.2: soft-taunt roll prevents tank "wall of flesh" lock-in.
         if (!string.IsNullOrEmpty(monster.TauntedBy) && monster.TauntRoundsLeft > 0)
         {
-            // Check if taunter is still alive
-            if (player.IsAlive && player.DisplayName == monster.TauntedBy)
-                return null; // null = attack the player
-            var tauntTarget = aliveTeammates.FirstOrDefault(t => t.IsAlive && t.DisplayName == monster.TauntedBy);
-            if (tauntTarget != null)
-                return tauntTarget;
-            // Taunter is dead/gone — clear taunt
-            monster.TauntedBy = null;
-            monster.TauntRoundsLeft = 0;
+            bool taunteeStillThere = (player.IsAlive && player.DisplayName == monster.TauntedBy)
+                || aliveTeammates.Any(t => t.IsAlive && t.DisplayName == monster.TauntedBy);
+
+            if (!taunteeStillThere)
+            {
+                // Taunter is dead/gone — clear taunt entirely
+                monster.TauntedBy = null;
+                monster.TauntRoundsLeft = 0;
+                monster.TauntStickChance = 100;
+            }
+            else if (monster.TauntStickChance >= 100 || random.Next(100) < monster.TauntStickChance)
+            {
+                if (player.IsAlive && player.DisplayName == monster.TauntedBy)
+                    return null; // null = attack the player
+                var tauntTarget = aliveTeammates.FirstOrDefault(t => t.IsAlive && t.DisplayName == monster.TauntedBy);
+                if (tauntTarget != null)
+                    return tauntTarget;
+            }
+            // Otherwise: taunt is active but didn't stick this round — fall through to weighted selection.
+            // Tank still gets weighted-target priority via tankWeight bumping below.
         }
 
         // Build a list of all potential targets with weights
@@ -21104,6 +21136,7 @@ public partial class CombatEngine
                     int tauntDur = abilityResult.Duration > 0 ? abilityResult.Duration : 3;
                     monster.TauntedBy = player.DisplayName;
                     monster.TauntRoundsLeft = tauntDur;
+                    monster.TauntStickChance = GameConfig.SoftTauntStickChance;
                     terminal.SetColor("bright_yellow");
                     bool isTauntPlayer = (player == currentPlayer);
                     terminal.WriteLine(Loc.Get(isTauntPlayer ? "combat.taunt_aoe" : "combat.taunt_aoe_npc", isTauntPlayer ? "You" : player.DisplayName));
@@ -21142,12 +21175,13 @@ public partial class CombatEngine
             // ═══════════════════════════════════════════════════════════════════════
 
             case "undertow":
-                // -20% enemy damage for duration (apply Weakened) + taunt
+                // -20% enemy damage (Weakened) + soft taunt (75% stick)
                 if (monster != null && monster.IsAlive)
                 {
                     monster.WeakenRounds = Math.Max(monster.WeakenRounds, abilityResult.Duration);
                     monster.TauntedBy = player.DisplayName;
                     monster.TauntRoundsLeft = Math.Max(monster.TauntRoundsLeft, abilityResult.Duration);
+                    monster.TauntStickChance = GameConfig.SoftTauntStickChance;
                     terminal.SetColor("cyan");
                     terminal.WriteLine(Loc.Get("combat.ability_undertow", monster.Name));
                 }
@@ -21189,12 +21223,13 @@ public partial class CombatEngine
 
             case "abyssal_anchor":
             {
-                // Taunt + weaken single monster
+                // Soft taunt (75% stick) + weaken single monster
                 int tauntDur2 = abilityResult.Duration > 0 ? abilityResult.Duration : 3;
                 if (monster != null && monster.IsAlive)
                 {
                     monster.TauntedBy = player.DisplayName;
                     monster.TauntRoundsLeft = Math.Max(monster.TauntRoundsLeft, tauntDur2);
+                    monster.TauntStickChance = GameConfig.SoftTauntStickChance;
                     monster.WeakenRounds = Math.Max(monster.WeakenRounds, tauntDur2);
                 }
                 // +80 DEF handled by DefenseBonus on ability
@@ -21283,6 +21318,7 @@ public partial class CombatEngine
                     int vigilDur = abilityResult.Duration > 0 ? abilityResult.Duration : 2;
                     monster.TauntedBy = player.DisplayName;
                     monster.TauntRoundsLeft = vigilDur;
+                    monster.TauntStickChance = 100; // Eternal Vigil = hard taunt (invuln cooldown)
                 }
                 terminal.SetColor("bright_white");
                 terminal.WriteLine(Loc.Get("combat.ability_eternal_vigil"));
@@ -24413,6 +24449,7 @@ public partial class CombatEngine
         monster.Defence = Math.Max(0, monster.Defence - 2);
         monster.TauntedBy = player.DisplayName;
         monster.TauntRoundsLeft = 2;
+        monster.TauntStickChance = 100; // basic [T] = hard taunt
         result.CombatLog.Add($"{player.DisplayName} taunted {monster.Name}");
         await Task.Delay(GetCombatDelay(700));
     }
@@ -26335,11 +26372,15 @@ public partial class CombatEngine
     {
         int duration = abilityResult.Duration > 0 ? abilityResult.Duration : 3;
 
-        // AoE taunt — all living monsters forced on the tank
+        // Soft AoE taunt (75% stick) — all living monsters threatened by the tank.
+        // v0.60.2: pre-fix bug had monsters lock 100% onto the tank for the entire duration
+        // because TauntRoundsLeft never decremented when target was a teammate. Even with
+        // the decrement fixed, 100% × full uptime made tanks an "invincible wall of flesh."
         foreach (var m in monsters.Where(m => m.IsAlive))
         {
             m.TauntedBy = player.DisplayName;
             m.TauntRoundsLeft = duration;
+            m.TauntStickChance = GameConfig.SoftTauntStickChance;
         }
         terminal.SetColor("bright_yellow");
         terminal.WriteLine(Loc.Get(isPlayer ? "combat.taunt_aoe" : "combat.taunt_aoe_npc", actorName));

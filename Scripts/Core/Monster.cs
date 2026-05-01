@@ -71,6 +71,7 @@ public class Monster
     // Taunt mechanic — forced targeting
     public string? TauntedBy { get; set; }              // DisplayName of character who taunted this monster
     public int TauntRoundsLeft { get; set; }            // Rounds remaining (decremented each monster round)
+    public int TauntStickChance { get; set; } = 100;    // 0-100 chance per round that the taunt actually forces target. 100 = hard taunt (basic [T] action, Eternal Vigil). 75 = soft AoE class-ability taunt — keeps the tank threatening without making them an absolute aggro lock for the whole duration.
     
     // Additional properties for API compatibility
     public int Armour { get; set; }
