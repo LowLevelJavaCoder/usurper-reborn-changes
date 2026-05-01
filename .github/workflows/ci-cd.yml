@@ -739,14 +739,24 @@ jobs:
           HOST: ${{ vars.SERVER_HOST || '3.150.229.205' }}
           VERSION: ${{ steps.version.outputs.tag }}
         run: |
+          # v0.60.3: -x for diagnostic visibility -- prior runs failed with bare
+          # "exit code 1" and no indication of which command actually broke.
+          set -x
+
           # Setup SSH
           mkdir -p ~/.ssh
           echo "$SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts || echo "ssh-keyscan exit=$?"
 
-          SSH="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new ubuntu@$HOST"
-          SCP="scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new"
+          SSH="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 ubuntu@$HOST"
+          SCP="scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10"
+
+          # Verify artifact exists locally
+          ls -la server.tar.gz
+
+          # Probe SSH auth before doing real work
+          $SSH "echo SSH_OK; whoami; hostname; uptime"
 
           # Upload tarball
           $SCP server.tar.gz "ubuntu@$HOST:/tmp/usurper-reborn-server.tar.gz"

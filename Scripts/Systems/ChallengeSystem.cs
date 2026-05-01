@@ -140,12 +140,20 @@ public class ChallengeSystem
             if (_npcChallengesThisDay >= GameConfig.MaxNPCChallengesPerDay)
                 return;
 
-            // Find qualified NPC challengers for player kings (stricter requirements)
+            // Find qualified NPC challengers for player kings (stricter requirements).
+            // v0.60.3: also exclude by name match against the current throne-holder.
+            // CastleLocation.SetCurrentKing builds a new King object from the source
+            // NPC but never flips the NPC's own King flag to true, so `!n.King` alone
+            // fails to filter the queen out of her own succession candidate pool.
+            // Without this name guard, RNG can (and did) pick the queen as challenger
+            // and produce "Thalia Ravenswood is challenging Queen Thalia Ravenswood
+            // for the throne!"
             var playerKingChallengers = NPCSpawnSystem.Instance?.ActiveNPCs?
                 .Where(n => n.IsAlive &&
                        n.Level >= GameConfig.NPCMinLevelToChallenge &&
                        n.DaysInPrison <= 0 &&
                        !n.King &&
+                       !string.Equals(n.Name, king.Name, StringComparison.OrdinalIgnoreCase) &&
                        !n.IsStoryNPC &&
                        n.Brain?.Personality?.Ambition > GameConfig.NPCMinAmbitionToChallenge)
                 .ToList();
@@ -208,12 +216,16 @@ public class ChallengeSystem
         }
 
         // Find potential challengers (high-level NPCs not in prison, not King, not story NPCs)
-        // Story NPCs like The Stranger cannot become King - they have narrative roles
+        // Story NPCs like The Stranger cannot become King - they have narrative roles.
+        // v0.60.3: also exclude by name match against the current throne-holder.
+        // CastleLocation.SetCurrentKing doesn't set npc.King=true on the source NPC,
+        // so `!n.King` alone can let the queen challenge herself.
         var candidates = NPCSpawnSystem.Instance?.ActiveNPCs?
             .Where(n => n.IsAlive &&
                    n.Level >= 15 &&
                    n.DaysInPrison <= 0 &&
                    !n.King &&
+                   !string.Equals(n.Name, king.Name, StringComparison.OrdinalIgnoreCase) &&
                    !n.IsStoryNPC &&
                    n.Brain?.Personality?.Ambition > 0.6f)
             .OrderByDescending(n => n.Level + n.Strength)

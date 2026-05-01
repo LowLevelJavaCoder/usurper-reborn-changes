@@ -92,16 +92,6 @@ Files: `Scripts/Server/MudChatSystem.cs`.
 
 ---
 
-## `/pardon` Wizard command
-
-Player request: "can you give me a `/pardon` command to immediately release players from prison." New Wizard-tier command in `WizardCommandSystem`: `/pardon <player>` clears `DaysInPrison`, `IsMurderConvict`, and `CellDoorOpen` on the target's save, broadcasts a notification to the released player, and writes the change to the DB immediately so it survives reconnect.
-
-Internally this is a thin wrapper around the same SQL update path that admins were already running by hand against the DB.
-
-Files: `Scripts/Server/WizardCommandSystem.cs`.
-
----
-
 ## Dungeon level-change message correction
 
 Player report: "It says 'your level +10' deepest accessible 17 but I'm level 12. That math ain't mathin." The dungeon level-restriction message hardcoded "+/- 10" in the localization string, but the actual allowance is set per-config and could differ from 10. Pre-v0.60.2 the displayed number was right (max accessible was correctly clamped) but the explanatory text was misleading.
@@ -109,6 +99,47 @@ Player report: "It says 'your level +10' deepest accessible 17 but I'm level 12.
 Fix: `dungeon.deepest_accessible` now takes 2 args (`{0}` = max accessible floor, `{1}` = level allowance) so the message can read "deepest accessible: {0} (your level + {1})" without the hardcoded "10". Removed the stale "+/- 10" text from `dungeon.level_change`, `level_change_label`, and `dungeon.bbs_level_change` across all 5 languages (en/es/fr/hu/it).
 
 Files: `Localization/{en,es,fr,hu,it}.json`, plus the call sites in `Scripts/Locations/DungeonLocation.cs`.
+
+---
+
+## Tank taunt: locked-on-for-the-fight bug + percentage-stick design
+
+Two issues, fixed together. The first is the bug; the second is a design change to keep tanks from being an "invincible wall of flesh, win" button.
+
+### The bug -- taunt duration only decremented when the player was the target
+
+`Monster.TauntRoundsLeft` had exactly one decrement site: in `ProcessMonsterAction`, AFTER the `SelectMonsterTarget` -> branch-to-companion-attack early-return point. So the flow was:
+
+```
+SelectMonsterTarget returns the tank (TauntedBy match)
+-> targetChoice != player
+-> MonsterAttacksCompanion(...)
+-> return     <-- never reaches the decrement below
+```
+
+When the taunter was the *player* (basic [T] action, or player casting an AoE taunt themselves), the player branch fell through to the decrement and it ticked normally -- which is why solo testing didn't catch it. The bug only triggered when an *NPC tank teammate* (Aldric Warrior with Thundering Roar / Shield Wall Formation, NPC Paladin with Divine Mandate, NPC Barbarian with Rage Challenge, NPC Tidesworn with Abyssal Anchor / Undertow Stance) was the taunter. In that case `TauntRoundsLeft` stayed at its initial value forever, `TauntedBy` never cleared, and the monster locked onto the NPC tank for the entire fight regardless of the configured duration.
+
+This is why every tank-main playtester thought the AoE taunts felt overtuned -- a "3-round" taunt was effectively unlimited if cast by a teammate. Fix: extracted target selection from action dispatch in `ProcessMonsterAction`, decrement runs after `SelectMonsterTarget` returns but before either the companion-attack early-return or the player-attack continuation. Both branches now tick the duration correctly.
+
+Files: `Scripts/Systems/CombatEngine.cs` (`ProcessMonsterAction`).
+
+### The design change -- soft AoE taunt (75% stick per round)
+
+Even with the duration bug fixed, a 100% guaranteed AoE taunt for 3 rounds combined with Shield Wall Formation's 30% damage reduction made the rest of the party untouchable for the duration. Keep stacking taunts on cooldown and the tank is essentially the only legal target for the whole fight -- "invincible wall of flesh, win." Same shape complaint as the original feedback that drove v0.56.0's tank rebalance.
+
+New mechanic: per-round probabilistic taunt stick.
+
+- New field `Monster.TauntStickChance` (0-100, default 100). Each round, `SelectMonsterTarget` rolls `random.Next(100) < TauntStickChance` -- if it passes, taunt forces the target; if it fails, the monster falls through to the normal weighted-target selection (which still favors the tank via threat weight, just not absolutely).
+- New constant `GameConfig.SoftTauntStickChance = 75`. AoE class-ability taunts set the field to this value.
+- **Soft taunts (75% stick, "threatened, not locked")**: Thundering Roar (`aoe_taunt`), Undertow Stance (`undertow`), Abyssal Anchor (`abyssal_anchor`), Shield Wall Formation / Divine Mandate / Rage Challenge (all routed through `ApplyTankTauntAndBuff`). Single-monster and multi-monster ability handlers both updated.
+- **Hard taunts (100% stick, kept as-is)**: basic [T] action (1-2 round emergency lock), Eternal Vigil (Tidesworn invuln cooldown -- the entire point of that cooldown is absolute aggro on the invulnerable tank, leaving it at 100% preserves the design intent).
+- Hard-taunt sites also explicitly write `TauntStickChance = 100` so a previously-soft-taunted monster getting hard-taunted resets correctly. The decrement-to-zero path also resets `TauntStickChance` to 100 default to keep monster state consistent.
+
+Effective new behavior with Shield Wall Formation against 5 monsters for 3 rounds: ~75% of monster-rounds attack the tank, ~25% slip through to the rest of the party. Tank still bears the bulk of damage and remains the threatening target, but the rest of the party is no longer in safe-pause for the duration. Healers and DPS have to actually pay attention.
+
+Tunable from one site -- if 75% feels too sticky raise to 85, too leaky drop to 60. The field is per-monster so individual taunts can override the default if a future ability wants stronger or weaker stick.
+
+Files: `Scripts/Core/Monster.cs` (new `TauntStickChance` field), `Scripts/Core/GameConfig.cs` (new `SoftTauntStickChance` constant), `Scripts/Systems/CombatEngine.cs` (`SelectMonsterTarget` roll, plus `aoe_taunt` / `undertow` / `abyssal_anchor` / `ApplyTankTauntAndBuff` / hard-taunt sites in both single-monster and multi-monster paths).
 
 ---
 
@@ -128,9 +159,10 @@ Files: `Scripts/Server/MudServer.cs`.
 
 ### Modified Files
 - `Scripts/Core/Character.cs` -- `IsArrestCombat` flag, EquipItem slot-type validation
-- `Scripts/Core/GameConfig.cs` -- version bump to 0.60.2
+- `Scripts/Core/Monster.cs` -- new `TauntStickChance` field for soft-taunt design
+- `Scripts/Core/GameConfig.cs` -- version bump to 0.60.2, new `SoftTauntStickChance` constant
 - `Scripts/Core/GameEngine.cs` -- `HandleDeath` IsIntentionalExit short-circuit, PermadeathHelper routing, CreateNewGame clears erasure marks and re-enables disconnect-save
-- `Scripts/Systems/CombatEngine.cs` -- `HandlePlayerDeath` rewrite for online auto-revive, IsArrestCombat short-circuit, `HandleExcessiveDeathsPermadeath` delegates to PermadeathHelper, `TryTeammatePickupItem` cross-type slot defense
+- `Scripts/Systems/CombatEngine.cs` -- `HandlePlayerDeath` rewrite for online auto-revive, IsArrestCombat short-circuit, `HandleExcessiveDeathsPermadeath` delegates to PermadeathHelper, `TryTeammatePickupItem` cross-type slot defense, `ProcessMonsterAction` taunt-decrement-before-branch fix, `SelectMonsterTarget` per-round soft-taunt roll, soft-taunt application at all AoE class-ability sites (`aoe_taunt` / `undertow` / `abyssal_anchor` / `ApplyTankTauntAndBuff` in both single-monster and multi-monster paths), explicit hard-taunt resets at basic-[T] and Eternal Vigil sites
 - `Scripts/Systems/LocationManager.cs` -- `HandlePlayerDeath` IsIntentionalExit short-circuit + PermadeathHelper routing
 - `Scripts/Systems/SqlSaveBackend.cs` -- `MarkUsernameErased`, `ClearErasedMark`, `RageEventErasedUsernames` blacklist consulted in `WriteGameData`
 - `Scripts/Server/PlayerSession.cs` -- `SuppressDisconnectSave` flag respected in disconnect cleanup

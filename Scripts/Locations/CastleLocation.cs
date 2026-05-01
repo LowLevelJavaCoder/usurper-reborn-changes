@@ -7528,6 +7528,22 @@ public class CastleLocation : BaseLocation
             return;
         }
 
+        // v0.60.3: ensure the source NPC's King flag is set so downstream filters
+        // (ChallengeSystem candidate selection, etc.) actually see this NPC as the
+        // throne-holder. Pre-fix, the King object was built from the NPC but the
+        // NPC's own boolean stayed false, allowing the queen to be picked as a
+        // challenger against herself ("Thalia Ravenswood is challenging Queen
+        // Thalia Ravenswood for the throne!"). Also clear King=true on any other
+        // NPC by name so a stale flag from a previous reign doesn't linger.
+        if (NPCSpawnSystem.Instance?.ActiveNPCs != null)
+        {
+            foreach (var other in NPCSpawnSystem.Instance.ActiveNPCs.Where(n => n.King && n != npc))
+            {
+                other.King = false;
+            }
+        }
+        npc.King = true;
+
         currentKing = new King
         {
             Name = npc.Name,
@@ -7536,8 +7552,6 @@ public class CastleLocation : BaseLocation
             IsActive = true,
             CoronationDate = DateTime.Now
         };
-
-        // GD.Print($"[Castle] {npc.Name} has been restored as monarch");
     }
 
     /// <summary>
