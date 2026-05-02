@@ -436,6 +436,15 @@
     </div>
   </div>
 
+  <!-- Bot Detection -->
+  <div class="section">
+    <div class="section-title">
+      Bot Detection
+      <span id="bot-stats-meta" style="color:var(--dim);font-size:11px;font-weight:normal;margin-left:8px;"></span>
+    </div>
+    <div class="section-body" id="bot-stats-body">Loading...</div>
+  </div>
+
   <!-- Database + SSL + Game Info -->
   <div class="section-grid">
     <div class="section">
@@ -1069,6 +1078,71 @@ async function refreshPlayerMap() {
   }
 }
 
+// --- Bot Detection Stats (v0.60.4) ---
+async function refreshBotStats() {
+  const meta = document.getElementById('bot-stats-meta');
+  const body = document.getElementById('bot-stats-body');
+  if (!body) return;
+  try {
+    const data = await apiFetch('/bot-stats');
+    const sessions = data.sessions || [];
+    const t = data.thresholds;
+
+    if (data.stale) {
+      meta.textContent = data.message ? '(no data)' : `(stale, last ${data.ageSeconds}s ago)`;
+    } else {
+      meta.textContent = `updated ${data.ageSeconds}s ago`;
+    }
+
+    if (!sessions.length) {
+      const thresholdLine = t
+        ? `<div style="color:var(--dim);font-size:11px;margin-top:8px;">Flag conditions: rolling mean &lt; ${t.suspectMeanMs}ms AND stddev &lt; ${t.suspectStdDevMs}ms AND ${t.suspectConsecutiveCount}+ consecutive sub-${t.fastThresholdMs}ms inputs (window of ${t.windowSize})</div>`
+        : '';
+      body.innerHTML = `<div style="color:var(--dim)">No active combat sessions tracked.</div>${thresholdLine}`;
+      return;
+    }
+
+    // Sort: suspect first, then by consecFast desc, then mean asc.
+    sessions.sort((a, b) => {
+      if (a.suspect !== b.suspect) return a.suspect ? -1 : 1;
+      if (b.consecFast !== a.consecFast) return b.consecFast - a.consecFast;
+      return a.meanMs - b.meanMs;
+    });
+
+    const rows = sessions.map(s => {
+      const cls = s.suspect ? 'danger' : (s.totalFlags > 0 ? 'warn' : '');
+      const meanCol = s.meanMs < t.suspectMeanMs ? 'color:#ff6b6b;font-weight:bold' : '';
+      const stdCol = s.stddevMs < t.suspectStdDevMs ? 'color:#ff6b6b;font-weight:bold' : '';
+      const consCol = s.consecFast >= t.suspectConsecutiveCount ? 'color:#ff6b6b;font-weight:bold' : '';
+      const flagCol = s.totalFlags > 0 ? 'color:#ffaa00;font-weight:bold' : 'color:var(--dim)';
+      const tag = s.suspect ? ' <span style="color:#ff6b6b">[SUSPECT]</span>' : (s.totalFlags > 0 ? ' <span style="color:#ffaa00">[flagged ' + s.totalFlags + 'x]</span>' : '');
+      return `<tr class="${cls}">
+        <td>${s.username}${tag}</td>
+        <td style="${meanCol}">${s.meanMs.toFixed(1)} ms</td>
+        <td style="${stdCol}">${s.stddevMs.toFixed(1)} ms</td>
+        <td style="${consCol}">${s.consecFast}</td>
+        <td style="${flagCol}">${s.totalFlags}</td>
+      </tr>`;
+    }).join('');
+
+    body.innerHTML = `
+      <table>
+        <thead>
+          <tr><th>Player</th><th>Mean interval</th><th>Std dev</th><th>Consec fast</th><th>Total flags</th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div style="color:var(--dim);font-size:11px;margin-top:8px;">
+        Flag conditions: mean &lt; ${t.suspectMeanMs}ms AND stddev &lt; ${t.suspectStdDevMs}ms AND ${t.suspectConsecutiveCount}+ consecutive sub-${t.fastThresholdMs}ms inputs (window of ${t.windowSize}).
+        Red values = currently meeting that condition. [SUSPECT] = all three met right now.
+      </div>`;
+  } catch (e) {
+    if (e.message !== 'Session expired') {
+      body.innerHTML = `<div class="danger">Failed to load bot stats: ${e.message}</div>`;
+    }
+  }
+}
+
 // --- Database + SSL + Version ---
 function renderDatabase(data) {
   const el = document.getElementById('db-body');
@@ -1226,6 +1300,9 @@ async function refreshAll() {
 
     // Refresh player map (async, don't block dashboard render)
     refreshPlayerMap();
+
+    // Refresh bot detection stats (async, don't block dashboard render)
+    refreshBotStats();
 
     refreshEl.textContent = 'Updated ' + new Date().toLocaleTimeString();
   } catch (e) {

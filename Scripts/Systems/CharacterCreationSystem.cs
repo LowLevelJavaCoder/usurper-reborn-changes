@@ -2167,11 +2167,22 @@ public class CharacterCreationSystem
     {
         const int MAX_REROLLS = 5;
         int rerollsRemaining = MAX_REROLLS;
+        // v0.60.4: gate the roll on a flag so invalid input doesn't trigger a
+        // free reroll every keypress. Pre-fix the invalid-input branch fell
+        // through to `continue` which jumped back to RollStats at the top of
+        // the loop, letting Rage roll forever ("two whole more CON than I had
+        // rolled previously after a few tries"). Now: roll on entry, roll on
+        // explicit [R], skip the roll when re-prompting after a typo.
+        bool shouldRoll = true;
 
         while (true)
         {
-            // Roll the stats
-            RollStats(character);
+            // Roll the stats only when the flag is set (initial entry or after [R])
+            if (shouldRoll)
+            {
+                RollStats(character);
+                shouldRoll = false;
+            }
 
             // Phase 3: emit rolled stats so JS renders the stat-roll panel with
             // accept/reroll buttons. Rerolls remaining is part of the payload so
@@ -2329,12 +2340,14 @@ public class CharacterCreationSystem
                         terminal.WriteLine(Loc.Get("character_creation.rerolling"), "cyan");
                         await Task.Delay(800);
                     }
+                    shouldRoll = true; // legitimate reroll consumes a counter
                     continue;
                 }
                 else
                 {
                     terminal.WriteLine(Loc.Get("character_creation.choose_accept_reroll"), "red");
                     await Task.Delay(1000);
+                    // shouldRoll stays false — invalid input does not reroll
                     continue;
                 }
             }

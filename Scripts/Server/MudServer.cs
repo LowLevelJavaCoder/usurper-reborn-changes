@@ -114,6 +114,12 @@ public class MudServer
         var idleWatchdogTask = Task.Run(() => IdleWatchdogAsync(_cts.Token));
         Console.Error.WriteLine($"[MUD] Idle timeout watchdog started ({IdleTimeout.TotalMinutes} min)");
 
+        // v0.60.4: bot detection snapshot writer — every 30s, capture the
+        // BotDetectionSystem ring buffers and UPSERT them to a single SQLite row
+        // for the admin dashboard to read. No-op when no players are tracked.
+        var botSnapshotTask = Task.Run(() => BotDetectionSnapshotLoopAsync(_cts.Token));
+        Console.Error.WriteLine("[MUD] Bot detection snapshot writer started (30s interval)");
+
         // Start admin command queue poller (checks every 3 seconds for web dashboard commands)
         var adminPollerTask = Task.Run(() => AdminCommandPollerAsync(_cts.Token));
         Console.Error.WriteLine("[MUD] Admin command queue poller started (3s interval)");
@@ -988,6 +994,29 @@ public class MudServer
     /// Periodically check for idle players and disconnect them.
     /// Players with no input for IdleTimeout are auto-saved and disconnected.
     /// </summary>
+    /// <summary>
+    /// v0.60.4: periodic snapshot writer for the BotDetectionSystem. Every 30s
+    /// dumps the current ring buffer state to a single SQLite row that the admin
+    /// dashboard polls. Cheap when no sessions are in the dictionary (early return).
+    /// </summary>
+    private async Task BotDetectionSnapshotLoopAsync(CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(30), ct);
+                try { BotDetectionSystem.WriteSnapshotToDb(_sqlBackend); }
+                catch (Exception ex)
+                {
+                    DebugLogger.Instance.LogWarning("BOT_SNAPSHOT",
+                        $"snapshot loop tick failed: {ex.GetType().Name}: {ex.Message}");
+                }
+            }
+        }
+        catch (OperationCanceledException) { /* shutdown — expected */ }
+    }
+
     private async Task IdleWatchdogAsync(CancellationToken ct)
     {
         try

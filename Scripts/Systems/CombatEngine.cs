@@ -6063,10 +6063,20 @@ public partial class CombatEngine
         long teamGoldBonus = 0;
         if (result.Teammates != null && result.Teammates.Count > 0)
         {
-            teamXPBonus = (long)(expReward * 0.15);
-            teamGoldBonus = (long)(goldReward * 0.15);
-            expReward += teamXPBonus;
-            goldReward += teamGoldBonus;
+            // Bonus is intended to reward COOPERATIVE play -- real players in a
+            // group, or recruited story companions you've earned. Royal mercenaries
+            // (paid hirelings) and pure-NPC fillers shouldn't trigger the +15%
+            // because they're available to anyone with gold and create a solo-with-
+            // -hirelings grind that out-paces actual party play.
+            bool hasCooperativeTeammate = result.Teammates.Any(t =>
+                t.IsAlive && (t.IsGroupedPlayer || t.IsCompanion));
+            if (hasCooperativeTeammate)
+            {
+                teamXPBonus = (long)(expReward * 0.15);
+                teamGoldBonus = (long)(goldReward * 0.15);
+                expReward += teamXPBonus;
+                goldReward += teamGoldBonus;
+            }
         }
 
         // Fortune's Tune song gold bonus
@@ -18372,15 +18382,23 @@ public partial class CombatEngine
             adjustedExp = (long)(adjustedExp * childXPMult);
         }
 
-        // Team bonus - 15% extra XP and gold for having teammates
+        // Team bonus - 15% extra XP and gold for cooperative play.
+        // Restricted to grouped real players + earned story companions. Royal
+        // mercenary hirelings and pure-NPC fillers don't qualify -- otherwise
+        // the bonus rewards solo-with-paid-NPCs grind over actual party play.
         long teamXPBonus = 0;
         long teamGoldBonus = 0;
         if (result.Teammates != null && result.Teammates.Count > 0)
         {
-            teamXPBonus = (long)(adjustedExp * 0.15);
-            teamGoldBonus = (long)(adjustedGold * 0.15);
-            adjustedExp += teamXPBonus;
-            adjustedGold += teamGoldBonus;
+            bool hasCooperativeTeammate = result.Teammates.Any(t =>
+                t.IsAlive && (t.IsGroupedPlayer || t.IsCompanion));
+            if (hasCooperativeTeammate)
+            {
+                teamXPBonus = (long)(adjustedExp * 0.15);
+                teamGoldBonus = (long)(adjustedGold * 0.15);
+                adjustedExp += teamXPBonus;
+                adjustedGold += teamGoldBonus;
+            }
         }
 
         // Fortune's Tune song gold bonus

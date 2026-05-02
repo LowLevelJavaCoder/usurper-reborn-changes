@@ -2298,6 +2298,41 @@ async function handleAdminRequest(req, res) {
     return true;
   }
 
+  // GET /api/admin/bot-stats — surface BotDetectionSystem snapshot for sysop
+  // review. The game process writes the latest snapshot to the
+  // bot_detection_snapshot table on a 30s timer; this endpoint just reads
+  // back the most recent row plus its age. Returns an empty sessions list if
+  // no row exists yet (game not running, or no players have hit a combat
+  // input since startup).
+  if (method === 'GET' && url === '/api/admin/bot-stats') {
+    try {
+      const row = db.prepare('SELECT snapshot_at, snapshot_json FROM bot_detection_snapshot WHERE id = 1').get();
+      if (!row) {
+        return sendJson(res, 200, {
+          ok: true,
+          stale: true,
+          message: 'No snapshot available yet (no combat input recorded since server start, or game process not running).',
+          thresholds: null,
+          sessions: []
+        });
+      }
+      const data = JSON.parse(row.snapshot_json);
+      const ageSeconds = Math.floor((Date.now() - new Date(row.snapshot_at + 'Z').getTime()) / 1000);
+      return sendJson(res, 200, {
+        ok: true,
+        snapshotAt: row.snapshot_at,
+        ageSeconds,
+        // Snapshot older than 90s = stale (game may be down or deadlocked)
+        stale: ageSeconds > 90,
+        thresholds: data.thresholds,
+        sessions: data.sessions || []
+      });
+    } catch (err) {
+      console.error('[admin/bot-stats] error:', err.message);
+      return sendJson(res, 500, { error: 'Failed to read bot stats: ' + err.message });
+    }
+  }
+
   // GET /api/admin/geolocate — resolve IPs of online players to lat/lng/country/city
   if (method === 'GET' && url === '/api/admin/geolocate') {
     try {

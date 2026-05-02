@@ -390,6 +390,16 @@ namespace UsurperRemake.Systems
                     );
                     CREATE INDEX IF NOT EXISTS idx_snoop_target ON snoop_buffer(target_username, id);
                     CREATE INDEX IF NOT EXISTS idx_admin_cmd_status ON admin_commands(status, id);
+
+                    -- v0.60.4: bot detection snapshot. Single-row table (id=1) holding
+                    -- the latest BotDetectionSystem.Snapshot() output as JSON. Updated
+                    -- periodically by the game process; read by the admin dashboard.
+                    -- Table is empty when no players are actively in combat.
+                    CREATE TABLE IF NOT EXISTS bot_detection_snapshot (
+                        id INTEGER PRIMARY KEY CHECK (id = 1),
+                        snapshot_at TEXT NOT NULL,
+                        snapshot_json TEXT NOT NULL
+                    );
                 ";
                 cmd.ExecuteNonQuery();
             }
@@ -4923,6 +4933,34 @@ namespace UsurperRemake.Systems
             return Convert.ToInt32(cmd.ExecuteScalar() ?? 0);
         }
         catch { return 0; }
+    }
+
+    /// <summary>
+    /// v0.60.4: write the latest BotDetectionSystem snapshot JSON to the
+    /// single-row bot_detection_snapshot table. UPSERT keyed on id=1.
+    /// Called from BotDetectionSystem.WriteSnapshotToDb on the periodic
+    /// timer in MudServer; admin dashboard polls /api/admin/bot-stats which
+    /// reads back from this table.
+    /// </summary>
+    public void UpsertBotDetectionSnapshot(string snapshotJson)
+    {
+        try
+        {
+            using var connection = OpenConnection();
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = @"
+                INSERT INTO bot_detection_snapshot (id, snapshot_at, snapshot_json)
+                VALUES (1, datetime('now'), @json)
+                ON CONFLICT(id) DO UPDATE SET
+                    snapshot_at = excluded.snapshot_at,
+                    snapshot_json = excluded.snapshot_json;";
+            cmd.Parameters.AddWithValue("@json", snapshotJson);
+            cmd.ExecuteNonQuery();
+        }
+        catch (Exception ex)
+        {
+            DebugLogger.Instance.LogError("SQL", $"Failed to upsert bot detection snapshot: {ex.Message}");
+        }
     }
 
     public int GetAverageOnlineLevel()

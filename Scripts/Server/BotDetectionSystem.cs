@@ -141,5 +141,55 @@ namespace UsurperRemake.Server
             }
             return result;
         }
+
+        /// <summary>
+        /// v0.60.4: serialize Snapshot() to a single-row SQLite table the admin
+        /// dashboard polls. Called on a 30s timer from MudServer. Writes a JSON
+        /// blob plus the threshold values so the dashboard can render "this
+        /// player is X% of the way to a flag" without hardcoding the constants.
+        /// Silent no-op when SqlBackend is null (single-player mode).
+        /// </summary>
+        public static void WriteSnapshotToDb(SqlSaveBackend? backend)
+        {
+            try
+            {
+                if (backend == null) return;
+
+                var rows = Snapshot();
+                var payload = new
+                {
+                    thresholds = new
+                    {
+                        windowSize = WindowSize,
+                        fastThresholdMs = FastThresholdMs,
+                        suspectMeanMs = SuspectMeanMs,
+                        suspectStdDevMs = SuspectStdDevMs,
+                        suspectConsecutiveCount = SuspectConsecutiveCount
+                    },
+                    sessions = rows.Select(r => new
+                    {
+                        username = r.username,
+                        meanMs = Math.Round(r.meanMs, 1),
+                        stddevMs = Math.Round(r.stddevMs, 1),
+                        consecFast = r.consecFast,
+                        totalFlags = r.totalFlags,
+                        // Convenience: "is this session matching all 3 flag conditions right now?"
+                        suspect = r.meanMs < SuspectMeanMs
+                            && r.stddevMs < SuspectStdDevMs
+                            && r.consecFast >= SuspectConsecutiveCount
+                    }).ToList()
+                };
+
+                string json = System.Text.Json.JsonSerializer.Serialize(payload,
+                    new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase });
+
+                backend.UpsertBotDetectionSnapshot(json);
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Instance.LogWarning("BOT_SNAPSHOT",
+                    $"WriteSnapshotToDb failed: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
     }
 }
