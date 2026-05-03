@@ -2572,7 +2572,10 @@ public enum GameLocation
     // NPC Settlement (autonomous town-building)
     Settlement = 505,    // The Outskirts — NPC-built settlement
 
-    Closed = 30000       // onloc_closed (for fake players)
+    Closed = 30000,      // onloc_closed (for fake players)
+
+    // Player District?
+    PlayerDistrict = 601
 }
 
 /// <summary>
