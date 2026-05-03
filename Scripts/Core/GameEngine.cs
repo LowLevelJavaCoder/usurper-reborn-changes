@@ -7454,6 +7454,7 @@ public partial class GameEngine
         terminal.WriteLine(Loc.Get("engine.credits_djlunacy"));
         terminal.WriteLine(Loc.Get("engine.credits_xykier"));
         terminal.WriteLine(Loc.Get("engine.credits_lowleveljavacoder"));
+        terminal.WriteLine(Loc.Get("engine.credits_coosh"));
         terminal.WriteLine("");
 
         terminal.SetColor("bright_magenta");

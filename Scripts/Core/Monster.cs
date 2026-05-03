@@ -586,10 +586,29 @@ public class Monster
     /// </summary>
     public long GetGoldReward()
     {
-        // Gold scales with level using level^1.5 curve (steeper than before for late game)
-        // At level 1: ~22-62g, level 50: ~4,300-4,340g, level 100: ~12,000-12,050g
+        // Gold scales with level using level^1.5 curve up to Lv.50, then linear above.
+        // Pre-tune: level^1.5 * 12 produced ~4,300g at L50, ~12,000g at L100. Combined
+        // with multi-monster combat (5-monster fight = 5x), Blood Moon (3x), team-up
+        // bonuses, and party-of-NPCs grinding, the gold rate let players hit major
+        // sinks (Reinforced Door 250k, full HQ upgrade ~375k) in a single sitting.
+        // Halving the base coefficient (12 -> 6) plus soft-capping above L50 brings
+        // the rate down to a "should think about purchases" level without affecting
+        // existing hoarded gold.
         int level = Math.Max(1, Level > 0 ? Level : MonsterType);
-        long baseGold = (long)(Math.Pow(level, 1.5) * 12) + Random.Shared.Next(10, 51);
+        long baseGold;
+        if (level <= 50)
+        {
+            baseGold = (long)(Math.Pow(level, 1.5) * 6) + Random.Shared.Next(10, 51);
+        }
+        else
+        {
+            // Linear above L50: pivot from the L50 value (~2,121) and add a fixed
+            // increment per level instead of accelerating quadratically. Lands at
+            // L100 ~= 4,000g/kill (was 12,000g/kill).
+            const double L50Anchor = 2121.0;        // ~Math.Pow(50, 1.5) * 6
+            const double PerLevelAboveCap = 38.0;   // chosen so L100 ~= 4,000
+            baseGold = (long)(L50Anchor + (level - 50) * PerLevelAboveCap) + Random.Shared.Next(10, 51);
+        }
 
         if (IsBoss)
         {

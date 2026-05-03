@@ -141,7 +141,11 @@ namespace UsurperRemake.Systems
             terminal.SetColor("gray");
             terminal.WriteLine($"  {Loc.Get("auth.authenticating")}");
 
-            var (success, displayName, message, _, _) = await backend.AuthenticatePlayer(username.Trim(), password);
+            // v0.60.5: pass IP so AuthenticatePlayer can apply the IP-ban check
+            // even if this code path were ever called outside the MudServer
+            // accept-time gate (e.g., from a future direct-HTTP login flow).
+            var sessionIp = UsurperRemake.Server.SessionContext.Current?.RemoteIP;
+            var (success, displayName, message, _, _) = await backend.AuthenticatePlayer(username.Trim(), password, sessionIp);
 
             if (success)
             {
@@ -214,7 +218,8 @@ namespace UsurperRemake.Systems
             terminal.SetColor("gray");
             terminal.WriteLine($"  {Loc.Get("auth.creating_account")}");
 
-            var (success, message) = await backend.RegisterPlayer(username.Trim(), password);
+            var registerIp = UsurperRemake.Server.SessionContext.Current?.RemoteIP;
+            var (success, message) = await backend.RegisterPlayer(username.Trim(), password, registerIp);
 
             if (success)
             {

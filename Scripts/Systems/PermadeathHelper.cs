@@ -131,6 +131,14 @@ namespace UsurperRemake.Systems
 
                 if (SaveSystem.Instance?.Backend is SqlSaveBackend sqlBackend && !string.IsNullOrEmpty(username))
                 {
+                    // v0.60.5: purge shared world-state references (guild membership,
+                    // bounties, trades, world-boss damage, etc.) BEFORE clearing the
+                    // player_data so any joined queries in the purge hooks still
+                    // resolve. Player report (Rage): "lost all 4 lives, made a new
+                    // char, came back in my guild still, actually still worshiping
+                    // the same god." Fixed by this purge + the in-memory hook.
+                    sqlBackend.PurgePlayerWorldState(username);
+
                     sqlBackend.DeleteGameData(username, bypassArchive: false);
                     DebugLogger.Instance.LogWarning("DEATH_CAP",
                         $"Permadeleted '{username}' (display='{displayName}', lv={finalLevel}, class={className}, killer={killerName}). 7-day /restore window active.");

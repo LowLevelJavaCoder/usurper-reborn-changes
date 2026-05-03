@@ -126,7 +126,7 @@ namespace UsurperRemake.Systems
         /// <summary>
         /// Update player login/logout timestamps and playtime.
         /// </summary>
-        Task UpdatePlayerSession(string username, bool isLogin);
+        Task UpdatePlayerSession(string username, bool isLogin, string? ipAddress = null);
 
         // === Divine System (God-Mortal Interactions) ===
 

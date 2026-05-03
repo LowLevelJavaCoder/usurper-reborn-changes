@@ -9,7 +9,7 @@ using System.Collections.Generic;
 public static partial class GameConfig
 {
     // Version information
-    public const string Version = "0.60.4";
+    public const string Version = "0.60.5";
     public const string VersionName = "Beta";
 
     // v0.57.12: Alignment scale cap. Character.Chivalry and Character.Darkness setters clamp to [0, AlignmentCap]
@@ -2387,6 +2387,12 @@ Mystic Shaman - Tribal caster who summons totems and enchants weapons. Troll/Orc
     // each round, preserving threat without "invincible wall of flesh" gameplay. Basic [T] action and
     // Eternal Vigil cooldown stay at 100% (hard taunt).
     public const int SoftTauntStickChance = 75;
+
+    // v0.60.5: per-IP registration rate limit. Stops "ban -> reregister -> repeat"
+    // ban evasion. Banned players who try to make a 4th account from the same IP
+    // within 24h get refused. Generous default — most legit households / shared
+    // dorms / coffee shops won't see 3+ new players in a day.
+    public const int MaxRegistrationsPerIpPer24h = 3;
     public const string GoldColor = "`E";              // Bright yellow for gold
     public const string LocationColor = "`9";          // Bright blue for locations
     public const string EmptyColor = "`8";             // Gray for empty slots

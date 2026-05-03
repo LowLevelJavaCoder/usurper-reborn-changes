@@ -2483,6 +2483,8 @@ async function handleAdminRequest(req, res) {
         isBanned: !!row.is_banned,
         banReason: row.ban_reason,
         lastLogin: row.last_login,
+        lastLoginIp: row.last_login_ip || null,
+        currentOnlineIp: online ? (online.ip_address || null) : null,
         lastLogout: row.last_logout,
         createdAt: row.created_at,
         playtimeMinutes: row.total_playtime_minutes || 0,
@@ -2650,7 +2652,30 @@ async function handleAdminRequest(req, res) {
     try {
       const body = await readBody(req).catch(() => ({}));
       const reason = body.reason || 'Banned by admin';
+      // v0.60.5: ban_ip defaults TRUE — full ban includes IP block. The admin
+      // can opt out by passing banIp:false in the request body for a soft ban.
+      const banIp = body.banIp !== false;
+
       dbWrite.prepare("UPDATE players SET is_banned = 1, ban_reason = ? WHERE LOWER(username) = LOWER(?)").run(reason, playerUsername);
+
+      // Capture IP for ban (current online IP first, fall back to last_login_ip)
+      let bannedIp = null;
+      if (banIp) {
+        const onlineRow = db.prepare("SELECT ip_address FROM online_players WHERE LOWER(username) = LOWER(?)").get(playerUsername);
+        const playerRow = db.prepare("SELECT last_login_ip FROM players WHERE LOWER(username) = LOWER(?)").get(playerUsername);
+        bannedIp = (onlineRow && onlineRow.ip_address) || (playerRow && playerRow.last_login_ip) || null;
+        if (bannedIp && bannedIp !== '127.0.0.1' && bannedIp !== '::1' && bannedIp !== 'localhost') {
+          dbWrite.prepare(`
+            INSERT INTO banned_ips (ip_address, reason, banned_at, banned_by, associated_username)
+            VALUES (?, ?, datetime('now'), 'admin-web', ?)
+            ON CONFLICT(ip_address) DO UPDATE SET
+              reason = excluded.reason,
+              banned_at = excluded.banned_at,
+              banned_by = excluded.banned_by,
+              associated_username = excluded.associated_username
+          `).run('Account ban cascade: ' + reason, playerUsername, playerUsername);
+        }
+      }
 
       // Queue kick if online
       const online = db.prepare("SELECT username FROM online_players WHERE LOWER(username) = LOWER(?)").get(playerUsername);
@@ -2661,10 +2686,10 @@ async function handleAdminRequest(req, res) {
 
       try {
         dbWrite.prepare("INSERT INTO wizard_log (wizard_name, action, target, details, created_at) VALUES (?, ?, ?, ?, datetime('now'))")
-          .run('admin-web', 'ban_player', playerUsername, reason);
+          .run('admin-web', 'ban_player', playerUsername, reason + (bannedIp ? ` (IP: ${bannedIp})` : ''));
       } catch (e) { /* non-critical */ }
 
-      sendJson(res, 200, { success: true, wasOnline: !!online });
+      sendJson(res, 200, { success: true, wasOnline: !!online, bannedIp });
     } catch (e) {
       sendJson(res, 500, { error: e.message });
     }
@@ -2676,12 +2701,90 @@ async function handleAdminRequest(req, res) {
     try {
       dbWrite.prepare("UPDATE players SET is_banned = 0, ban_reason = NULL WHERE LOWER(username) = LOWER(?)").run(playerUsername);
 
+      // v0.60.5: also lift any IP bans associated with this account.
+      const lifted = dbWrite.prepare("DELETE FROM banned_ips WHERE LOWER(associated_username) = LOWER(?)").run(playerUsername);
+
       try {
         dbWrite.prepare("INSERT INTO wizard_log (wizard_name, action, target, details, created_at) VALUES (?, ?, ?, ?, datetime('now'))")
-          .run('admin-web', 'unban_player', playerUsername, '');
+          .run('admin-web', 'unban_player', playerUsername, lifted.changes > 0 ? `(also lifted ${lifted.changes} IP ban${lifted.changes === 1 ? '' : 's'})` : '');
       } catch (e) { /* non-critical */ }
 
       sendJson(res, 200, { success: true });
+    } catch (e) {
+      sendJson(res, 500, { error: e.message });
+    }
+    return true;
+  }
+
+  // GET /api/admin/banned-ips — list of currently-banned IPs
+  if (method === 'GET' && url === '/api/admin/banned-ips') {
+    try {
+      const rows = db.prepare(`
+        SELECT ip_address, reason, banned_at, banned_by, associated_username
+        FROM banned_ips
+        ORDER BY banned_at DESC
+      `).all();
+      sendJson(res, 200, { entries: rows });
+    } catch (e) {
+      sendJson(res, 500, { error: e.message });
+    }
+    return true;
+  }
+
+  // POST /api/admin/banned-ips — add a direct IP ban not tied to a specific account.
+  // Body: { ip, reason }
+  // v0.60.5: ip may also be CIDR notation (e.g. "1.2.3.0/24") to ban a range.
+  if (method === 'POST' && url === '/api/admin/banned-ips') {
+    try {
+      const body = await readBody(req);
+      const ip = (body.ip || '').trim();
+      const reason = body.reason || 'Banned by admin';
+      if (!ip) { sendJson(res, 400, { error: 'IP address required' }); return true; }
+      if (ip === '127.0.0.1' || ip === '::1' || ip === 'localhost') {
+        sendJson(res, 400, { error: 'Refusing to ban loopback IP' }); return true;
+      }
+      // Validate IP or CIDR format. Accept IPv4 / IPv6 single addresses or CIDR blocks.
+      const ipv4 = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(\/(\d|[12]\d|3[0-2]))?$/;
+      const ipv6 = /^[0-9a-fA-F:]+(\/(\d|[1-9]\d|1[01]\d|12[0-8]))?$/;
+      if (!ipv4.test(ip) && !ipv6.test(ip)) {
+        sendJson(res, 400, { error: 'Invalid IP or CIDR. Examples: 1.2.3.4, 1.2.3.0/24, 2001:db8::/32' }); return true;
+      }
+      // For CIDR, validate that the network address bits don't have host bits set
+      // beyond the mask. Optional sanity check; we still accept if the user typed
+      // 1.2.3.5/24 — the C# CidrContains masks both sides so it works fine.
+      if (ip === '0.0.0.0/0' || ip === '::/0') {
+        sendJson(res, 400, { error: 'Refusing to ban every IP on the internet' }); return true;
+      }
+      dbWrite.prepare(`
+        INSERT INTO banned_ips (ip_address, reason, banned_at, banned_by, associated_username)
+        VALUES (?, ?, datetime('now'), 'admin-web', NULL)
+        ON CONFLICT(ip_address) DO UPDATE SET
+          reason = excluded.reason,
+          banned_at = excluded.banned_at,
+          banned_by = excluded.banned_by
+      `).run(ip, reason);
+      try {
+        dbWrite.prepare("INSERT INTO wizard_log (wizard_name, action, target, details, created_at) VALUES (?, ?, ?, ?, datetime('now'))")
+          .run('admin-web', 'ban_ip', ip, reason);
+      } catch (e) { /* non-critical */ }
+      sendJson(res, 200, { success: true });
+    } catch (e) {
+      sendJson(res, 500, { error: e.message });
+    }
+    return true;
+  }
+
+  // DELETE /api/admin/banned-ips/:ip — lift an IP ban
+  const ipUnbanMatch = url.match(/^\/api\/admin\/banned-ips\/(.+)$/);
+  if (method === 'DELETE' && ipUnbanMatch) {
+    try {
+      const ip = decodeURIComponent(ipUnbanMatch[1]);
+      const result = dbWrite.prepare("DELETE FROM banned_ips WHERE ip_address = ?").run(ip);
+      try {
+        dbWrite.prepare("INSERT INTO wizard_log (wizard_name, action, target, details, created_at) VALUES (?, ?, ?, ?, datetime('now'))")
+          .run('admin-web', 'unban_ip', ip, '');
+      } catch (e) { /* non-critical */ }
+      sendJson(res, 200, { success: true, removed: result.changes });
     } catch (e) {
       sendJson(res, 500, { error: e.message });
     }
@@ -2776,7 +2879,11 @@ async function handleAdminRequest(req, res) {
   // GET /api/admin/snoop/:username — SSE stream of snoop output
   const snoopMatch = url.match(/^\/api\/admin\/snoop\/([^/]+)$/);
   if (method === 'GET' && snoopMatch) {
-    const snoopTarget = decodeURIComponent(snoopMatch[1]);
+    // v0.60.5: lowercase the target for the SQL query so it matches the
+    // LOWER(@username) used by WriteSnoopLine on the C# side. Without this,
+    // any URL that arrived with mixed case (e.g. someone hitting the API
+    // directly with a display name) would silently never match buffer rows.
+    const snoopTarget = decodeURIComponent(snoopMatch[1]).toLowerCase();
     try {
       // Queue snoop_start command
       const startResult = dbWrite.prepare("INSERT INTO admin_commands (command, target_username, args, created_by) VALUES (?, ?, ?, ?)")
@@ -2788,9 +2895,14 @@ async function handleAdminRequest(req, res) {
         'Connection': 'keep-alive',
         'X-Accel-Buffering': 'no',
       });
+      // Initial event so the admin sees something immediately even if the
+      // player is idle, plus retry directive so EventSource auto-reconnects.
+      res.write('retry: 5000\n\n');
       res.write(`data: ${JSON.stringify({ type: 'started', target: snoopTarget, commandId: startResult.lastInsertRowid })}\n\n`);
+      console.log(`[usurper-web] snoop opened for '${snoopTarget}' (cmdId=${startResult.lastInsertRowid})`);
 
       let lastSnoopId = 0;
+      let totalForwarded = 0;
       const snoopInterval = setInterval(() => {
         try {
           const rows = db.prepare("SELECT id, line, created_at FROM snoop_buffer WHERE target_username = ? AND id > ? ORDER BY id LIMIT 50")
@@ -2798,14 +2910,24 @@ async function handleAdminRequest(req, res) {
           for (const row of rows) {
             res.write(`data: ${JSON.stringify({ type: 'output', line: row.line, id: row.id })}\n\n`);
             lastSnoopId = row.id;
+            totalForwarded++;
           }
         } catch (e) {
           res.write(`data: ${JSON.stringify({ type: 'error', message: e.message })}\n\n`);
         }
       }, 500);
 
+      // v0.60.5: keepalive ping every 20s so an idle snoop session doesn't
+      // get killed by nginx's default proxy_read_timeout (60s). The leading
+      // ":" makes it an SSE comment that the EventSource client ignores.
+      const keepaliveInterval = setInterval(() => {
+        try { res.write(': keepalive\n\n'); } catch (e) { /* socket closed */ }
+      }, 20000);
+
       req.on('close', () => {
         clearInterval(snoopInterval);
+        clearInterval(keepaliveInterval);
+        console.log(`[usurper-web] snoop closed for '${snoopTarget}' (forwarded ${totalForwarded} lines)`);
         // Queue snoop_stop
         try {
           dbWrite.prepare("INSERT INTO admin_commands (command, target_username, args, created_by) VALUES (?, ?, ?, ?)")
@@ -2813,6 +2935,7 @@ async function handleAdminRequest(req, res) {
         } catch (e) { /* best-effort */ }
       });
     } catch (e) {
+      console.error(`[usurper-web] snoop error: ${e.message}`);
       sendJson(res, 500, { error: e.message });
     }
     return true;

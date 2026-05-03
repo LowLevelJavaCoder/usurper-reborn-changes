@@ -946,7 +946,7 @@ namespace UsurperRemake.Systems
         {
             var ipAddress = SessionContext.Current?.RemoteIP ?? "";
             await backend.RegisterOnline(username, displayName, currentLocation, connectionType, ipAddress);
-            await backend.UpdatePlayerSession(username, isLogin: true);
+            await backend.UpdatePlayerSession(username, isLogin: true, ipAddress: ipAddress);
 
             // v0.57.13: announce arrival to Discord gossip channel (no-op if bridge disabled)
             cachedDisplayName = displayName;
