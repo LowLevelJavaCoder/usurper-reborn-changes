@@ -1,3 +1,4 @@
+#if FALSE
 public class PlayerDistrictLocation : BaseLocation
 {
     public PlayerDistrictLocation() : base (
@@ -48,3 +49,5 @@ public class PlayerDistrictLocation : BaseLocation
         terminal.ClearScreen();
     }
 }
+
+#endif
