@@ -30,8 +30,17 @@ public class MudServer
     private TcpListener? _listener;
     private CancellationTokenSource? _cts;
 
-    /// <summary>Idle timeout: disconnect players with no input for this long.</summary>
-    public static readonly TimeSpan IdleTimeout = TimeSpan.FromMinutes(15);
+    /// <summary>
+    /// Idle timeout: disconnect players with no input for this long.
+    /// v0.60.7: reads `DoorMode.IdleTimeoutMinutes` live so admin changes
+    /// from the web Server Settings panel take effect on the next watchdog
+    /// tick (every 30s) without restart. The pre-fix `static readonly` was
+    /// baked in at process start and ignored runtime changes -- the admin
+    /// could change the setting in the dashboard but the actual disconnect
+    /// kept firing at the original 15-minute boundary.
+    /// </summary>
+    public static TimeSpan IdleTimeout =>
+        TimeSpan.FromMinutes(UsurperRemake.BBS.DoorMode.IdleTimeoutMinutes);
 
     /// <summary>How long before idle timeout to show a warning.</summary>
     public static readonly TimeSpan IdleWarningBefore = TimeSpan.FromMinutes(2);
@@ -176,6 +185,13 @@ public class MudServer
         UsurperRemake.Systems.DiscordBridge.Initialize(_databasePath);
         var discordBridgeTask = Task.Run(() => DiscordBridgePollerAsync(_cts.Token));
         Console.Error.WriteLine("[MUD] Discord bridge poller started (250ms interval)");
+
+        // v0.60.8: server settings apply-queue poller. The web admin UI writes
+        // setting-change requests to server_config_apply_queue; this loop drains
+        // them every 1s and applies them to the live GameConfig statics so
+        // admin changes take effect without restart.
+        var settingsApplyTask = Task.Run(() => ServerSettingsApplyLoopAsync(_cts.Token));
+        Console.Error.WriteLine("[MUD] Server settings apply-queue poller started (1s interval)");
 
         // Start listening
         _listener = new TcpListener(IPAddress.Any, _port);
@@ -1106,6 +1122,30 @@ public class MudServer
     /// dumps the current ring buffer state to a single SQLite row that the admin
     /// dashboard polls. Cheap when no sessions are in the dictionary (early return).
     /// </summary>
+    /// <summary>
+    /// v0.60.8: pull setting changes the web admin UI queued and apply them
+    /// to the live GameConfig statics. Polls every 1 second. Most ticks are
+    /// no-ops (queue empty); when a change is queued it usually applies on
+    /// the very next tick so the admin sees near-instant feedback.
+    /// </summary>
+    private async Task ServerSettingsApplyLoopAsync(CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(1), ct);
+                try { _sqlBackend.DrainServerConfigApplyQueue(); }
+                catch (Exception ex)
+                {
+                    DebugLogger.Instance.LogWarning("SERVER_CONFIG",
+                        $"settings apply loop tick failed: {ex.GetType().Name}: {ex.Message}");
+                }
+            }
+        }
+        catch (OperationCanceledException) { /* shutdown — expected */ }
+    }
+
     private async Task BotDetectionSnapshotLoopAsync(CancellationToken ct)
     {
         try

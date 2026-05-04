@@ -87,6 +87,204 @@ namespace UsurperRemake.Systems
             };
 
             InitializeDatabase();
+            LoadServerConfigIntoGameConfig();
+            PublishServerSettingsSchema();
+        }
+
+        /// <summary>
+        /// v0.60.8: write the current ServerSettingsRegistry to the
+        /// server_config_schema table so the web admin UI can fetch a
+        /// canonical schema and render the right input control per setting.
+        /// Re-runs on every server start so the schema stays in lockstep
+        /// with the binary -- if a setting was added or removed the schema
+        /// row reflects that immediately.
+        /// </summary>
+        private void PublishServerSettingsSchema()
+        {
+            try
+            {
+                var serializable = ServerSettingsRegistry.All.Select(d => new
+                {
+                    key = d.Key,
+                    label = d.Label,
+                    category = d.Category,
+                    type = d.Type.ToString(),
+                    defaultValue = d.DefaultValue,
+                    minValue = d.MinValue,
+                    maxValue = d.MaxValue,
+                    maxLength = d.MaxLength,
+                    description = d.Description,
+                    changeImpact = d.ChangeImpact
+                }).ToList();
+                string json = System.Text.Json.JsonSerializer.Serialize(serializable);
+
+                using var connection = new SqliteConnection(connectionString);
+                connection.Open();
+                using var cmd = connection.CreateCommand();
+                cmd.CommandText = @"
+                    INSERT INTO server_config_schema (id, schema_json, published_at)
+                    VALUES (1, @j, datetime('now'))
+                    ON CONFLICT(id) DO UPDATE SET schema_json = @j, published_at = datetime('now')";
+                cmd.Parameters.AddWithValue("@j", json);
+                cmd.ExecuteNonQuery();
+                DebugLogger.Instance.LogInfo("SERVER_CONFIG", $"Published settings schema ({serializable.Count} settings).");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Instance.LogError("SERVER_CONFIG", $"Schema publish failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// v0.60.8: drain pending setting changes queued by the web admin UI.
+        /// Called by MudServer on a 1s timer. Each queued row UPSERT-applied
+        /// the value to server_config (already done by the web process) and
+        /// is now applied to the live GameConfig statics via the registry.
+        /// Returns the number of rows applied.
+        /// </summary>
+        public int DrainServerConfigApplyQueue()
+        {
+            int applied = 0;
+            try
+            {
+                using var connection = new SqliteConnection(connectionString);
+                connection.Open();
+
+                List<(long id, string key, string value)> rows = new();
+                using (var sel = connection.CreateCommand())
+                {
+                    sel.CommandText = "SELECT id, key, value FROM server_config_apply_queue ORDER BY id";
+                    using var rdr = sel.ExecuteReader();
+                    while (rdr.Read())
+                    {
+                        rows.Add((rdr.GetInt64(0), rdr.GetString(1), rdr.GetString(2)));
+                    }
+                }
+                if (rows.Count == 0) return 0;
+
+                using var tx = connection.BeginTransaction();
+                foreach (var (id, key, value) in rows)
+                {
+                    try
+                    {
+                        ApplyServerConfigToGameConfig(key, value);
+                        applied++;
+                        DebugLogger.Instance.LogInfo("SERVER_CONFIG",
+                            $"Applied web change: {key} = {value}");
+                    }
+                    catch (Exception innerEx)
+                    {
+                        DebugLogger.Instance.LogError("SERVER_CONFIG",
+                            $"Apply failed for {key}={value}: {innerEx.Message}");
+                    }
+                    using var del = connection.CreateCommand();
+                    del.Transaction = tx;
+                    del.CommandText = "DELETE FROM server_config_apply_queue WHERE id = @id";
+                    del.Parameters.AddWithValue("@id", id);
+                    del.ExecuteNonQuery();
+                }
+                tx.Commit();
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Instance.LogError("SERVER_CONFIG", $"Drain queue failed: {ex.Message}");
+            }
+            return applied;
+        }
+
+        /// <summary>
+        /// v0.60.7: read every row from server_config and apply it to the
+        /// matching GameConfig static field. Runs once after schema init so
+        /// admin-set permadeath / resurrection settings survive restart and
+        /// are already in effect by the time the first session connects.
+        /// Unknown keys are ignored (forward-compat for keys removed in
+        /// future releases).
+        /// </summary>
+        private void LoadServerConfigIntoGameConfig()
+        {
+            try
+            {
+                using var connection = new SqliteConnection(connectionString);
+                connection.Open();
+                using var cmd = connection.CreateCommand();
+                cmd.CommandText = "SELECT key, value FROM server_config";
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                {
+                    string key = reader.GetString(0);
+                    string value = reader.GetString(1);
+                    ApplyServerConfigToGameConfig(key, value);
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Instance.LogWarning("SERVER_CONFIG",
+                    $"Failed to load server_config at startup: {ex.Message}. Using GameConfig defaults.");
+            }
+        }
+
+        /// <summary>
+        /// Translate a key/value row into the matching GameConfig static.
+        /// Routes through ServerSettingsRegistry so the key->field mapping
+        /// lives in one place (the registry) and adding a new tunable doesn't
+        /// require touching this file.
+        /// </summary>
+        private static void ApplyServerConfigToGameConfig(string key, string value)
+        {
+            ServerSettingsRegistry.ApplyConfigValue(key, value);
+        }
+
+        /// <summary>
+        /// Read a single server_config value. Returns null if the key has
+        /// never been set (caller should use the GameConfig default).
+        /// </summary>
+        public string? GetServerConfig(string key)
+        {
+            try
+            {
+                using var connection = new SqliteConnection(connectionString);
+                connection.Open();
+                using var cmd = connection.CreateCommand();
+                cmd.CommandText = "SELECT value FROM server_config WHERE key = @k";
+                cmd.Parameters.AddWithValue("@k", key);
+                var result = cmd.ExecuteScalar();
+                return result?.ToString();
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Instance.LogWarning("SERVER_CONFIG", $"GetServerConfig({key}) failed: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// UPSERT a server_config key/value AND update the matching GameConfig
+        /// static immediately so the new value takes effect on the next session
+        /// without restart. Records the admin who made the change for audit.
+        /// </summary>
+        public void SetServerConfig(string key, string value, string? changedBy = null)
+        {
+            try
+            {
+                using var connection = new SqliteConnection(connectionString);
+                connection.Open();
+                using var cmd = connection.CreateCommand();
+                cmd.CommandText = @"
+                    INSERT INTO server_config (key, value, updated_at, updated_by)
+                    VALUES (@k, @v, datetime('now'), @by)
+                    ON CONFLICT(key) DO UPDATE SET value = @v, updated_at = datetime('now'), updated_by = @by";
+                cmd.Parameters.AddWithValue("@k", key);
+                cmd.Parameters.AddWithValue("@v", value);
+                cmd.Parameters.AddWithValue("@by", (object?)changedBy ?? DBNull.Value);
+                cmd.ExecuteNonQuery();
+                ApplyServerConfigToGameConfig(key, value);
+                DebugLogger.Instance.LogInfo("SERVER_CONFIG",
+                    $"Set {key} = {value} (by {changedBy ?? "system"})");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Instance.LogError("SERVER_CONFIG", $"SetServerConfig({key}={value}) failed: {ex.Message}");
+            }
         }
 
         /// <summary>
@@ -307,6 +505,44 @@ namespace UsurperRemake.Systems
                         muted_by TEXT,
                         frozen_at TEXT,
                         muted_at TEXT
+                    );
+
+                    -- v0.60.7: server-wide configuration set by the admin console.
+                    -- Survives restart. Loaded into GameConfig on backend init so
+                    -- runtime checks read from in-memory statics. Admin writes
+                    -- through SetServerConfig(key, value) which both UPSERTs the
+                    -- row AND updates the matching GameConfig static.
+                    CREATE TABLE IF NOT EXISTS server_config (
+                        key TEXT PRIMARY KEY,
+                        value TEXT NOT NULL,
+                        updated_at TEXT DEFAULT (datetime('now')),
+                        updated_by TEXT
+                    );
+
+                    -- v0.60.8: schema descriptor published by the running game
+                    -- process on startup. Single-row JSON blob containing the
+                    -- full ServerSettingsRegistry serialized as the form schema
+                    -- the web admin UI renders against. Re-published on every
+                    -- restart so the schema stays in sync with the binary.
+                    CREATE TABLE IF NOT EXISTS server_config_schema (
+                        id INTEGER PRIMARY KEY,
+                        schema_json TEXT NOT NULL,
+                        published_at TEXT DEFAULT (datetime('now'))
+                    );
+
+                    -- v0.60.8: apply-queue for live setting changes from the web
+                    -- admin UI. The web process can write rows to server_config
+                    -- but cannot reach the running game's in-memory GameConfig
+                    -- statics. Every 1s the game drains this queue and routes
+                    -- each row through ServerSettingsRegistry.ApplyConfigValue
+                    -- so changes take effect without restart. Processed rows
+                    -- are deleted; a row that fails to parse is logged and
+                    -- discarded so a malformed value doesn't block the queue.
+                    CREATE TABLE IF NOT EXISTS server_config_apply_queue (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        key TEXT NOT NULL,
+                        value TEXT NOT NULL,
+                        requested_at TEXT DEFAULT (datetime('now'))
                     );
 
                     CREATE TABLE IF NOT EXISTS sleeping_players (

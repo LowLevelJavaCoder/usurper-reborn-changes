@@ -19254,7 +19254,12 @@ public partial class CombatEngine
         // hits 0. No Veil-of-Death menu, no Temple/Deal/Accept fallbacks.
         // Three free resurrections, then erasure. Single-player keeps the
         // legacy menu where players can trade XP/gold/levels for a return.
-        bool isOnlinePermadeathMode = UsurperRemake.BBS.DoorMode.IsOnlineMode;
+        // v0.60.7: gated on GameConfig.OnlinePermadeathEnabled. Admins can
+        // toggle this off from the Online Admin Console for servers that
+        // want softcore play -- when off, online deaths fall through to the
+        // single-player penalty menu (Temple / Deal with Death / Accept Fate)
+        // and no character is ever erased regardless of how many times they die.
+        bool isOnlinePermadeathMode = UsurperRemake.BBS.DoorMode.IsOnlineMode && GameConfig.OnlinePermadeathEnabled;
         if (isOnlinePermadeathMode && result.Player.Resurrections <= 0)
         {
             await HandleExcessiveDeathsPermadeath(result);
@@ -19394,16 +19399,30 @@ public partial class CombatEngine
         }
 
         // v0.60.0 beta: online mode skips the Veil-of-Death menu entirely.
-        // No Temple/Deal/Accept choices -- you have 3 free resurrections per
+        // No Temple/Deal/Accept choices -- you have N free resurrections per
         // playthrough, that's it. The death cap (Resurrections == 0) was
         // already checked above and routed to permadeath. From here we just
         // auto-consume one resurrection.
+        // v0.60.7: gated on GameConfig.OnlinePermadeathEnabled. When the
+        // admin has disabled permadeath, this online-mode shortcut is also
+        // disabled and the code falls through to PresentResurrectionChoices
+        // (the legacy single-player menu: Temple, Deal with Death, Accept
+        // Fate). Without this gate, deaths kept decrementing the resurrection
+        // counter into negative territory because the permadeath check above
+        // (which would have stopped the decrement) was also disabled.
         ResurrectionResult resurrectionResult;
-        if (UsurperRemake.BBS.DoorMode.IsOnlineMode)
+        if (UsurperRemake.BBS.DoorMode.IsOnlineMode && GameConfig.OnlinePermadeathEnabled)
         {
-            result.Player.Resurrections--;
+            // Clamp at zero defensively. Resurrections going negative is the
+            // bug player report from the first deploy of admin-tunable
+            // permadeath; even though the gate above should now prevent this
+            // path from running with Resurrections == 0, the clamp ensures
+            // the displayed count never reads as a negative number again.
+            if (result.Player.Resurrections > 0)
+                result.Player.Resurrections--;
             result.Player.ResurrectionsUsed++;
-            int rezLeft = result.Player.Resurrections;
+            int rezLeft = Math.Max(0, result.Player.Resurrections);
+            int max = Math.Max(1, result.Player.MaxResurrections);
             int restoredHP = (int)(result.Player.MaxHP * 0.5);
 
             terminal.SetColor("bright_yellow");
@@ -19418,7 +19437,7 @@ public partial class CombatEngine
             else
             {
                 terminal.SetColor("yellow");
-                terminal.WriteLine($"  Resurrections remaining: {rezLeft} of 3");
+                terminal.WriteLine($"  Resurrections remaining: {rezLeft} of {max}");
             }
             terminal.WriteLine("");
             await Task.Delay(2000);

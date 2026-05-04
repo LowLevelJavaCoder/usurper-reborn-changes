@@ -1778,38 +1778,6 @@ async function getAdminOverview() {
     }
   }
 
-  // v0.60.0 beta-launch Rage event memorial. The rage_victims table is
-  // lazy-created by C# the first time a player is erased -- absent until
-  // then. Wrap every read so the absence is silent.
-  let rageEvent = { totalErased: 0, last24h: 0, recent: [] };
-  if (db) {
-    try {
-      const tableCheck = db.prepare(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='rage_victims'"
-      ).get();
-      if (tableCheck) {
-        const totalRow = db.prepare("SELECT COUNT(*) as cnt FROM rage_victims").get();
-        rageEvent.totalErased = totalRow ? totalRow.cnt : 0;
-        const last24Row = db.prepare(
-          "SELECT COUNT(*) as cnt FROM rage_victims WHERE erased_at >= datetime('now', '-24 hours')"
-        ).get();
-        rageEvent.last24h = last24Row ? last24Row.cnt : 0;
-        const recentRows = db.prepare(
-          "SELECT username, display_name, level, class_name, erased_at FROM rage_victims ORDER BY erased_at DESC LIMIT 25"
-        ).all();
-        rageEvent.recent = (recentRows || []).map(r => ({
-          username: r.username,
-          displayName: r.display_name,
-          level: r.level,
-          className: r.class_name,
-          erasedAt: r.erased_at
-        }));
-      }
-    } catch (e) {
-      console.error(`[usurper-web] Rage event query error: ${e.message}`);
-    }
-  }
-
   // Web proxy stats
   const webProxy = {
     startTime: new Date(Date.now() - process.uptime() * 1000).toISOString(),
@@ -1818,7 +1786,7 @@ async function getAdminOverview() {
     dashSseClients: dashSseClients ? dashSseClients.size : 0
   };
 
-  adminOverviewCache = { server, disk, players, webProxy, rageEvent };
+  adminOverviewCache = { server, disk, players, webProxy };
   adminOverviewCacheTime = now;
   return adminOverviewCache;
 }
@@ -2298,6 +2266,117 @@ async function handleAdminRequest(req, res) {
     return true;
   }
 
+  // GET /api/admin/server-settings — return the schema (registry of all
+  // tunable server settings) plus the current value for each. The schema
+  // is loaded from the latest server_config_schema row written by the C#
+  // game process, which serializes ServerSettingsRegistry.All on startup.
+  // The current values come from the server_config table; missing rows
+  // fall back to the descriptor's default. Web UI uses this single payload
+  // to render the entire Server Settings panel.
+  if (method === 'GET' && url === '/api/admin/server-settings') {
+    try {
+      const schemaRow = db.prepare('SELECT schema_json FROM server_config_schema WHERE id = 1').get();
+      if (!schemaRow) {
+        return sendJson(res, 200, {
+          ok: true,
+          message: 'Schema not yet published by game process. Restart the game server.',
+          settings: []
+        });
+      }
+      const schema = JSON.parse(schemaRow.schema_json);
+      const valueRows = db.prepare('SELECT key, value, updated_at, updated_by FROM server_config').all();
+      const valueMap = {};
+      for (const r of valueRows) valueMap[r.key] = r;
+
+      const settings = schema.map(d => {
+        const cur = valueMap[d.key];
+        return {
+          ...d,
+          currentValue: cur ? cur.value : d.defaultValue,
+          isDefault: !cur,
+          updatedAt: cur ? cur.updated_at : null,
+          updatedBy: cur ? cur.updated_by : null
+        };
+      });
+      return sendJson(res, 200, { ok: true, settings });
+    } catch (err) {
+      console.error('[admin/server-settings GET] error:', err.message);
+      return sendJson(res, 500, { error: 'Failed to read settings: ' + err.message });
+    }
+  }
+
+  // POST /api/admin/server-settings/:key  body { value }
+  // Validates against the schema descriptor (type, range, length) before
+  // writing. On success, UPSERTs into server_config and writes a request
+  // queue row that the C# game process picks up via a 1s polling timer
+  // and applies to the live GameConfig static. The DB-level update alone
+  // is not enough -- the running game holds GameConfig in memory, so the
+  // change has to be pushed into the running process too.
+  const settingMatch = url.match(/^\/api\/admin\/server-settings\/([^/]+)$/);
+  if (method === 'POST' && settingMatch) {
+    const key = decodeURIComponent(settingMatch[1]);
+    try {
+      const body = await readBody(req);
+      const value = body && body.value != null ? String(body.value) : null;
+      if (value === null) return sendJson(res, 400, { error: 'Missing value field.' });
+
+      const schemaRow = db.prepare('SELECT schema_json FROM server_config_schema WHERE id = 1').get();
+      if (!schemaRow) return sendJson(res, 503, { error: 'Schema not yet published by game process.' });
+      const schema = JSON.parse(schemaRow.schema_json);
+      const desc = schema.find(d => d.key === key);
+      if (!desc) return sendJson(res, 404, { error: `Unknown setting key: ${key}` });
+
+      // Schema-side validation. Mirrors the C# ServerSettingsRegistry.Validate
+      // so the admin gets an immediate error instead of a silent clamp at apply time.
+      let err = null;
+      if (desc.type === 'Bool') {
+        if (value !== 'true' && value !== 'false' && value !== '1' && value !== '0')
+          err = "Value must be 'true' or 'false'.";
+      } else if (desc.type === 'Int') {
+        const n = parseInt(value, 10);
+        if (isNaN(n)) err = 'Value must be a whole number.';
+        else if (desc.minValue != null && n < desc.minValue) err = `Value must be >= ${desc.minValue}.`;
+        else if (desc.maxValue != null && n > desc.maxValue) err = `Value must be <= ${desc.maxValue}.`;
+      } else if (desc.type === 'Float') {
+        const f = parseFloat(value);
+        if (isNaN(f)) err = 'Value must be a number.';
+        else if (desc.minValue != null && f < desc.minValue) err = `Value must be >= ${desc.minValue}.`;
+        else if (desc.maxValue != null && f > desc.maxValue) err = `Value must be <= ${desc.maxValue}.`;
+      } else if (desc.type === 'String') {
+        if (desc.maxLength != null && value.length > desc.maxLength)
+          err = `Value must be <= ${desc.maxLength} characters.`;
+      }
+      if (err) return sendJson(res, 400, { error: err });
+
+      const adminName = (token && token !== 'true') ? `web:${token.slice(0, 8)}` : 'web';
+
+      // UPSERT into server_config (the persistent backing store).
+      dbWrite.transaction(() => {
+        const stmt = dbWrite.prepare(`
+          INSERT INTO server_config (key, value, updated_at, updated_by)
+          VALUES (@k, @v, datetime('now'), @by)
+          ON CONFLICT(key) DO UPDATE SET value = @v, updated_at = datetime('now'), updated_by = @by
+        `);
+        stmt.run({ k: key, v: value, by: adminName });
+
+        // Queue an apply-now request for the running C# game process. The
+        // game polls server_config_apply_queue every second and routes any
+        // unprocessed row through ServerSettingsRegistry.ApplyConfigValue.
+        const queueStmt = dbWrite.prepare(`
+          INSERT INTO server_config_apply_queue (key, value, requested_at)
+          VALUES (@k, @v, datetime('now'))
+        `);
+        queueStmt.run({ k: key, v: value });
+      })();
+
+      console.log(`[admin/server-settings POST] ${key} = ${value} (by ${adminName})`);
+      return sendJson(res, 200, { ok: true, key, value });
+    } catch (err) {
+      console.error('[admin/server-settings POST] error:', err.message);
+      return sendJson(res, 500, { error: 'Failed to update setting: ' + err.message });
+    }
+  }
+
   // GET /api/admin/bot-stats — surface BotDetectionSystem snapshot for sysop
   // review. The game process writes the latest snapshot to the
   // bot_detection_snapshot table on a 30s timer; this endpoint just reads
@@ -2331,61 +2410,6 @@ async function handleAdminRequest(req, res) {
       console.error('[admin/bot-stats] error:', err.message);
       return sendJson(res, 500, { error: 'Failed to read bot stats: ' + err.message });
     }
-  }
-
-  // GET /api/admin/geolocate — resolve IPs of online players to lat/lng/country/city
-  if (method === 'GET' && url === '/api/admin/geolocate') {
-    try {
-      const rows = db.prepare(`
-        SELECT display_name, ip_address, connection_type,
-               json_extract(p.player_data, '$.player.level') as level,
-               json_extract(p.player_data, '$.player.class') as class_id
-        FROM online_players op
-        LEFT JOIN players p ON LOWER(op.username) = LOWER(p.username)
-        WHERE op.last_heartbeat >= datetime('now', '-120 seconds')
-          AND op.ip_address IS NOT NULL AND op.ip_address != ''
-      `).all();
-
-      // Filter out localhost/relay IPs (127.x, ::1) — these are SSH relay connections
-      const validRows = rows.filter(r => r.ip_address && !r.ip_address.startsWith('127.') && r.ip_address !== '::1');
-      const uniqueIPs = [...new Set(validRows.map(r => r.ip_address))];
-
-      if (uniqueIPs.length === 0) {
-        sendJson(res, 200, { players: [] });
-        return true;
-      }
-
-      // Use ip-api.com batch endpoint (free, no key, 15 req/min for batch)
-      const geoRes = await fetch('http://ip-api.com/batch?fields=status,country,city,lat,lon,query', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(uniqueIPs.map(ip => ({ query: ip })))
-      });
-      const geoData = await geoRes.json();
-
-      // Build IP -> geo lookup
-      const geoMap = {};
-      for (const g of geoData) {
-        if (g.status === 'success') {
-          geoMap[g.query] = { lat: g.lat, lon: g.lon, country: g.country, city: g.city };
-        }
-      }
-
-      // Map players to geo data
-      const players = validRows.map(r => ({
-        name: r.display_name,
-        level: r.level || 1,
-        className: CLASS_NAMES[r.class_id] || 'Unknown',
-        connectionType: r.connection_type || 'Unknown',
-        ip: r.ip_address,
-        geo: geoMap[r.ip_address] || null
-      })).filter(p => p.geo);
-
-      sendJson(res, 200, { players });
-    } catch (e) {
-      sendJson(res, 500, { error: 'Geolocation failed: ' + e.message });
-    }
-    return true;
   }
 
   // --- Player Management Endpoints ---

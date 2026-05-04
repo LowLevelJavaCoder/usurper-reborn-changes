@@ -9,7 +9,7 @@ using System.Collections.Generic;
 public static partial class GameConfig
 {
     // Version information
-    public const string Version = "0.60.6";
+    public const string Version = "0.60.7";
     public const string VersionName = "Beta";
 
     // v0.57.12: Alignment scale cap. Character.Chivalry and Character.Darkness setters clamp to [0, AlignmentCap]
@@ -140,6 +140,26 @@ public static partial class GameConfig
     /// SysOps can set this to keep their players on the local BBS game only.
     /// </summary>
     public static bool DisableOnlinePlay { get; set; } = false;
+
+    /// <summary>
+    /// v0.60.7: number of resurrections each new online character starts with.
+    /// Admin-tunable from the Online Admin Console; persisted in the
+    /// `server_config` SQLite table and reloaded into this static at startup.
+    /// 0 means new characters spawn with no resurrections (one death = permadeath).
+    /// Existing characters keep their per-save Resurrections field unchanged.
+    /// </summary>
+    public static int DefaultStartingResurrections { get; set; } = 3;
+
+    /// <summary>
+    /// v0.60.7: master switch for online-mode permadeath. When true (default),
+    /// online deaths consume a resurrection and trigger permadeath at zero.
+    /// When false, online deaths route through the legacy single-player
+    /// penalty menu (Temple, Deal with Death, Accept Fate) -- the resurrection
+    /// counter is still decremented down to zero but no character is ever
+    /// erased. Admin-tunable from the Online Admin Console; persisted in the
+    /// `server_config` SQLite table.
+    /// </summary>
+    public static bool OnlinePermadeathEnabled { get; set; } = true;
 
     /// <summary>
     /// Online server address for the [O]nline Play connection.

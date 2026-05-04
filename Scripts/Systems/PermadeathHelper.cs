@@ -24,6 +24,27 @@ namespace UsurperRemake.Systems
         /// </summary>
         public static async Task<bool> HandleOnlineDeath(global::Character player, TerminalEmulator terminal, string killerName)
         {
+            // v0.60.7: admin master switch. When permadeath is disabled
+            // server-wide, every death short-circuits to a full-heal revive
+            // (no resurrection consumed, no permadeath ever). The legacy
+            // Temple / Deal with Death / Accept Fate menu only fires for
+            // CombatEngine deaths -- non-combat deaths (location hazards,
+            // system-initiated) reach this helper instead and a soft revive
+            // is the appropriate fallback for those paths.
+            if (!GameConfig.OnlinePermadeathEnabled)
+            {
+                long restoredHP = player.MaxHP;
+                player.HP = restoredHP;
+                terminal.SetColor("bright_yellow");
+                terminal.WriteLine("");
+                terminal.WriteLine($"  Divine intervention restores you. ({restoredHP}/{player.MaxHP} HP)");
+                terminal.SetColor("gray");
+                terminal.WriteLine("  (Permadeath is disabled on this server.)");
+                terminal.WriteLine("");
+                await Task.Delay(2000);
+                return true;
+            }
+
             if (player.Resurrections > 0)
             {
                 player.Resurrections--;
@@ -44,7 +65,8 @@ namespace UsurperRemake.Systems
                 else
                 {
                     terminal.SetColor("yellow");
-                    terminal.WriteLine($"  Resurrections remaining: {rezLeft} of 3");
+                    int max = Math.Max(1, player.MaxResurrections);
+                    terminal.WriteLine($"  Resurrections remaining: {rezLeft} of {max}");
                 }
                 terminal.WriteLine("");
                 await Task.Delay(2000);

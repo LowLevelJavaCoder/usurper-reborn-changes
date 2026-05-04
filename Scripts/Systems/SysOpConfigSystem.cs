@@ -25,6 +25,23 @@ namespace UsurperRemake.Systems
         {
             if (_isLoaded) return;
 
+            // v0.60.7: in MUD / online mode, the file-based SysOpConfig is
+            // bypassed entirely. The MUD process uses the SQLite-backed
+            // ServerSettingsRegistry via `server_config` as its single source
+            // of truth (admin-tunable from the web dashboard). Loading the
+            // file would overwrite values that the registry has already
+            // applied to GameConfig at backend init time -- e.g. an empty
+            // MessageOfTheDay in the file blanking out a MOTD set via the
+            // web admin. The file system stays for BBS sysops who don't have
+            // a SQLite backend or a web admin UI.
+            if (UsurperRemake.BBS.DoorMode.IsOnlineMode)
+            {
+                _isLoaded = true;
+                DebugLogger.Instance.LogInfo("SYSOP_CONFIG",
+                    "Online/MUD mode: skipping SysOpConfig file load. ServerSettingsRegistry is authoritative.");
+                return;
+            }
+
             try
             {
                 var configPath = GetConfigPath();
@@ -53,6 +70,13 @@ namespace UsurperRemake.Systems
         /// </summary>
         public void SaveConfig()
         {
+            // v0.60.7: see LoadConfig comment. MUD mode persists settings via
+            // the SQLite server_config table (web admin -> SetServerConfig);
+            // writing them ALSO to the file would create a split source of
+            // truth that resurfaces every restart.
+            if (UsurperRemake.BBS.DoorMode.IsOnlineMode)
+                return;
+
             try
             {
                 // Sync from GameConfig before saving

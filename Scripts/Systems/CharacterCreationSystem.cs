@@ -230,7 +230,8 @@ public class CharacterCreationSystem
             Quests = 0,
             God = "",
             RoyQuests = 0,
-            Resurrections = 3, // Default resurrections
+            Resurrections = GameConfig.DefaultStartingResurrections, // v0.60.7: admin-tunable
+            MaxResurrections = GameConfig.DefaultStartingResurrections, // v0.60.7: admin-tunable
             PickPocketAttempts = 3,
             BankRobberyAttempts = 3,
             ID = GenerateUniqueID()
