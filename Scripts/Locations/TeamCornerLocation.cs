@@ -2931,7 +2931,10 @@ public class TeamCornerLocation : BaseLocation
             {
                 var existing = upgrades.FirstOrDefault(u => u.UpgradeType == key);
                 int level = existing?.Level ?? 0;
-                long nextCost = def.BaseCost * (level + 1);
+                // Quadratic scaling: tier 5 costs 25x tier 1 instead of 5x. Pre-tune,
+                // a full 5-facility HQ upgrade was ~375k gold (achievable solo in a
+                // day at mid-level). Now ~1.5M, requiring guild-pooled grinding.
+                long nextCost = def.BaseCost * (level + 1) * (level + 1);
 
                 terminal.SetColor("bright_yellow");
                 terminal.Write($"  {idx}. ");

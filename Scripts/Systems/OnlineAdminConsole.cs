@@ -125,6 +125,9 @@ namespace UsurperRemake.Systems
                     case "P":
                         await ResetPlayerPassword();
                         break;
+                    case "R":
+                        await EditResurrectionSettings();
+                        break;
                     case "I":
                         await ImmortalizePlayer();
                         break;
@@ -173,6 +176,7 @@ namespace UsurperRemake.Systems
             terminal.SetColor("white");
             terminal.WriteLine(sr ? "  5. Difficulty Settings" : "  [5] Difficulty Settings");
             terminal.WriteLine(sr ? "  6. Set Message of the Day (MOTD)" : "  [6] Set Message of the Day (MOTD)");
+            terminal.WriteLine(sr ? "  R. Resurrection / Permadeath Settings" : "  [R] Resurrection / Permadeath Settings");
             terminal.WriteLine("");
 
             terminal.SetColor("bright_cyan");
@@ -1576,6 +1580,106 @@ namespace UsurperRemake.Systems
         // =====================================================================
         // Game Settings
         // =====================================================================
+
+        /// <summary>
+        /// v0.60.7: admin control for the online-mode death system. Two settings:
+        ///   - Starting resurrections: how many free deaths each new character
+        ///     gets before permadeath fires. 0 means one death = permadeath.
+        ///   - Permadeath enabled: master switch. When OFF, online deaths route
+        ///     through the legacy single-player penalty menu (Temple, Deal with
+        ///     Death, Accept Fate) and no character is ever erased.
+        /// Both persist in the server_config SQLite table and reload on restart.
+        /// Changes only affect NEW deaths/characters; existing players keep their
+        /// current Resurrections counter unchanged.
+        /// </summary>
+        internal async Task EditResurrectionSettings()
+        {
+            while (true)
+            {
+                terminal.ClearScreen();
+                terminal.SetColor("bright_cyan");
+                terminal.WriteLine(GameConfig.ScreenReaderMode
+                    ? "RESURRECTION / PERMADEATH SETTINGS"
+                    : "═══ RESURRECTION / PERMADEATH SETTINGS ═══");
+                terminal.WriteLine("");
+
+                terminal.SetColor("white");
+                terminal.WriteLine($"  [1] Starting Resurrections (new chars): {GameConfig.DefaultStartingResurrections}");
+                string permaState = GameConfig.OnlinePermadeathEnabled ? "ENABLED" : "DISABLED";
+                string permaColor = GameConfig.OnlinePermadeathEnabled ? "yellow" : "bright_green";
+                terminal.Write($"  [2] Online Permadeath:                  ");
+                terminal.SetColor(permaColor);
+                terminal.WriteLine(permaState);
+                terminal.SetColor("white");
+                terminal.WriteLine("");
+
+                terminal.SetColor("gray");
+                terminal.WriteLine("  Starting Resurrections: 0-99. New characters get this many.");
+                terminal.WriteLine("  Existing players keep their current count unchanged.");
+                terminal.WriteLine("");
+                terminal.WriteLine("  Permadeath ENABLED  = deaths consume a resurrection,");
+                terminal.WriteLine("                        character is erased at zero (default).");
+                terminal.WriteLine("  Permadeath DISABLED = deaths route to the legacy penalty menu");
+                terminal.WriteLine("                        (Temple, Deal with Death, Accept Fate).");
+                terminal.WriteLine("                        No character is ever erased.");
+                terminal.WriteLine("");
+
+                terminal.SetColor("white");
+                terminal.WriteLine("  [Q] Back");
+                terminal.WriteLine("");
+
+                var choice = (await ReadInput(Loc.Get("ui.choice"))).ToUpper();
+
+                if (choice == "Q" || choice == "")
+                    return;
+
+                if (choice == "1")
+                {
+                    var input = await ReadInput($"  New starting resurrections (current: {GameConfig.DefaultStartingResurrections}, range 0-99): ");
+                    if (string.IsNullOrWhiteSpace(input)) continue;
+                    if (int.TryParse(input, out int newCount) && newCount >= 0 && newCount <= 99)
+                    {
+                        int oldCount = GameConfig.DefaultStartingResurrections;
+                        backend.SetServerConfig("default_starting_resurrections", newCount.ToString(), DoorMode.OnlineUsername);
+                        terminal.SetColor("green");
+                        terminal.WriteLine("");
+                        terminal.WriteLine($"  Starting resurrections changed: {oldCount} -> {newCount}");
+                        terminal.WriteLine($"  (Affects new characters only. Existing players unchanged.)");
+                        DebugLogger.Instance.LogInfo("ADMIN",
+                            $"Starting resurrections changed {oldCount} -> {newCount} by {DoorMode.OnlineUsername}");
+                        await Task.Delay(2000);
+                    }
+                    else
+                    {
+                        terminal.SetColor("red");
+                        terminal.WriteLine("  Invalid number. Must be 0-99.");
+                        await Task.Delay(1500);
+                    }
+                }
+                else if (choice == "2")
+                {
+                    bool oldState = GameConfig.OnlinePermadeathEnabled;
+                    bool newState = !oldState;
+                    string confirmPrompt = newState
+                        ? "  Enable permadeath? Deaths will start consuming resurrections again. (Y/N): "
+                        : "  DISABLE permadeath? No character will ever be erased on this server. (Y/N): ";
+                    var confirm = (await ReadInput(confirmPrompt)).Trim().ToUpper();
+                    if (confirm != "Y" && confirm != "YES") continue;
+
+                    backend.SetServerConfig("online_permadeath_enabled", newState ? "1" : "0", DoorMode.OnlineUsername);
+                    terminal.SetColor("green");
+                    terminal.WriteLine("");
+                    terminal.WriteLine($"  Permadeath {(newState ? "ENABLED" : "DISABLED")}.");
+                    if (!newState)
+                        terminal.WriteLine("  Online deaths will route to the legacy penalty menu (Temple / Deal / Accept).");
+                    else
+                        terminal.WriteLine("  Online deaths will consume a resurrection and erase at zero.");
+                    DebugLogger.Instance.LogInfo("ADMIN",
+                        $"Online permadeath {(newState ? "ENABLED" : "DISABLED")} by {DoorMode.OnlineUsername}");
+                    await Task.Delay(2500);
+                }
+            }
+        }
 
         internal async Task EditDifficultySettings()
         {

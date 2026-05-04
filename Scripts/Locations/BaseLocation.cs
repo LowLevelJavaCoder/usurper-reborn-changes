@@ -2708,10 +2708,17 @@ public abstract class BaseLocation
                 await ShowTownHall();
                 return (true, false);
 
-            case "settings":
-            case "set":
-                await HandleSettingsCommand(string.Empty);
-                return (true, false);
+            // v0.60.5 security removal: bare-word "settings" / "set" aliases
+            // removed per security report. Both opened ShowPreferencesMenu --
+            // legitimate per-player prefs (combat speed, language, etc.) -- but
+            // the surface area was confusing in admin/sysop contexts and didn't
+            // need three different ways to reach the same menu. Players use the
+            // canonical "~", "prefs", "pref", or "preferences" entries instead
+            // (case "~"/"PREFS"/"PREFERENCES" at the bare-keystroke handler
+            // above, and case "pref"/"prefs"/"preferences" at the slash-command
+            // handler below). The "/settings KEY VALUE" prefix form at the top
+            // of ProcessSlashCommand is preserved for the Electron client which
+            // sends explicit key-value settings updates.
 
             case "founders":
             case "statues":

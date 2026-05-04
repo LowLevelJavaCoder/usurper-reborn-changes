@@ -19,7 +19,10 @@ public class DungeonLocation : BaseLocation
 {
     internal List<Character> teammates = new();
     private int currentDungeonLevel = 1;
-    private int maxDungeonLevel = 100;
+    // v0.60.7: max dungeon level reads GameConfig live so the admin-tunable
+    // setting (server_config.max_dungeon_level) takes effect immediately
+    // for the next floor change rather than being baked in at construction.
+    private int maxDungeonLevel => GameConfig.MaxDungeonLevel;
     private Random dungeonRandom = Random.Shared;
     private DungeonTerrain currentTerrain = DungeonTerrain.Underground;
 
@@ -7146,7 +7149,7 @@ public class DungeonLocation : BaseLocation
             {
                 // Teleport deeper (5-10 floors)
                 int floorsDown = dungeonRandom.Next(5, 11);
-                int newFloor = Math.Min(currentDungeonLevel + floorsDown, 100);
+                int newFloor = Math.Min(currentDungeonLevel + floorsDown, GameConfig.MaxDungeonLevel);
                 terminal.SetColor("cyan");
                 terminal.WriteLine(Loc.Get("dungeon.portal_whisks_deeper"));
                 terminal.WriteLine(Loc.Get("dungeon.portal_emerge_floor", newFloor));

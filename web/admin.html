@@ -4,8 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Usurper Reborn - Server Admin</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 <style>
   :root {
     --bg: #0a0a0f;
@@ -279,14 +277,6 @@
     padding: 0.5rem 0.75rem; border-radius: 4px; margin-bottom: 0.75rem; font-size: 11px;
   }
 
-  /* Leaflet dark theme overrides */
-  .leaflet-popup-content-wrapper { background: #1a1a2e; color: #c8c8d4; border-radius: 6px; }
-  .leaflet-popup-tip { background: #1a1a2e; }
-  .leaflet-popup-close-button { color: #666680 !important; }
-  .leaflet-control-zoom a { background: #12121a !important; color: #c8c8d4 !important; border-color: #1e1e2e !important; }
-  .leaflet-control-attribution { background: rgba(10,10,15,0.7) !important; color: #666680 !important; font-size: 10px !important; }
-  .leaflet-control-attribution a { color: #666680 !important; }
-
   /* Editable fields */
   .field-grid {
     display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; margin-bottom: 1rem;
@@ -412,9 +402,6 @@
   <!-- Overview Cards -->
   <div class="cards" id="overview-cards"></div>
 
-  <!-- v0.60.0 Rage event memorial (auto-hides when no victims) -->
-  <div class="section" id="rage-victims" style="display:none"></div>
-
   <!-- Services + Online Players -->
   <div class="section-grid">
     <div class="section">
@@ -427,15 +414,6 @@
     </div>
   </div>
 
-  <!-- Player Map -->
-  <div class="section">
-    <div class="section-title">Player Locations</div>
-    <div class="section-body">
-      <div id="player-map" style="height:340px;border-radius:6px;background:#1a1a2e;"></div>
-      <div id="map-status" style="color:var(--dim);font-size:11px;margin-top:6px;"></div>
-    </div>
-  </div>
-
   <!-- Bot Detection -->
   <div class="section">
     <div class="section-title">
@@ -443,6 +421,24 @@
       <span id="bot-stats-meta" style="color:var(--dim);font-size:11px;font-weight:normal;margin-left:8px;"></span>
     </div>
     <div class="section-body" id="bot-stats-body">Loading...</div>
+  </div>
+
+  <!-- Banned IPs (v0.60.5) -->
+  <div class="section">
+    <div class="section-title">
+      Banned IPs
+      <button class="action-btn" style="margin-left:8px;font-size:11px;padding:2px 8px;" onclick="showAddIpBanModal()">+ Ban IP</button>
+    </div>
+    <div class="section-body" id="banned-ips-body">Loading...</div>
+  </div>
+
+  <!-- Server Settings (v0.60.8) -->
+  <div class="section">
+    <div class="section-title">
+      Server Settings
+      <span id="server-settings-meta" style="color:var(--dim);font-size:11px;font-weight:normal;margin-left:8px;"></span>
+    </div>
+    <div class="section-body" id="server-settings-body">Loading...</div>
   </div>
 
   <!-- Database + SSL + Game Info -->
@@ -889,7 +885,7 @@ function connTag(type) {
 
 // --- Overview Cards ---
 function renderOverviewCards(data) {
-  const { server, disk, players, webProxy, rageEvent } = data;
+  const { server, disk, players, webProxy } = data;
   const cards = [
     { label: 'System Uptime', value: fmtUptime(server.systemUptime) },
     { label: 'Web Proxy Uptime', value: fmtUptime(server.processUptime) },
@@ -917,17 +913,6 @@ function renderOverviewCards(data) {
     { label: 'SSE Clients', value: webProxy.sseClients + webProxy.dashSseClients },
   ];
 
-  // Append Rage event metrics only when something has actually been erased.
-  // Keeps the dashboard clean during the dormant period.
-  if (rageEvent && rageEvent.totalErased > 0) {
-    cards.push({
-      label: 'Erased by Rage',
-      value: rageEvent.totalErased,
-      cls: 'bad',
-      sub: rageEvent.last24h > 0 ? `${rageEvent.last24h} in last 24h` : 'all-time'
-    });
-  }
-
   const el = document.getElementById('overview-cards');
   el.innerHTML = cards.map(c => `
     <div class="card">
@@ -937,33 +922,6 @@ function renderOverviewCards(data) {
     </div>
   `).join('');
 
-  // Render the recent victims list in its own panel (rendered conditionally
-  // -- if the panel doesn't exist in markup, this no-ops).
-  const rageEl = document.getElementById('rage-victims');
-  if (rageEl) {
-    if (rageEvent && rageEvent.totalErased > 0) {
-      const rows = (rageEvent.recent || []).map(v => {
-        const ts = v.erasedAt || '';
-        const lvl = v.level != null ? `Lv.${v.level}` : '?';
-        const cls = v.className || '?';
-        const dn = v.displayName || v.username;
-        return `<tr><td>${escapeHtml(dn)}</td><td>${lvl}</td><td>${escapeHtml(cls)}</td><td>${escapeHtml(ts)}</td></tr>`;
-      }).join('');
-      rageEl.innerHTML = `
-        <h3 style="color:var(--red);margin-top:0">Erased by Rage</h3>
-        <div style="color:var(--dim);font-size:11px;margin-bottom:8px">
-          Total erased: <strong style="color:var(--red)">${rageEvent.totalErased}</strong>
-          (last 24h: <strong>${rageEvent.last24h}</strong>). Most recent 25 below.
-        </div>
-        <table>
-          <tr><th>Name</th><th>Level</th><th>Class</th><th>Erased At</th></tr>
-          ${rows || '<tr><td colspan="4" style="color:var(--dim)">No data</td></tr>'}
-        </table>`;
-      rageEl.style.display = '';
-    } else {
-      rageEl.style.display = 'none';
-    }
-  }
 }
 
 // --- Services ---
@@ -1008,74 +966,6 @@ function renderOnlinePlayers(data) {
       <td>${fmtTimeAgo(p.connectedAt)}</td>
     </tr>`).join('')}
   </table>`;
-}
-
-// --- Player Map ---
-let playerMap = null;
-let mapMarkers = [];
-
-function initMap() {
-  if (playerMap) return;
-  const el = document.getElementById('player-map');
-  if (!el) return;
-  playerMap = L.map('player-map', {
-    center: [30, -20],
-    zoom: 2,
-    minZoom: 2,
-    maxZoom: 10,
-    zoomControl: true
-  });
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; <a href="https://carto.com/">CARTO</a>',
-    subdomains: 'abcd',
-    maxZoom: 19
-  }).addTo(playerMap);
-}
-
-async function refreshPlayerMap() {
-  try {
-    initMap();
-    if (!playerMap) return;
-    const data = await apiFetch('/geolocate');
-    const players = data.players || [];
-
-    // Clear old markers
-    mapMarkers.forEach(m => playerMap.removeLayer(m));
-    mapMarkers = [];
-
-    const statusEl = document.getElementById('map-status');
-
-    if (players.length === 0) {
-      statusEl.textContent = 'No geolocatable players online (localhost/relay IPs excluded)';
-      return;
-    }
-
-    players.forEach(p => {
-      const marker = L.circleMarker([p.geo.lat, p.geo.lon], {
-        radius: 8,
-        fillColor: '#00e5ff',
-        color: '#00e5ff',
-        weight: 2,
-        opacity: 0.9,
-        fillOpacity: 0.5
-      }).addTo(playerMap);
-
-      marker.bindPopup(`
-        <div style="font-family:monospace;font-size:12px;line-height:1.4">
-          <strong style="color:#00e5ff">${p.name}</strong><br>
-          Lv ${p.level} ${p.className}<br>
-          ${p.connectionType} &mdash; ${p.ip}<br>
-          <span style="color:#999">${p.geo.city}, ${p.geo.country}</span>
-        </div>
-      `);
-      mapMarkers.push(marker);
-    });
-
-    statusEl.textContent = `${players.length} player${players.length !== 1 ? 's' : ''} located`;
-  } catch (e) {
-    const statusEl = document.getElementById('map-status');
-    if (statusEl) statusEl.textContent = 'Map unavailable: ' + e.message;
-  }
 }
 
 // --- Bot Detection Stats (v0.60.4) ---
@@ -1140,6 +1030,197 @@ async function refreshBotStats() {
     if (e.message !== 'Session expired') {
       body.innerHTML = `<div class="danger">Failed to load bot stats: ${e.message}</div>`;
     }
+  }
+}
+
+// --- Banned IPs (v0.60.5) ---
+async function refreshBannedIps() {
+  const body = document.getElementById('banned-ips-body');
+  if (!body) return;
+  try {
+    const data = await apiFetch('/banned-ips');
+    const entries = data.entries || [];
+    if (!entries.length) {
+      body.innerHTML = '<div style="color:var(--dim)">No IPs are currently banned.</div>';
+      return;
+    }
+    const rows = entries.map(e => `
+      <tr>
+        <td style="font-family:monospace">${escapeHtml(e.ip_address)}</td>
+        <td>${escapeHtml(e.reason || '')}</td>
+        <td>${e.associated_username ? escapeHtml(e.associated_username) : '<span style="color:var(--dim)">(direct IP ban)</span>'}</td>
+        <td style="color:var(--dim);font-size:11px">${escapeHtml(e.banned_at || '')}</td>
+        <td style="color:var(--dim);font-size:11px">${escapeHtml(e.banned_by || '')}</td>
+        <td><button class="action-btn action-btn-good" onclick="liftIpBan('${escapeHtml(e.ip_address).replace(/'/g, "\\'")}')">Lift</button></td>
+      </tr>`).join('');
+    body.innerHTML = `
+      <table>
+        <thead><tr><th>IP</th><th>Reason</th><th>Account</th><th>Banned at</th><th>By</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  } catch (e) {
+    if (e.message !== 'Session expired') {
+      body.innerHTML = `<div class="danger">Failed to load banned IPs: ${e.message}</div>`;
+    }
+  }
+}
+
+function showAddIpBanModal() {
+  showActionModal('Ban IP Address or Range',
+    `<input type="text" id="ipban-ip" placeholder="1.2.3.4 or 1.2.3.0/24" style="font-family:monospace">
+     <div style="color:var(--dim);font-size:11px;margin-top:4px;">
+       Accepts a single IP or CIDR range. /24 covers 256 addresses, /16 covers 65k. Ranges catch ban-evasion via dynamic IP from the same ISP, but also affect innocent users on the same network — use sparingly.
+     </div>
+     <input type="text" id="ipban-reason" placeholder="Reason (optional)" style="margin-top:8px">`,
+    async () => {
+      const ip = document.getElementById('ipban-ip').value.trim();
+      const reason = document.getElementById('ipban-reason').value || 'Banned by admin';
+      if (!ip) throw new Error('IP address required');
+      const r = await fetch(`${API}/banned-ips`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ ip, reason })
+      });
+      if (!r.ok) throw new Error((await r.json()).error || 'Failed');
+      refreshBannedIps();
+    }, 'Ban IP');
+}
+
+async function liftIpBan(ip) {
+  if (!confirm(`Lift IP ban for ${ip}?`)) return;
+  try {
+    const r = await fetch(`${API}/banned-ips/${encodeURIComponent(ip)}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!r.ok) throw new Error((await r.json()).error || 'Failed');
+    refreshBannedIps();
+  } catch (e) {
+    alert('Error: ' + e.message);
+  }
+}
+
+// --- Server Settings (v0.60.8) ---
+// Schema-driven render. The C# game process publishes ServerSettingsRegistry
+// to server_config_schema on startup; the GET endpoint returns schema +
+// current values per setting. Rendered as a categorized list with per-row
+// Save buttons (one mistake doesn't trash everything).
+async function refreshServerSettings() {
+  const body = document.getElementById('server-settings-body');
+  const meta = document.getElementById('server-settings-meta');
+  try {
+    const r = await fetch('/api/admin/server-settings', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (r.status === 401) throw new Error('Session expired');
+    const data = await r.json();
+    if (!data.ok || !data.settings || data.settings.length === 0) {
+      body.innerHTML = `<span style="color:var(--dim)">${escapeHtml(data.message || 'No settings published yet.')}</span>`;
+      return;
+    }
+
+    // Group by category
+    const byCategory = {};
+    for (const s of data.settings) {
+      (byCategory[s.category] = byCategory[s.category] || []).push(s);
+    }
+
+    let html = '';
+    for (const [cat, items] of Object.entries(byCategory)) {
+      html += `<h3 style="color:var(--cyan);margin:18px 0 8px 0;font-size:13px;letter-spacing:1px">${escapeHtml(cat).toUpperCase()}</h3>`;
+      html += `<table style="width:100%">`;
+      html += `<tr><th style="width:30%">Setting</th><th style="width:25%">Value</th><th>Notes</th></tr>`;
+      for (const s of items) {
+        html += renderSettingRow(s);
+      }
+      html += `</table>`;
+    }
+    body.innerHTML = html;
+    meta.textContent = `${data.settings.length} settings`;
+  } catch (e) {
+    if (e.message !== 'Session expired') {
+      body.innerHTML = `<span style="color:var(--red)">Failed to load: ${escapeHtml(e.message)}</span>`;
+    }
+  }
+}
+
+function renderSettingRow(s) {
+  const safeKey = s.key.replace(/[^a-z0-9_]/gi, '_');
+  const inputId = `setting-${safeKey}`;
+  const sub = s.isDefault
+    ? `<span style="color:var(--dim);font-size:11px">default</span>`
+    : `<span style="color:var(--dim);font-size:11px">${escapeHtml(s.updatedBy || 'web')} @ ${escapeHtml(s.updatedAt || '')}</span>`;
+
+  let inputHtml = '';
+  const val = escapeHtml(String(s.currentValue));
+  if (s.type === 'Bool') {
+    const on = s.currentValue === 'true' || s.currentValue === '1';
+    inputHtml = `<select id="${inputId}" style="width:120px">
+      <option value="true" ${on ? 'selected' : ''}>ON</option>
+      <option value="false" ${!on ? 'selected' : ''}>OFF</option>
+    </select>`;
+  } else if (s.type === 'Int' || s.type === 'Float') {
+    const step = s.type === 'Float' ? '0.1' : '1';
+    const min = s.minValue != null ? `min="${s.minValue}"` : '';
+    const max = s.maxValue != null ? `max="${s.maxValue}"` : '';
+    inputHtml = `<input type="number" id="${inputId}" value="${val}" step="${step}" ${min} ${max} style="width:120px">`;
+  } else { // String
+    const maxLen = s.maxLength != null ? `maxlength="${s.maxLength}"` : '';
+    inputHtml = `<input type="text" id="${inputId}" value="${val}" ${maxLen} style="width:100%">`;
+  }
+
+  const rangeHint = (s.minValue != null || s.maxValue != null)
+    ? `<span style="color:var(--dim);font-size:11px;margin-left:6px">(${s.minValue ?? '-'} to ${s.maxValue ?? '-'})</span>`
+    : '';
+
+  return `<tr>
+    <td>
+      <div style="font-weight:bold">${escapeHtml(s.label)}</div>
+      <div style="color:var(--dim);font-size:11px;font-family:monospace">${escapeHtml(s.key)}</div>
+    </td>
+    <td>
+      ${inputHtml}${rangeHint}
+      <div style="margin-top:4px">
+        <button class="action-btn" style="font-size:11px;padding:2px 8px"
+          onclick="saveServerSetting('${escapeHtml(s.key)}', '${s.type}', '${inputId}')">Save</button>
+        <span id="${inputId}-status" style="font-size:11px;margin-left:6px"></span>
+      </div>
+      <div style="margin-top:2px">${sub}</div>
+    </td>
+    <td style="font-size:12px;color:var(--text)">
+      ${escapeHtml(s.description)}
+      <div style="color:var(--dim);font-style:italic;margin-top:3px">${escapeHtml(s.changeImpact)}</div>
+    </td>
+  </tr>`;
+}
+
+async function saveServerSetting(key, type, inputId) {
+  const input = document.getElementById(inputId);
+  const status = document.getElementById(inputId + '-status');
+  const value = input.value;
+  status.textContent = 'Saving...';
+  status.style.color = 'var(--dim)';
+  try {
+    const r = await fetch('/api/admin/server-settings/' + encodeURIComponent(key), {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ value: String(value) })
+    });
+    const data = await r.json();
+    if (r.status === 200 && data.ok) {
+      status.textContent = 'Saved';
+      status.style.color = 'var(--green)';
+      setTimeout(refreshServerSettings, 1500);
+    } else {
+      status.textContent = data.error || 'Failed';
+      status.style.color = 'var(--red)';
+    }
+  } catch (e) {
+    status.textContent = 'Network error';
+    status.style.color = 'var(--red)';
   }
 }
 
@@ -1298,11 +1379,14 @@ async function refreshAll() {
     renderLogins(activity);
     renderNews(activity);
 
-    // Refresh player map (async, don't block dashboard render)
-    refreshPlayerMap();
-
     // Refresh bot detection stats (async, don't block dashboard render)
     refreshBotStats();
+
+    // v0.60.5: refresh banned IPs section
+    refreshBannedIps();
+
+    // v0.60.8: refresh server settings section
+    refreshServerSettings();
 
     refreshEl.textContent = 'Updated ' + new Date().toLocaleTimeString();
   } catch (e) {
@@ -1421,6 +1505,13 @@ async function openPlayerPanel(username) {
     if (data.isBanned) badges += `<span class="badge badge-banned">BANNED${data.banReason ? ': ' + escapeHtml(data.banReason) : ''}</span>`;
     if (data.settings.isFrozen) badges += '<span class="badge badge-frozen">FROZEN</span>';
     if (data.settings.isMuted) badges += '<span class="badge badge-muted">MUTED</span>';
+    // v0.60.5: surface IP info inline so admins can see what address would be
+    // banned BEFORE clicking the Ban button.
+    const ipShown = data.currentOnlineIp || data.lastLoginIp;
+    if (ipShown) {
+      const ipLabel = data.currentOnlineIp ? 'connected from' : 'last login from';
+      badges += ` <span style="color:var(--dim);font-size:11px;margin-left:8px;">${ipLabel} <code style="color:var(--text)">${escapeHtml(ipShown)}</code></span>`;
+    }
     document.getElementById('panel-badges').innerHTML = badges;
 
     // Online warning
@@ -1821,14 +1912,21 @@ async function confirmAction() {
 }
 
 function showBanModal(username) {
+  // v0.60.5: full ban defaults to including IP. Admin can opt out with the
+  // checkbox for a soft ban (account-only, person can re-register from same IP).
   showActionModal('Ban Player: ' + username,
-    '<input type="text" id="ban-reason" placeholder="Reason (optional)">',
+    `<input type="text" id="ban-reason" placeholder="Reason (optional)">
+     <label style="display:block;margin-top:8px;font-size:13px;">
+       <input type="checkbox" id="ban-ip" checked style="margin-right:6px;">
+       Also ban IP (full ban: blocks new accounts from this address)
+     </label>`,
     async () => {
       const reason = document.getElementById('ban-reason').value || 'Banned by admin';
+      const banIp = document.getElementById('ban-ip').checked;
       const r = await fetch(`${API}/players/${encodeURIComponent(username)}/ban`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ reason })
+        body: JSON.stringify({ reason, banIp })
       });
       if (!r.ok) throw new Error((await r.json()).error);
     }, 'Ban');

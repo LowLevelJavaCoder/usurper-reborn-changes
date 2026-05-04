@@ -87,6 +87,204 @@ namespace UsurperRemake.Systems
             };
 
             InitializeDatabase();
+            LoadServerConfigIntoGameConfig();
+            PublishServerSettingsSchema();
+        }
+
+        /// <summary>
+        /// v0.60.8: write the current ServerSettingsRegistry to the
+        /// server_config_schema table so the web admin UI can fetch a
+        /// canonical schema and render the right input control per setting.
+        /// Re-runs on every server start so the schema stays in lockstep
+        /// with the binary -- if a setting was added or removed the schema
+        /// row reflects that immediately.
+        /// </summary>
+        private void PublishServerSettingsSchema()
+        {
+            try
+            {
+                var serializable = ServerSettingsRegistry.All.Select(d => new
+                {
+                    key = d.Key,
+                    label = d.Label,
+                    category = d.Category,
+                    type = d.Type.ToString(),
+                    defaultValue = d.DefaultValue,
+                    minValue = d.MinValue,
+                    maxValue = d.MaxValue,
+                    maxLength = d.MaxLength,
+                    description = d.Description,
+                    changeImpact = d.ChangeImpact
+                }).ToList();
+                string json = System.Text.Json.JsonSerializer.Serialize(serializable);
+
+                using var connection = new SqliteConnection(connectionString);
+                connection.Open();
+                using var cmd = connection.CreateCommand();
+                cmd.CommandText = @"
+                    INSERT INTO server_config_schema (id, schema_json, published_at)
+                    VALUES (1, @j, datetime('now'))
+                    ON CONFLICT(id) DO UPDATE SET schema_json = @j, published_at = datetime('now')";
+                cmd.Parameters.AddWithValue("@j", json);
+                cmd.ExecuteNonQuery();
+                DebugLogger.Instance.LogInfo("SERVER_CONFIG", $"Published settings schema ({serializable.Count} settings).");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Instance.LogError("SERVER_CONFIG", $"Schema publish failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// v0.60.8: drain pending setting changes queued by the web admin UI.
+        /// Called by MudServer on a 1s timer. Each queued row UPSERT-applied
+        /// the value to server_config (already done by the web process) and
+        /// is now applied to the live GameConfig statics via the registry.
+        /// Returns the number of rows applied.
+        /// </summary>
+        public int DrainServerConfigApplyQueue()
+        {
+            int applied = 0;
+            try
+            {
+                using var connection = new SqliteConnection(connectionString);
+                connection.Open();
+
+                List<(long id, string key, string value)> rows = new();
+                using (var sel = connection.CreateCommand())
+                {
+                    sel.CommandText = "SELECT id, key, value FROM server_config_apply_queue ORDER BY id";
+                    using var rdr = sel.ExecuteReader();
+                    while (rdr.Read())
+                    {
+                        rows.Add((rdr.GetInt64(0), rdr.GetString(1), rdr.GetString(2)));
+                    }
+                }
+                if (rows.Count == 0) return 0;
+
+                using var tx = connection.BeginTransaction();
+                foreach (var (id, key, value) in rows)
+                {
+                    try
+                    {
+                        ApplyServerConfigToGameConfig(key, value);
+                        applied++;
+                        DebugLogger.Instance.LogInfo("SERVER_CONFIG",
+                            $"Applied web change: {key} = {value}");
+                    }
+                    catch (Exception innerEx)
+                    {
+                        DebugLogger.Instance.LogError("SERVER_CONFIG",
+                            $"Apply failed for {key}={value}: {innerEx.Message}");
+                    }
+                    using var del = connection.CreateCommand();
+                    del.Transaction = tx;
+                    del.CommandText = "DELETE FROM server_config_apply_queue WHERE id = @id";
+                    del.Parameters.AddWithValue("@id", id);
+                    del.ExecuteNonQuery();
+                }
+                tx.Commit();
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Instance.LogError("SERVER_CONFIG", $"Drain queue failed: {ex.Message}");
+            }
+            return applied;
+        }
+
+        /// <summary>
+        /// v0.60.7: read every row from server_config and apply it to the
+        /// matching GameConfig static field. Runs once after schema init so
+        /// admin-set permadeath / resurrection settings survive restart and
+        /// are already in effect by the time the first session connects.
+        /// Unknown keys are ignored (forward-compat for keys removed in
+        /// future releases).
+        /// </summary>
+        private void LoadServerConfigIntoGameConfig()
+        {
+            try
+            {
+                using var connection = new SqliteConnection(connectionString);
+                connection.Open();
+                using var cmd = connection.CreateCommand();
+                cmd.CommandText = "SELECT key, value FROM server_config";
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                {
+                    string key = reader.GetString(0);
+                    string value = reader.GetString(1);
+                    ApplyServerConfigToGameConfig(key, value);
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Instance.LogWarning("SERVER_CONFIG",
+                    $"Failed to load server_config at startup: {ex.Message}. Using GameConfig defaults.");
+            }
+        }
+
+        /// <summary>
+        /// Translate a key/value row into the matching GameConfig static.
+        /// Routes through ServerSettingsRegistry so the key->field mapping
+        /// lives in one place (the registry) and adding a new tunable doesn't
+        /// require touching this file.
+        /// </summary>
+        private static void ApplyServerConfigToGameConfig(string key, string value)
+        {
+            ServerSettingsRegistry.ApplyConfigValue(key, value);
+        }
+
+        /// <summary>
+        /// Read a single server_config value. Returns null if the key has
+        /// never been set (caller should use the GameConfig default).
+        /// </summary>
+        public string? GetServerConfig(string key)
+        {
+            try
+            {
+                using var connection = new SqliteConnection(connectionString);
+                connection.Open();
+                using var cmd = connection.CreateCommand();
+                cmd.CommandText = "SELECT value FROM server_config WHERE key = @k";
+                cmd.Parameters.AddWithValue("@k", key);
+                var result = cmd.ExecuteScalar();
+                return result?.ToString();
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Instance.LogWarning("SERVER_CONFIG", $"GetServerConfig({key}) failed: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// UPSERT a server_config key/value AND update the matching GameConfig
+        /// static immediately so the new value takes effect on the next session
+        /// without restart. Records the admin who made the change for audit.
+        /// </summary>
+        public void SetServerConfig(string key, string value, string? changedBy = null)
+        {
+            try
+            {
+                using var connection = new SqliteConnection(connectionString);
+                connection.Open();
+                using var cmd = connection.CreateCommand();
+                cmd.CommandText = @"
+                    INSERT INTO server_config (key, value, updated_at, updated_by)
+                    VALUES (@k, @v, datetime('now'), @by)
+                    ON CONFLICT(key) DO UPDATE SET value = @v, updated_at = datetime('now'), updated_by = @by";
+                cmd.Parameters.AddWithValue("@k", key);
+                cmd.Parameters.AddWithValue("@v", value);
+                cmd.Parameters.AddWithValue("@by", (object?)changedBy ?? DBNull.Value);
+                cmd.ExecuteNonQuery();
+                ApplyServerConfigToGameConfig(key, value);
+                DebugLogger.Instance.LogInfo("SERVER_CONFIG",
+                    $"Set {key} = {value} (by {changedBy ?? "system"})");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Instance.LogError("SERVER_CONFIG", $"SetServerConfig({key}={value}) failed: {ex.Message}");
+            }
         }
 
         /// <summary>
@@ -117,7 +315,9 @@ namespace UsurperRemake.Systems
                         last_logout TEXT,
                         total_playtime_minutes INTEGER DEFAULT 0,
                         is_banned INTEGER DEFAULT 0,
-                        ban_reason TEXT
+                        ban_reason TEXT,
+                        last_login_ip TEXT,
+                        created_ip TEXT
                     );
 
                     CREATE TABLE IF NOT EXISTS world_state (
@@ -127,6 +327,21 @@ namespace UsurperRemake.Systems
                         updated_at TEXT DEFAULT (datetime('now')),
                         updated_by TEXT
                     );
+
+                    -- v0.60.5: hard-ban table. IP-based ban that drops connections at the
+                    -- accept layer (before any auth) and refuses register/login from this
+                    -- IP. Populated by BanPlayer when the target is currently online (their
+                    -- IP gets captured), or by direct IP-only ban from the admin dashboard.
+                    -- associated_username is the username this IP was banned alongside,
+                    -- so UnbanPlayer can lift the IP ban when the account ban is lifted.
+                    CREATE TABLE IF NOT EXISTS banned_ips (
+                        ip_address TEXT PRIMARY KEY,
+                        reason TEXT,
+                        banned_at TEXT DEFAULT (datetime('now')),
+                        banned_by TEXT,
+                        associated_username TEXT
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_banned_ips_username ON banned_ips(associated_username);
 
                     CREATE TABLE IF NOT EXISTS news (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -292,6 +507,44 @@ namespace UsurperRemake.Systems
                         muted_at TEXT
                     );
 
+                    -- v0.60.7: server-wide configuration set by the admin console.
+                    -- Survives restart. Loaded into GameConfig on backend init so
+                    -- runtime checks read from in-memory statics. Admin writes
+                    -- through SetServerConfig(key, value) which both UPSERTs the
+                    -- row AND updates the matching GameConfig static.
+                    CREATE TABLE IF NOT EXISTS server_config (
+                        key TEXT PRIMARY KEY,
+                        value TEXT NOT NULL,
+                        updated_at TEXT DEFAULT (datetime('now')),
+                        updated_by TEXT
+                    );
+
+                    -- v0.60.8: schema descriptor published by the running game
+                    -- process on startup. Single-row JSON blob containing the
+                    -- full ServerSettingsRegistry serialized as the form schema
+                    -- the web admin UI renders against. Re-published on every
+                    -- restart so the schema stays in sync with the binary.
+                    CREATE TABLE IF NOT EXISTS server_config_schema (
+                        id INTEGER PRIMARY KEY,
+                        schema_json TEXT NOT NULL,
+                        published_at TEXT DEFAULT (datetime('now'))
+                    );
+
+                    -- v0.60.8: apply-queue for live setting changes from the web
+                    -- admin UI. The web process can write rows to server_config
+                    -- but cannot reach the running game's in-memory GameConfig
+                    -- statics. Every 1s the game drains this queue and routes
+                    -- each row through ServerSettingsRegistry.ApplyConfigValue
+                    -- so changes take effect without restart. Processed rows
+                    -- are deleted; a row that fails to parse is logged and
+                    -- discarded so a malformed value doesn't block the queue.
+                    CREATE TABLE IF NOT EXISTS server_config_apply_queue (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        key TEXT NOT NULL,
+                        value TEXT NOT NULL,
+                        requested_at TEXT DEFAULT (datetime('now'))
+                    );
+
                     CREATE TABLE IF NOT EXISTS sleeping_players (
                         username TEXT PRIMARY KEY,
                         sleep_location TEXT NOT NULL DEFAULT 'dormitory',
@@ -427,6 +680,24 @@ namespace UsurperRemake.Systems
             {
                 using var migCmd = connection.CreateCommand();
                 migCmd.CommandText = "ALTER TABLE online_players ADD COLUMN ip_address TEXT DEFAULT '';";
+                migCmd.ExecuteNonQuery();
+            }
+            catch { /* Column already exists - expected */ }
+
+            // v0.60.5: add last_login_ip column to players for IP-ban tracking
+            try
+            {
+                using var migCmd = connection.CreateCommand();
+                migCmd.CommandText = "ALTER TABLE players ADD COLUMN last_login_ip TEXT;";
+                migCmd.ExecuteNonQuery();
+            }
+            catch { /* Column already exists - expected */ }
+
+            // v0.60.5: add created_ip column for per-IP registration rate limiting
+            try
+            {
+                using var migCmd = connection.CreateCommand();
+                migCmd.CommandText = "ALTER TABLE players ADD COLUMN created_ip TEXT;";
                 migCmd.ExecuteNonQuery();
             }
             catch { /* Column already exists - expected */ }
@@ -646,6 +917,95 @@ namespace UsurperRemake.Systems
         }
 
         public bool DeleteGameData(string playerName) => DeleteGameData(playerName, bypassArchive: false);
+
+        /// <summary>
+        /// v0.60.5: purge all per-player references from shared world-state tables
+        /// at permadeath. Called by PermadeathHelper.ExecutePermadeath BEFORE the
+        /// player_data clear so the player's identity is still resolvable for any
+        /// joined queries in subscribed hooks. Does NOT touch the players row
+        /// itself (that's DeleteGameData's job), the audit log (wizard_log), or
+        /// the historical PvP log (pvp_log) -- those should survive permadeath.
+        ///
+        /// Player report (Rage): "lost all 4 lives, made a new char, came back
+        /// in my guild still, actually still worshiping the same god." This
+        /// addresses that class of leak: the player_data was cleared but the
+        /// guild_members row, world_boss_damage row, bounties, etc. all still
+        /// referenced the same username, so the new character inherited them.
+        /// </summary>
+        public void PurgePlayerWorldState(string username)
+        {
+            if (string.IsNullOrWhiteSpace(username)) return;
+            try
+            {
+                using var connection = OpenConnection();
+                using var tx = connection.BeginTransaction();
+
+                // Direct per-username tables. All use LOWER() comparison since
+                // some tables stored mixed case in early alpha.
+                ExecPurge(connection, tx, "guild_members",     "LOWER(username) = LOWER(@u)", username);
+                ExecPurge(connection, tx, "online_players",    "LOWER(username) = LOWER(@u)", username);
+                ExecPurge(connection, tx, "sleeping_players",  "LOWER(username) = LOWER(@u)", username);
+                ExecPurge(connection, tx, "wizard_flags",      "LOWER(username) = LOWER(@u)", username);
+
+                // Multi-column tables: the username can appear as sender/recipient,
+                // attacker/defender, etc. Clear all of them.
+                ExecPurge(connection, tx, "messages",          "LOWER(from_player) = LOWER(@u) OR LOWER(to_player) = LOWER(@u)", username);
+                ExecPurge(connection, tx, "trade_offers",      "LOWER(from_player) = LOWER(@u) OR LOWER(to_player) = LOWER(@u)", username);
+                ExecPurge(connection, tx, "bounties",          "LOWER(target_player) = LOWER(@u) OR LOWER(placed_by) = LOWER(@u) OR LOWER(claimed_by) = LOWER(@u)", username);
+                ExecPurge(connection, tx, "auction_listings",  "LOWER(seller) = LOWER(@u) OR LOWER(buyer) = LOWER(@u)", username);
+                ExecPurge(connection, tx, "world_boss_damage", "LOWER(player_name) = LOWER(@u)", username);
+
+                tx.Commit();
+                DebugLogger.Instance.LogInfo("PERMADEATH",
+                    $"Purged shared world-state references for '{username}' (guild, bounties, trades, auctions, etc.)");
+
+                // Fire the in-memory cleanup hook for systems that hold per-player
+                // state outside SQLite (GodSystem, RelationshipSystem, etc.).
+                // Caught broadly because any one hook throwing shouldn't block
+                // the rest of the permadeath flow.
+                try { PermadeathPurgeHook?.Invoke(username); }
+                catch (Exception hookEx)
+                {
+                    DebugLogger.Instance.LogWarning("PERMADEATH",
+                        $"PermadeathPurgeHook threw for '{username}': {hookEx.Message}");
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Instance.LogError("PERMADEATH",
+                    $"PurgePlayerWorldState failed for '{username}': {ex.Message}");
+            }
+        }
+
+        private static void ExecPurge(SqliteConnection conn, SqliteTransaction tx, string table, string whereClause, string username)
+        {
+            try
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.Transaction = tx;
+                cmd.CommandText = $"DELETE FROM {table} WHERE {whereClause};";
+                cmd.Parameters.AddWithValue("@u", username);
+                int rows = cmd.ExecuteNonQuery();
+                if (rows > 0)
+                    DebugLogger.Instance.LogInfo("PERMADEATH", $"  {table}: removed {rows} row(s) for '{username}'");
+            }
+            catch (Exception ex)
+            {
+                // Log and continue — one missing/changed table shouldn't abort the
+                // whole purge transaction. Worst case: a row leaks; a second permadeath
+                // for the same identity would have another shot at it.
+                DebugLogger.Instance.LogWarning("PERMADEATH",
+                    $"  {table}: purge failed for '{username}': {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// v0.60.5: hook for in-memory per-player state cleanup. Subscribed by
+        /// game-side systems at startup (GodSystem clears worship, etc.) so
+        /// PurgePlayerWorldState can fan out without a hard reference. Static
+        /// to mirror KickActiveSessionHook.
+        /// </summary>
+        public static Action<string>? PermadeathPurgeHook { get; set; }
 
         /// <summary>
         /// Delete a player's character. Default behavior archives to deleted_characters
@@ -2491,6 +2851,11 @@ namespace UsurperRemake.Systems
         {
             try
             {
+                // v0.60.5: capture the player's IP BEFORE removing them from
+                // online_players, so the IP-ban can be applied. Falls back to
+                // the persisted last_login_ip if they're not currently online.
+                string? ipToBan = GetCurrentOnlineIpForPlayer(username) ?? GetLastLoginIpForPlayer(username);
+
                 using var connection = OpenConnection();
                 using var cmd = connection.CreateCommand();
                 cmd.CommandText = @"
@@ -2506,13 +2871,36 @@ namespace UsurperRemake.Systems
                 removeCmd.Parameters.AddWithValue("@username", username);
                 await removeCmd.ExecuteNonQueryAsync();
 
-                DebugLogger.Instance.LogInfo("SQL", $"Player '{username}' banned: {reason}");
+                // v0.60.5: full ban — also ban the IP and kick any active session.
+                // Loopback addresses are excluded (would lock out the local game-engine
+                // process testing, plus admins running ssh-proxy on the same host).
+                if (!string.IsNullOrWhiteSpace(ipToBan)
+                    && ipToBan != "127.0.0.1" && ipToBan != "::1" && ipToBan != "localhost")
+                {
+                    BanIp(ipToBan, $"Account ban cascade: {reason}", "BanPlayer", username);
+                }
+
+                // Kick the active session if the target is currently connected.
+                // Static hook — wired by MudServer at startup so the SqlSaveBackend
+                // doesn't need a hard reference to the server class.
+                try { KickActiveSessionHook?.Invoke(username, $"Banned: {reason}"); }
+                catch (Exception kex) { DebugLogger.Instance.LogWarning("BAN", $"Kick hook threw for '{username}': {kex.Message}"); }
+
+                DebugLogger.Instance.LogInfo("BAN", $"Player '{username}' banned: {reason} (IP: {ipToBan ?? "unknown"})");
             }
             catch (Exception ex)
             {
                 DebugLogger.Instance.LogError("SQL", $"Failed to ban player: {ex.Message}");
             }
         }
+
+        /// <summary>
+        /// v0.60.5: hook set by MudServer at startup so BanPlayer can drop the
+        /// target's TCP session immediately. Signature: (username, reason).
+        /// Static so it's available even if SqlSaveBackend is constructed before
+        /// the MudServer (admin console / sysop setup paths).
+        /// </summary>
+        public static Action<string, string>? KickActiveSessionHook { get; set; }
 
         // =====================================================================
         // Admin Methods
@@ -2527,6 +2915,14 @@ namespace UsurperRemake.Systems
                 cmd.CommandText = "UPDATE players SET is_banned = 0, ban_reason = NULL WHERE LOWER(username) = LOWER(@username);";
                 cmd.Parameters.AddWithValue("@username", username);
                 await cmd.ExecuteNonQueryAsync();
+
+                // v0.60.5: also lift any IP bans associated with this account
+                using var ipCmd = connection.CreateCommand();
+                ipCmd.CommandText = "DELETE FROM banned_ips WHERE LOWER(associated_username) = LOWER(@username);";
+                ipCmd.Parameters.AddWithValue("@username", username);
+                int ipRows = await ipCmd.ExecuteNonQueryAsync();
+                if (ipRows > 0)
+                    DebugLogger.Instance.LogInfo("BAN", $"Unban '{username}' also lifted {ipRows} associated IP ban(s).");
                 DebugLogger.Instance.LogInfo("SQL", $"Player '{username}' unbanned by admin");
             }
             catch (Exception ex)
@@ -2534,6 +2930,202 @@ namespace UsurperRemake.Systems
                 DebugLogger.Instance.LogError("SQL", $"Failed to unban player: {ex.Message}");
             }
         }
+
+        // v0.60.5: IP-ban methods --------------------------------------------------
+
+        /// <summary>
+        /// Add an IP to the ban list. Synchronous because it's called from the
+        /// session-accept hot path where async would risk a race with other
+        /// connections. Idempotent: re-banning an already-banned IP just refreshes
+        /// the reason/timestamp.
+        /// </summary>
+        public void BanIp(string ipAddress, string? reason, string? bannedBy, string? associatedUsername)
+        {
+            if (string.IsNullOrWhiteSpace(ipAddress)) return;
+            try
+            {
+                using var connection = OpenConnection();
+                using var cmd = connection.CreateCommand();
+                cmd.CommandText = @"
+                    INSERT INTO banned_ips (ip_address, reason, banned_at, banned_by, associated_username)
+                    VALUES (@ip, @reason, datetime('now'), @by, @user)
+                    ON CONFLICT(ip_address) DO UPDATE SET
+                        reason = excluded.reason,
+                        banned_at = excluded.banned_at,
+                        banned_by = excluded.banned_by,
+                        associated_username = excluded.associated_username;";
+                cmd.Parameters.AddWithValue("@ip", ipAddress);
+                cmd.Parameters.AddWithValue("@reason", (object?)reason ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@by", (object?)bannedBy ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@user", (object?)associatedUsername ?? DBNull.Value);
+                cmd.ExecuteNonQuery();
+                DebugLogger.Instance.LogInfo("BAN", $"IP banned: {ipAddress} (reason: {reason ?? "none"}, by: {bannedBy ?? "system"}, account: {associatedUsername ?? "none"})");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Instance.LogError("BAN", $"Failed to ban IP {ipAddress}: {ex.Message}");
+            }
+        }
+
+        public void UnbanIp(string ipAddress)
+        {
+            if (string.IsNullOrWhiteSpace(ipAddress)) return;
+            try
+            {
+                using var connection = OpenConnection();
+                using var cmd = connection.CreateCommand();
+                cmd.CommandText = "DELETE FROM banned_ips WHERE ip_address = @ip;";
+                cmd.Parameters.AddWithValue("@ip", ipAddress);
+                cmd.ExecuteNonQuery();
+                DebugLogger.Instance.LogInfo("BAN", $"IP unbanned: {ipAddress}");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Instance.LogError("BAN", $"Failed to unban IP {ipAddress}: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Cheap synchronous lookup. Returns the ban reason if banned, null otherwise.
+        /// Empty/null IP always returns null (we never ban "no IP").
+        /// v0.60.5: also checks CIDR ranges. If the IP matches an exact ban OR
+        /// falls within a banned CIDR (e.g. "1.2.3.0/24"), returns the reason.
+        /// CIDR scan is bounded by the count of CIDR rows (ones with "/" in the
+        /// ip_address column), which is expected to be small (handful at most).
+        /// </summary>
+        public string? GetIpBanReason(string? ipAddress)
+        {
+            if (string.IsNullOrWhiteSpace(ipAddress)) return null;
+            try
+            {
+                using var connection = OpenConnection();
+
+                // Fast path: exact match.
+                using (var exactCmd = connection.CreateCommand())
+                {
+                    exactCmd.CommandText = "SELECT COALESCE(reason, '') FROM banned_ips WHERE ip_address = @ip LIMIT 1;";
+                    exactCmd.Parameters.AddWithValue("@ip", ipAddress);
+                    var exact = exactCmd.ExecuteScalar();
+                    if (exact != null) return exact.ToString() ?? "";
+                }
+
+                // CIDR scan: walk only rows that look like CIDR notation.
+                using var cidrCmd = connection.CreateCommand();
+                cidrCmd.CommandText = "SELECT ip_address, COALESCE(reason, '') FROM banned_ips WHERE ip_address LIKE '%/%';";
+                using var reader = cidrCmd.ExecuteReader();
+                while (reader.Read())
+                {
+                    var cidr = reader.GetString(0);
+                    if (CidrContains(cidr, ipAddress))
+                        return reader.GetString(1);
+                }
+                return null;
+            }
+            catch { return null; }
+        }
+
+        public bool IsIpBanned(string? ipAddress) => GetIpBanReason(ipAddress) != null;
+
+        /// <summary>
+        /// v0.60.5: returns true if <paramref name="ipAddress"/> falls within the
+        /// CIDR range <paramref name="cidr"/> (e.g. "1.2.3.0/24"). Supports IPv4
+        /// and IPv6. Returns false on any parse error rather than throwing — a
+        /// malformed CIDR row in the DB shouldn't crash the connection-accept path.
+        /// </summary>
+        internal static bool CidrContains(string cidr, string ipAddress)
+        {
+            if (string.IsNullOrWhiteSpace(cidr) || string.IsNullOrWhiteSpace(ipAddress)) return false;
+            var slash = cidr.IndexOf('/');
+            if (slash < 0) return false;
+            var networkPart = cidr.Substring(0, slash);
+            var maskPart = cidr.Substring(slash + 1);
+            if (!System.Net.IPAddress.TryParse(networkPart, out var network)) return false;
+            if (!System.Net.IPAddress.TryParse(ipAddress, out var addr)) return false;
+            if (network.AddressFamily != addr.AddressFamily) return false;
+            if (!int.TryParse(maskPart, out var maskBits)) return false;
+
+            var netBytes = network.GetAddressBytes();
+            var ipBytes = addr.GetAddressBytes();
+            if (netBytes.Length != ipBytes.Length) return false;
+            int maxBits = netBytes.Length * 8;
+            if (maskBits < 0 || maskBits > maxBits) return false;
+
+            int fullBytes = maskBits / 8;
+            int remBits = maskBits % 8;
+            for (int i = 0; i < fullBytes; i++)
+                if (netBytes[i] != ipBytes[i]) return false;
+            if (remBits > 0 && fullBytes < netBytes.Length)
+            {
+                int mask = (0xFF << (8 - remBits)) & 0xFF;
+                if ((netBytes[fullBytes] & mask) != (ipBytes[fullBytes] & mask)) return false;
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Look up the last-known login IP for a player. Used by BanPlayer to
+        /// also IP-ban the player at the moment of account ban. Returns null if
+        /// no IP is recorded (player never logged in since the column was added).
+        /// </summary>
+        public string? GetLastLoginIpForPlayer(string username)
+        {
+            if (string.IsNullOrWhiteSpace(username)) return null;
+            try
+            {
+                using var connection = OpenConnection();
+                using var cmd = connection.CreateCommand();
+                cmd.CommandText = "SELECT last_login_ip FROM players WHERE LOWER(username) = LOWER(@u) AND last_login_ip IS NOT NULL AND last_login_ip != '' LIMIT 1;";
+                cmd.Parameters.AddWithValue("@u", username);
+                var result = cmd.ExecuteScalar();
+                return result == null || result == DBNull.Value ? null : result.ToString();
+            }
+            catch { return null; }
+        }
+
+        /// <summary>
+        /// Look up the IP a currently-online player is connected from. Returns
+        /// null if they're not currently online or no IP is recorded.
+        /// </summary>
+        public string? GetCurrentOnlineIpForPlayer(string username)
+        {
+            if (string.IsNullOrWhiteSpace(username)) return null;
+            try
+            {
+                using var connection = OpenConnection();
+                using var cmd = connection.CreateCommand();
+                cmd.CommandText = "SELECT ip_address FROM online_players WHERE LOWER(username) = LOWER(@u) AND ip_address IS NOT NULL AND ip_address != '' LIMIT 1;";
+                cmd.Parameters.AddWithValue("@u", username);
+                var result = cmd.ExecuteScalar();
+                return result == null || result == DBNull.Value ? null : result.ToString();
+            }
+            catch { return null; }
+        }
+
+        public List<(string ip, string? reason, string? bannedBy, string? associatedUsername, string? bannedAt)> GetBannedIps()
+        {
+            var result = new List<(string, string?, string?, string?, string?)>();
+            try
+            {
+                using var connection = OpenConnection();
+                using var cmd = connection.CreateCommand();
+                cmd.CommandText = "SELECT ip_address, reason, banned_by, associated_username, banned_at FROM banned_ips ORDER BY banned_at DESC;";
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                {
+                    result.Add((
+                        reader.GetString(0),
+                        reader.IsDBNull(1) ? null : reader.GetString(1),
+                        reader.IsDBNull(2) ? null : reader.GetString(2),
+                        reader.IsDBNull(3) ? null : reader.GetString(3),
+                        reader.IsDBNull(4) ? null : reader.GetString(4)
+                    ));
+                }
+            }
+            catch (Exception ex) { DebugLogger.Instance.LogError("BAN", $"Failed to list banned IPs: {ex.Message}"); }
+            return result;
+        }
+
+        // -------------------------------------------------------------------------
 
         public async Task<List<(string username, string displayName, string? banReason)>> GetBannedPlayers()
         {
@@ -2835,7 +3427,7 @@ namespace UsurperRemake.Systems
             return stats;
         }
 
-        public async Task UpdatePlayerSession(string username, bool isLogin)
+        public async Task UpdatePlayerSession(string username, bool isLogin, string? ipAddress = null)
         {
             try
             {
@@ -2844,7 +3436,18 @@ namespace UsurperRemake.Systems
 
                 if (isLogin)
                 {
-                    cmd.CommandText = "UPDATE players SET last_login = datetime('now') WHERE LOWER(username) = LOWER(@username);";
+                    // v0.60.5: persist last_login_ip on every login so BanPlayer
+                    // can find the IP to ban even if the player isn't currently
+                    // online (offline-ban scenario from the admin dashboard).
+                    if (!string.IsNullOrWhiteSpace(ipAddress))
+                    {
+                        cmd.CommandText = "UPDATE players SET last_login = datetime('now'), last_login_ip = @ip WHERE LOWER(username) = LOWER(@username);";
+                        cmd.Parameters.AddWithValue("@ip", ipAddress);
+                    }
+                    else
+                    {
+                        cmd.CommandText = "UPDATE players SET last_login = datetime('now') WHERE LOWER(username) = LOWER(@username);";
+                    }
                 }
                 else
                 {
@@ -2914,8 +3517,15 @@ namespace UsurperRemake.Systems
         /// <summary>
         /// Register a new player account. Returns true if successful, false if username taken.
         /// </summary>
-        public async Task<(bool success, string message)> RegisterPlayer(string username, string password)
+        public async Task<(bool success, string message)> RegisterPlayer(string username, string password, string? ipAddress = null)
         {
+            // v0.60.5: full ban means no new accounts from this IP either. Same
+            // defense-in-depth pattern as AuthenticatePlayer.
+            if (!string.IsNullOrWhiteSpace(ipAddress) && IsIpBanned(ipAddress))
+            {
+                return (false, "Registration refused: this address is banned from the server.");
+            }
+
             try
             {
                 if (string.IsNullOrWhiteSpace(username) || username.Length < 2 || username.Length > 20)
@@ -2947,6 +3557,27 @@ namespace UsurperRemake.Systems
                         return (false, "That username is already taken.");
                 }
 
+                // v0.60.5: per-IP registration rate limit. Loopback skipped so
+                // local testing isn't blocked. Mismatched casing (LOWER not
+                // applied to created_ip) is fine -- IP strings are stored as-is.
+                if (!string.IsNullOrWhiteSpace(ipAddress)
+                    && ipAddress != "127.0.0.1" && ipAddress != "::1" && ipAddress != "localhost")
+                {
+                    using var rateCmd = connection.CreateCommand();
+                    rateCmd.CommandText = @"
+                        SELECT COUNT(*) FROM players
+                        WHERE created_ip = @ip
+                        AND created_at > datetime('now', '-24 hours')";
+                    rateCmd.Parameters.AddWithValue("@ip", ipAddress);
+                    var recentCount = Convert.ToInt64(await rateCmd.ExecuteScalarAsync());
+                    if (recentCount >= GameConfig.MaxRegistrationsPerIpPer24h)
+                    {
+                        DebugLogger.Instance.LogWarning("BAN",
+                            $"Registration rate-limited for IP {ipAddress}: {recentCount} accounts in last 24h (cap {GameConfig.MaxRegistrationsPerIpPer24h})");
+                        return (false, "Too many accounts registered from this address recently. Try again tomorrow.");
+                    }
+                }
+
                 // Check if banned
                 using (var banCmd = connection.CreateCommand())
                 {
@@ -2961,16 +3592,19 @@ namespace UsurperRemake.Systems
                     catch { /* banned_names table may not exist yet, that's fine */ }
                 }
 
-                // Insert the new player with hashed password and empty player data
+                // Insert the new player with hashed password and empty player data.
+                // v0.60.5: also persist created_ip so the rate limiter can count
+                // future registrations from this address.
                 string passwordHash = HashPassword(password);
                 using var insertCmd = connection.CreateCommand();
                 insertCmd.CommandText = @"
-                    INSERT INTO players (username, display_name, password_hash, player_data, created_at)
-                    VALUES (@username, @display_name, @password_hash, '{}', datetime('now'));
+                    INSERT INTO players (username, display_name, password_hash, player_data, created_at, created_ip)
+                    VALUES (@username, @display_name, @password_hash, '{}', datetime('now'), @created_ip);
                 ";
                 insertCmd.Parameters.AddWithValue("@username", username.ToLower());
                 insertCmd.Parameters.AddWithValue("@display_name", username);
                 insertCmd.Parameters.AddWithValue("@password_hash", passwordHash);
+                insertCmd.Parameters.AddWithValue("@created_ip", (object?)ipAddress ?? DBNull.Value);
                 await insertCmd.ExecuteNonQueryAsync();
 
                 DebugLogger.Instance.LogInfo("SQL", $"New player registered: '{username}'");
@@ -3055,8 +3689,18 @@ namespace UsurperRemake.Systems
         /// <summary>
         /// Authenticate a player. Returns (success, displayName, message).
         /// </summary>
-        public async Task<(bool success, string displayName, string message, bool screenReader, string language)> AuthenticatePlayer(string username, string password)
+        public async Task<(bool success, string displayName, string message, bool screenReader, string language)> AuthenticatePlayer(string username, string password, string? ipAddress = null)
         {
+            // v0.60.5: defense-in-depth IP check. The MudServer accept-time check
+            // should already drop banned-IP connections before they reach this
+            // method, but adding it here protects any future code path that
+            // calls AuthenticatePlayer directly without going through the accept
+            // gate (e.g., a new SSH gateway, an HTTP login endpoint).
+            if (!string.IsNullOrWhiteSpace(ipAddress) && IsIpBanned(ipAddress))
+            {
+                return (false, "", "Login refused: this address is banned from the server.", false, "en");
+            }
+
             try
             {
                 using var connection = OpenConnection();

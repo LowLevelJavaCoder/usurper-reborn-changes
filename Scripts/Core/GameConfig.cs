@@ -9,7 +9,7 @@ using System.Collections.Generic;
 public static partial class GameConfig
 {
     // Version information
-    public const string Version = "0.60.4";
+    public const string Version = "0.60.7";
     public const string VersionName = "Beta";
 
     // v0.57.12: Alignment scale cap. Character.Chivalry and Character.Darkness setters clamp to [0, AlignmentCap]
@@ -140,6 +140,26 @@ public static partial class GameConfig
     /// SysOps can set this to keep their players on the local BBS game only.
     /// </summary>
     public static bool DisableOnlinePlay { get; set; } = false;
+
+    /// <summary>
+    /// v0.60.7: number of resurrections each new online character starts with.
+    /// Admin-tunable from the Online Admin Console; persisted in the
+    /// `server_config` SQLite table and reloaded into this static at startup.
+    /// 0 means new characters spawn with no resurrections (one death = permadeath).
+    /// Existing characters keep their per-save Resurrections field unchanged.
+    /// </summary>
+    public static int DefaultStartingResurrections { get; set; } = 3;
+
+    /// <summary>
+    /// v0.60.7: master switch for online-mode permadeath. When true (default),
+    /// online deaths consume a resurrection and trigger permadeath at zero.
+    /// When false, online deaths route through the legacy single-player
+    /// penalty menu (Temple, Deal with Death, Accept Fate) -- the resurrection
+    /// counter is still decremented down to zero but no character is ever
+    /// erased. Admin-tunable from the Online Admin Console; persisted in the
+    /// `server_config` SQLite table.
+    /// </summary>
+    public static bool OnlinePermadeathEnabled { get; set; } = true;
 
     /// <summary>
     /// Online server address for the [O]nline Play connection.
@@ -2387,6 +2407,12 @@ Mystic Shaman - Tribal caster who summons totems and enchants weapons. Troll/Orc
     // each round, preserving threat without "invincible wall of flesh" gameplay. Basic [T] action and
     // Eternal Vigil cooldown stay at 100% (hard taunt).
     public const int SoftTauntStickChance = 75;
+
+    // v0.60.5: per-IP registration rate limit. Stops "ban -> reregister -> repeat"
+    // ban evasion. Banned players who try to make a 4th account from the same IP
+    // within 24h get refused. Generous default — most legit households / shared
+    // dorms / coffee shops won't see 3+ new players in a day.
+    public const int MaxRegistrationsPerIpPer24h = 3;
     public const string GoldColor = "`E";              // Bright yellow for gold
     public const string LocationColor = "`9";          // Bright blue for locations
     public const string EmptyColor = "`8";             // Gray for empty slots

@@ -30,8 +30,17 @@ public class MudServer
     private TcpListener? _listener;
     private CancellationTokenSource? _cts;
 
-    /// <summary>Idle timeout: disconnect players with no input for this long.</summary>
-    public static readonly TimeSpan IdleTimeout = TimeSpan.FromMinutes(15);
+    /// <summary>
+    /// Idle timeout: disconnect players with no input for this long.
+    /// v0.60.7: reads `DoorMode.IdleTimeoutMinutes` live so admin changes
+    /// from the web Server Settings panel take effect on the next watchdog
+    /// tick (every 30s) without restart. The pre-fix `static readonly` was
+    /// baked in at process start and ignored runtime changes -- the admin
+    /// could change the setting in the dashboard but the actual disconnect
+    /// kept firing at the original 15-minute boundary.
+    /// </summary>
+    public static TimeSpan IdleTimeout =>
+        TimeSpan.FromMinutes(UsurperRemake.BBS.DoorMode.IdleTimeoutMinutes);
 
     /// <summary>How long before idle timeout to show a warning.</summary>
     public static readonly TimeSpan IdleWarningBefore = TimeSpan.FromMinutes(2);
@@ -75,6 +84,52 @@ public class MudServer
         _sqlBackend = sqlBackend;
         SaveSystem.InitializeWithBackend(sqlBackend);
         Console.Error.WriteLine($"[MUD] SQLite backend initialized: {_databasePath}");
+
+        // v0.60.5: wire SqlSaveBackend's kick hook so BanPlayer can drop the
+        // target's TCP session immediately. Lookup is by lowercased username
+        // (matches ActiveSessions key convention).
+        SqlSaveBackend.KickActiveSessionHook = (username, reason) =>
+        {
+            try
+            {
+                var key = username?.ToLowerInvariant() ?? "";
+                if (string.IsNullOrEmpty(key)) return;
+                if (ActiveSessions.TryGetValue(key, out var s) && s != null)
+                {
+                    Console.Error.WriteLine($"[MUD] Banning kick: '{username}' ({reason})");
+                    _ = s.DisconnectAsync(reason);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[MUD] KickActiveSessionHook error for '{username}': {ex.Message}");
+            }
+        };
+
+        // v0.60.5: wire the in-memory permadeath cleanup hook. Player report
+        // (Rage): "lost all 4 lives, made a new char, came back in my guild
+        // still, actually still worshiping the same god." DB tables are handled
+        // by PurgePlayerWorldState; this hook clears the per-process state that
+        // doesn't live in SQLite -- god worship dict, relationship cache, etc.
+        SqlSaveBackend.PermadeathPurgeHook = (username) =>
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(username)) return;
+                // God worship: clears the player's entry AND decrements the
+                // god's believer count atomically.
+                try { GodSystemSingleton.Instance.SetPlayerGod(username, ""); }
+                catch (Exception gex) { Console.Error.WriteLine($"[MUD] PurgeHook god clear failed for '{username}': {gex.Message}"); }
+
+                // Relationship cache: drop all per-player relationship entries.
+                try { RelationshipSystem.Instance?.ResetPlayerRelationships(username); }
+                catch (Exception rex) { Console.Error.WriteLine($"[MUD] PurgeHook relationships clear failed for '{username}': {rex.Message}"); }
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[MUD] PermadeathPurgeHook error for '{username}': {ex.Message}");
+            }
+        };
 
         // Bootstrap --admin users as God-level wizards in the database
         foreach (var adminUser in BootstrapAdminUsers)
@@ -130,6 +185,13 @@ public class MudServer
         UsurperRemake.Systems.DiscordBridge.Initialize(_databasePath);
         var discordBridgeTask = Task.Run(() => DiscordBridgePollerAsync(_cts.Token));
         Console.Error.WriteLine("[MUD] Discord bridge poller started (250ms interval)");
+
+        // v0.60.8: server settings apply-queue poller. The web admin UI writes
+        // setting-change requests to server_config_apply_queue; this loop drains
+        // them every 1s and applies them to the live GameConfig statics so
+        // admin changes take effect without restart.
+        var settingsApplyTask = Task.Run(() => ServerSettingsApplyLoopAsync(_cts.Token));
+        Console.Error.WriteLine("[MUD] Server settings apply-queue poller started (1s interval)");
 
         // Start listening
         _listener = new TcpListener(IPAddress.Any, _port);
@@ -295,6 +357,49 @@ public class MudServer
                 firstBytes = System.Text.Encoding.UTF8.GetBytes(authLine);
             }
 
+            // Capture the RAW TCP peer IP separately from effectiveIp. effectiveIp
+            // is the public-facing address (X-IP from a relay if set), used for ban
+            // checks and rate-limit attribution. rawPeerIp is the actual socket peer,
+            // used for trust-gating: only loopback connections may use trusted auth
+            // (no password). Anyone can spoof X-IP, only loopback can spoof rawPeerIp.
+            string? rawPeerIp = null;
+            try { rawPeerIp = (client.Client.RemoteEndPoint as System.Net.IPEndPoint)?.Address.ToString(); }
+            catch { /* socket may have closed */ }
+            bool isLoopbackPeer = false;
+            if (!string.IsNullOrEmpty(rawPeerIp))
+            {
+                try
+                {
+                    var addr = System.Net.IPAddress.Parse(rawPeerIp);
+                    isLoopbackPeer = System.Net.IPAddress.IsLoopback(addr);
+                }
+                catch { /* malformed; not loopback */ }
+            }
+
+            // v0.60.5: IP-ban check at the earliest practical point. Effective IP
+            // is the X-IP forwarded header value if a relay set one (web/SSH gateway),
+            // otherwise the raw TCP peer address. Banned IPs get a polite message and
+            // a closed socket — no auth attempt, no register attempt, no session.
+            string? effectiveIp = forwardedIP;
+            if (string.IsNullOrEmpty(effectiveIp))
+                effectiveIp = rawPeerIp;
+            if (!string.IsNullOrEmpty(effectiveIp) && sqlBackend.IsIpBanned(effectiveIp))
+            {
+                var ipReason = sqlBackend.GetIpBanReason(effectiveIp);
+                try
+                {
+                    await WriteLineAsync(stream, "");
+                    await WriteLineAsync(stream, "  Connection refused: this address is banned from the server.");
+                    if (!string.IsNullOrEmpty(ipReason))
+                        await WriteLineAsync(stream, $"  Reason: {ipReason}");
+                    await WriteLineAsync(stream, "");
+                }
+                catch { /* socket may already be dead */ }
+                Console.Error.WriteLine($"[MUD] Refused banned IP {effectiveIp} (reason: {ipReason ?? "none"})");
+                client.Close();
+                return;
+            }
+
             string connectionType;
             bool isPlainText = false;
             bool isCp437 = false;
@@ -327,7 +432,7 @@ public class MudServer
 
                 // Interactive mode: present login/register menu directly over TCP
                 Console.Error.WriteLine($"[MUD] Interactive connection from {client.Client.RemoteEndPoint}");
-                var result = await InteractiveAuthAsync(stream, sqlBackend, ct, isPlainText, isCp437);
+                var result = await InteractiveAuthAsync(stream, sqlBackend, ct, isPlainText, isCp437, effectiveIp);
                 if (result == null)
                 {
                     client.Close();
@@ -372,10 +477,28 @@ public class MudServer
                 var usernameKey = username.ToLowerInvariant();
                 Console.Error.WriteLine($"[MUD] Connection from {client.Client.RemoteEndPoint}: user={username}, type={connectionType}, auth={( password != null ? (isRegistration ? "register" : "password") : "trusted" )}");
 
+                // SECURITY: trusted auth (no password) is only allowed from loopback.
+                // The 3-part AUTH:user:type form was originally intended for the local
+                // SSH relay (sshd-usurper -> --mud-relay -> 127.0.0.1:4001) and the BBS
+                // gateway. Without this gate, any external client could telnet to the
+                // game port and send "AUTH:targetUser:Web" to log in as that account
+                // with no password verification. Reproduces against any public server.
+                // Loopback-only because the raw TCP peer is the only thing the server
+                // can trust (X-IP forwarded headers can be spoofed by external clients).
+                // Remote BBS deployments that previously used trusted Online Play must
+                // either co-locate with the game server or migrate to password auth.
+                if (password == null && !isLoopbackPeer)
+                {
+                    Console.Error.WriteLine($"[MUD] SECURITY: rejected trusted-auth from non-loopback peer {rawPeerIp ?? "unknown"} (claimed user='{username}', type='{connectionType}')");
+                    await WriteLineAsync(stream, "ERR:Authentication required. Trusted auth is only available from local relays.");
+                    client.Close();
+                    return;
+                }
+
                 // Handle registration
                 if (isRegistration && password != null)
                 {
-                    var (regSuccess, regMessage) = await sqlBackend.RegisterPlayer(username, password);
+                    var (regSuccess, regMessage) = await sqlBackend.RegisterPlayer(username, password, effectiveIp);
                     if (!regSuccess)
                     {
                         Console.Error.WriteLine($"[MUD] Registration failed for '{username}': {regMessage}");
@@ -389,7 +512,7 @@ public class MudServer
                 // If password was provided, verify it against the database
                 if (password != null)
                 {
-                    var (success, displayName, message, screenReader, language) = await sqlBackend.AuthenticatePlayer(username, password);
+                    var (success, displayName, message, screenReader, language) = await sqlBackend.AuthenticatePlayer(username, password, effectiveIp);
                     if (!success)
                     {
                         Console.Error.WriteLine($"[MUD] Auth failed for '{username}': {message}");
@@ -510,7 +633,7 @@ public class MudServer
     /// and raw telnet connections that don't send an AUTH header.
     /// </summary>
     private async Task<(string username, string connectionType)?> InteractiveAuthAsync(
-        NetworkStream stream, SqlSaveBackend sqlBackend, CancellationToken ct, bool isPlainText = false, bool isCp437 = false)
+        NetworkStream stream, SqlSaveBackend sqlBackend, CancellationToken ct, bool isPlainText = false, bool isCp437 = false, string? effectiveIp = null)
     {
         const int MAX_ATTEMPTS = 5;
 
@@ -641,7 +764,7 @@ public class MudServer
             // Process registration
             if (isRegistration)
             {
-                var (regSuccess, regMessage) = await sqlBackend.RegisterPlayer(username!, password!);
+                var (regSuccess, regMessage) = await sqlBackend.RegisterPlayer(username!, password!, effectiveIp);
                 if (!regSuccess)
                 {
                     Console.Error.WriteLine($"[MUD] Registration failed for '{username}': {regMessage}");
@@ -655,7 +778,7 @@ public class MudServer
             }
 
             // Authenticate
-            var (success, displayName, message, screenReader, language) = await sqlBackend.AuthenticatePlayer(username!, password!);
+            var (success, displayName, message, screenReader, language) = await sqlBackend.AuthenticatePlayer(username!, password!, effectiveIp);
             if (!success)
             {
                 Console.Error.WriteLine($"[MUD] Auth failed for '{username}': {message}");
@@ -999,6 +1122,30 @@ public class MudServer
     /// dumps the current ring buffer state to a single SQLite row that the admin
     /// dashboard polls. Cheap when no sessions are in the dictionary (early return).
     /// </summary>
+    /// <summary>
+    /// v0.60.8: pull setting changes the web admin UI queued and apply them
+    /// to the live GameConfig statics. Polls every 1 second. Most ticks are
+    /// no-ops (queue empty); when a change is queued it usually applies on
+    /// the very next tick so the admin sees near-instant feedback.
+    /// </summary>
+    private async Task ServerSettingsApplyLoopAsync(CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(1), ct);
+                try { _sqlBackend.DrainServerConfigApplyQueue(); }
+                catch (Exception ex)
+                {
+                    DebugLogger.Instance.LogWarning("SERVER_CONFIG",
+                        $"settings apply loop tick failed: {ex.GetType().Name}: {ex.Message}");
+                }
+            }
+        }
+        catch (OperationCanceledException) { /* shutdown — expected */ }
+    }
+
     private async Task BotDetectionSnapshotLoopAsync(CancellationToken ct)
     {
         try
