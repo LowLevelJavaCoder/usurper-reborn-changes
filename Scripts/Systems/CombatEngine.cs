@@ -1607,6 +1607,10 @@ public partial class CombatEngine
             UsurperRemake.Server.GmcpBridge.EmitItemsList(player);
             UsurperRemake.Server.GmcpBridge.EmitSkillsList(player);
             UsurperRemake.Server.GmcpBridge.EmitVitalsIfChanged(player);
+            // Gold and XP always change after combat — push Char.Status so the
+            // client's wealth and progression display updates without waiting for
+            // the next location transition.
+            UsurperRemake.Server.GmcpBridge.EmitStatusIfChanged(player);
         }
 
         return result;
@@ -4001,26 +4005,48 @@ public partial class CombatEngine
         }
         monster.StatusTickedThisRound = true;
 
-        if (monster.PoisonRounds > 0)
+        // v0.60.8: burn and poison tick INDEPENDENTLY. Pre-fix, both effects
+        // shared the PoisonRounds counter and only one tick fired per round
+        // based on the IsBurning flag -- so casting Roast (fire) on a poisoned
+        // target wiped the poison, and casting Poison after Roast did nothing.
+        // Player report (Lumina, Lv.23 Sage): "Existing poison status is erased
+        // when Roast is cast. Does not work at all if I cast Poison after Roast."
+        // Fix: BurnRounds is its own field on Monster; both tick blocks run.
+
+        // Burn DoT (fire damage) — slightly higher per-tick than poison.
+        if (monster.BurnRounds > 0)
         {
-            // Poison scales: 3-5% of monster's max HP + small level bonus
-            int baseDmg = Math.Max(3, (int)(monster.MaxHP * (0.03 + random.NextDouble() * 0.02)));
+            int baseDmg = Math.Max(4, (int)(monster.MaxHP * (0.04 + random.NextDouble() * 0.02)));
             int dmg = baseDmg + random.Next(1, player.Level / 5 + 2);
             monster.HP = Math.Max(0, monster.HP - dmg);
-            monster.PoisonRounds--;
-            bool wasBurning = monster.IsBurning;
-            if (wasBurning)
-                terminal.WriteLine(Loc.Get("combat.fire_burn", monster.Name, dmg), "red");
-            else
-                terminal.WriteLine(Loc.Get("combat.poison_burn", monster.Name, dmg), "dark_green");
+            monster.BurnRounds--;
+            terminal.WriteLine(Loc.Get("combat.fire_burn", monster.Name, dmg), "red");
             if (!monster.IsAlive)
             {
-                terminal.WriteLine(wasBurning ? $"{monster.Name} is consumed by flames!" : $"{monster.Name} succumbs to poison!", wasBurning ? "red" : "dark_green");
+                terminal.WriteLine($"{monster.Name} is consumed by flames!", "red");
                 if (!result.DefeatedMonsters.Contains(monster))
                     result.DefeatedMonsters.Add(monster);
                 return;
             }
-            if (monster.PoisonRounds == 0) { monster.Poisoned = false; monster.IsBurning = false; }
+            if (monster.BurnRounds == 0) monster.IsBurning = false;
+        }
+
+        // Poison DoT (independent of burn now -- both can tick on the same round).
+        if (monster.PoisonRounds > 0)
+        {
+            int baseDmg = Math.Max(3, (int)(monster.MaxHP * (0.03 + random.NextDouble() * 0.02)));
+            int dmg = baseDmg + random.Next(1, player.Level / 5 + 2);
+            monster.HP = Math.Max(0, monster.HP - dmg);
+            monster.PoisonRounds--;
+            terminal.WriteLine(Loc.Get("combat.poison_burn", monster.Name, dmg), "dark_green");
+            if (!monster.IsAlive)
+            {
+                terminal.WriteLine($"{monster.Name} succumbs to poison!", "dark_green");
+                if (!result.DefeatedMonsters.Contains(monster))
+                    result.DefeatedMonsters.Add(monster);
+                return;
+            }
+            if (monster.PoisonRounds == 0) monster.Poisoned = false;
         }
 
         // v0.57.2 — Abysswarden Corrupting Touch DoT: damages target AND heals caster each round.
@@ -10900,14 +10926,10 @@ public partial class CombatEngine
     {
         var statuses = new List<string>();
 
-        // DoTs. PoisonRounds is shared between poison and fire burn -- IsBurning
-        // disambiguates so the display reads "BURN(3)" instead of "PSN(3)" when
-        // the enemy is on fire.
-        if (monster.PoisonRounds > 0)
-        {
-            if (monster.IsBurning) statuses.Add($"BURN({monster.PoisonRounds})");
-            else statuses.Add($"PSN({monster.PoisonRounds})");
-        }
+        // DoTs. v0.60.8: burn and poison have independent counters now, so both
+        // can be displayed simultaneously when both are active.
+        if (monster.BurnRounds > 0) statuses.Add($"BURN({monster.BurnRounds})");
+        if (monster.PoisonRounds > 0) statuses.Add($"PSN({monster.PoisonRounds})");
         if (monster.CorruptingDotRounds > 0) statuses.Add($"CRPT({monster.CorruptingDotRounds})");
 
         // Hard-CC statuses. v0.60.3: Freeze/Sleep/Fear/Stun/Confused were all
@@ -13237,8 +13259,8 @@ public partial class CombatEngine
                         terminal.SetColor("red");
                         terminal.WriteLine(Loc.Get("combat.ability_fire_explode"));
                     }
-                    target.Poisoned = true;
-                    target.PoisonRounds = Math.Max(target.PoisonRounds, 2);
+                    target.IsBurning = true;
+                    target.BurnRounds = Math.Max(target.BurnRounds, 2);
                 }
                 break;
 
@@ -15553,10 +15575,11 @@ public partial class CombatEngine
                 break;
 
             case "fire":
-                // Burn DoT — reuse poison tick mechanics for fire damage over time
-                target.Poisoned = true;
+                // v0.60.8: burn DoT now uses its own BurnRounds counter so it
+                // doesn't collide with PoisonRounds. Both DoTs can stack and
+                // tick independently on the same target.
                 target.IsBurning = true;
-                target.PoisonRounds = duration > 0 ? duration : 2;
+                target.BurnRounds = duration > 0 ? duration : 2;
                 terminal.WriteLine(Loc.Get("combat.spell_fire", target.Name), "red");
                 break;
 
@@ -15715,9 +15738,8 @@ public partial class CombatEngine
                             result.DefeatedMonsters.Add(target);
                     }
                 }
-                target.Poisoned = true;
                 target.IsBurning = true;
-                target.PoisonRounds = duration > 0 ? duration : 2;
+                target.BurnRounds = duration > 0 ? duration : 2;
                 terminal.WriteLine(Loc.Get("combat.engulfed_in_flames", target.Name), "red");
                 break;
 
@@ -17204,6 +17226,38 @@ public partial class CombatEngine
                 if (tauntAbility != null)
                     chosenAbility = tauntAbility;
             }
+        }
+
+        // v0.60.8 (fastfinge issue #99): "teach NPC AI not to use focus then
+        // battlecry. Or for that matter, any skill that increases attack for
+        // 1 round, followed by any non-attack skill."
+        //
+        // When a teammate already has an active attack buff (Focus / Battle Cry
+        // / Bard inspiration / etc. set TempAttackBonus + TempAttackBonusDuration),
+        // don't waste another action on a non-attack skill. The whole point of
+        // the buff is to USE it on a subsequent attack. Filter the pool to
+        // Attack/Debuff abilities so the AI either picks a damage ability that
+        // consumes the buff, or returns false here and falls through to a basic
+        // attack.
+        //
+        // Skipped when:
+        //   - The tank-priority block above already chose a taunt (taunting is
+        //     a higher-priority class function than spending the buff).
+        //   - Someone in the party needs healing (the heal-filter logic above
+        //     kept heals in the pool intentionally; healing trumps buff use).
+        if (chosenAbility == null
+            && teammate.TempAttackBonusDuration > 0
+            && teammate.TempAttackBonus > 0
+            && anyoneNeedsHealing == false)
+        {
+            var attackOnly = affordableAbilities
+                .Where(a => a.Type == ClassAbilitySystem.AbilityType.Attack
+                         || a.Type == ClassAbilitySystem.AbilityType.Debuff)
+                .ToList();
+            if (attackOnly.Count > 0)
+                affordableAbilities = attackOnly;
+            else
+                return false; // No damage abilities available -- fall through to basic attack
         }
 
         // Ability use chance: default 50%, overridden by spec
@@ -19243,6 +19297,21 @@ public partial class CombatEngine
             return;
         }
 
+        // v0.60.8: Spud's Floor-25-Gauntlet report -- paid arena surfaces
+        // (The Gauntlet, Dark Alley pit fight vs monster) call PlayerVsMonster
+        // and were burning a resurrection on every loss. Match the arrest
+        // pattern: HP=1, no resurrection consumed, no permadeath, no death
+        // cinematic. The caller already deducted the entry fee + daily fight
+        // slot before the combat, so the loss still costs something.
+        if (result.Player.IsExhibitionCombat)
+        {
+            result.Player.HP = 1;
+            result.Outcome = CombatOutcome.PlayerDied;
+            DebugLogger.Instance.LogInfo("EXHIBITION",
+                $"{result.Player.Name} dropped in exhibition combat (no resurrection consumed).");
+            return;
+        }
+
         // v0.60.0 beta: track total deaths for stats/analytics. The cap that
         // actually triggers permadeath is the Resurrections counter check
         // below (online mode only).
@@ -20814,8 +20883,8 @@ public partial class CombatEngine
                         terminal.SetColor("red");
                         terminal.WriteLine(Loc.Get("combat.ability_fire_explode"));
                     }
-                    monster.Poisoned = true;
-                    monster.PoisonRounds = Math.Max(monster.PoisonRounds, 2);
+                    monster.IsBurning = true;
+                    monster.BurnRounds = Math.Max(monster.BurnRounds, 2);
                 }
                 break;
 
@@ -22705,8 +22774,10 @@ public partial class CombatEngine
                         m.HP -= (int)searingDmg;
                         totalSearingDmg += searingDmg;
                         result.TotalDamageDealt += searingDmg;
-                        // Apply burn effect
-                        if (!m.IsBurning) m.IsBurning = true;
+                        // Apply burn effect (v0.60.8: also seed BurnRounds so the DoT
+                        // actually ticks; previously this set only the flag and the tick
+                        // gate above keyed on BurnRounds > 0, so the burn never fired)
+                        if (!m.IsBurning) { m.IsBurning = true; m.BurnRounds = Math.Max(m.BurnRounds, 2); }
                         if (m.HP <= 0)
                         {
                             m.HP = 0;

@@ -158,6 +158,7 @@ public partial class MagicShopLocation : BaseLocation
         terminal.WriteLine(Loc.Get("magic_shop.potions"));
         WriteSRMenuOption("H", Loc.Get("magic_shop.healing_potions"));
         WriteSRMenuOption("M", Loc.Get("magic_shop.mana_potions"));
+        WriteSRMenuOption("D", Loc.Get("magic_shop.reset_scroll"));
         terminal.WriteLine("");
 
         // Arcane Arts
@@ -205,7 +206,7 @@ public partial class MagicShopLocation : BaseLocation
         // Potions & Scrolls
         terminal.SetColor("cyan");
         terminal.WriteLine($" {Loc.Get("magic_shop.bbs_potions_scrolls")}");
-        ShowBBSMenuRow(("H", "bright_yellow", Loc.Get("magic_shop.bbs_healing_pots")), ("M", "bright_yellow", Loc.Get("magic_shop.bbs_mana_pots")));
+        ShowBBSMenuRow(("H", "bright_yellow", Loc.Get("magic_shop.bbs_healing_pots")), ("M", "bright_yellow", Loc.Get("magic_shop.bbs_mana_pots")), ("D", "bright_yellow", Loc.Get("magic_shop.bbs_dungeon_reset")));
 
         // Enchanting & Arcane
         terminal.SetColor("cyan");
@@ -341,6 +342,7 @@ public partial class MagicShopLocation : BaseLocation
                 await BuyManaPotions(player);
                 return false;
             case "D":
+                await BuyDungeonResetScroll(player);
                 return false;
             case "V":
                 await CastLoveSpell(player);
@@ -438,7 +440,9 @@ public partial class MagicShopLocation : BaseLocation
         terminal.WriteLine("");
         WriteMenuRow("H", "bright_yellow", "ealing Potions", "V", "bright_yellow", " Love Spells");
         WriteMenuRow("M", "bright_yellow", "ana Potions", "K", "bright_yellow", " Dark Arts");
-        WriteMenuRow("Y", "bright_yellow", " Study Spells", "G", "bright_yellow", " Scrying (NPC Info)");
+        WriteMenuRow("D", "bright_yellow", "ungeon Reset Scroll", "Y", "bright_yellow", " Study Spells");
+        terminal.Write(new string(' ', 42));
+        WriteMenuKey("G", "bright_yellow", " Scrying (NPC Info)");
         terminal.WriteLine("");
         terminal.WriteLine("");
         WriteMenuRow("T", "bright_yellow", $"alk to {_ownerName}", "R", "bright_yellow", "eturn to street");
@@ -1293,6 +1297,127 @@ public partial class MagicShopLocation : BaseLocation
         }
     }
 
+
+    /// <summary>
+    /// Buy a Dungeon Reset Scroll to reset a dungeon floor's monsters.
+    /// Permanently cleared floors (seal / secret boss) and Old God boss floors
+    /// are excluded — those cannot be rolled back by a scroll.
+    /// </summary>
+    private async Task BuyDungeonResetScroll(Character player)
+    {
+        // Floors that must never be scroll-resettable:
+        //   • IsPermanentlyClear  → seal floors (15,30,45,60,80,99) and secret-boss floors
+        //   • Old God boss floors → hard progression gates that guard story content
+        // v0.60.8: use the central DungeonLocation.OldGodFloors constant rather
+        // than duplicating the literal here.
+
+        DisplayMessage("");
+        WriteSectionHeader(Loc.Get("magic_shop.reset_scroll_header"), "magenta");
+        DisplayMessage("");
+        DisplayMessage(Loc.Get("magic_shop.reset_scroll_intro1", _ownerName), "gray");
+        DisplayMessage(Loc.Get("magic_shop.reset_scroll_intro2"), "cyan");
+        DisplayMessage(Loc.Get("magic_shop.reset_scroll_intro3"), "cyan");
+        DisplayMessage(Loc.Get("magic_shop.reset_scroll_intro4"), "cyan");
+        DisplayMessage("");
+
+        // Floors eligible for reset: cleared at least once, not permanently clear,
+        // not already respawning naturally, and not an Old God or special floor.
+        var clearedFloors = player.DungeonFloorStates
+            .Where(kvp => kvp.Value.EverCleared
+                && !kvp.Value.IsPermanentlyClear
+                && !kvp.Value.ShouldRespawn()
+                && !DungeonLocation.OldGodFloors.Contains(kvp.Key))
+            .OrderBy(kvp => kvp.Key)
+            .ToList();
+
+        if (clearedFloors.Count == 0)
+        {
+            DisplayMessage(Loc.Get("magic_shop.reset_scroll_no_eligible"), "gray");
+            DisplayMessage(Loc.Get("magic_shop.reset_scroll_no_eligible_hint"), "cyan");
+            DisplayMessage(Loc.Get("magic_shop.reset_scroll_no_eligible_come_back"), "cyan");
+            return;
+        }
+
+        long scrollPrice = CalculateResetScrollPrice(player.Level);
+        var (scrollKingTax, scrollCityTax, scrollTotalWithTax) = CityControlSystem.CalculateTaxedPrice(scrollPrice);
+
+        DisplayMessage(Loc.Get("magic_shop.reset_scroll_price", scrollPrice.ToString("N0")), "yellow");
+        DisplayMessage(Loc.Get("magic_shop.reset_scroll_you_have", player.Gold.ToString("N0")), "gray");
+        DisplayMessage("");
+
+        if (player.Gold < scrollTotalWithTax)
+        {
+            DisplayMessage(Loc.Get("magic_shop.reset_scroll_too_expensive"), "red");
+            return;
+        }
+
+        DisplayMessage(Loc.Get("magic_shop.reset_scroll_floors_avail"), "cyan");
+        for (int i = 0; i < clearedFloors.Count; i++)
+        {
+            var floor = clearedFloors[i];
+            var timeUntilRespawn = floor.Value.TimeUntilRespawn();
+            int minsLeft = (int)Math.Ceiling(timeUntilRespawn.TotalMinutes);
+            DisplayMessage(Loc.Get("magic_shop.reset_scroll_floor_entry", (i + 1).ToString(), floor.Key.ToString(), minsLeft.ToString()), "white");
+        }
+
+        DisplayMessage("");
+        DisplayMessage(Loc.Get("magic_shop.reset_scroll_prompt"), "yellow", false);
+        string input = await terminal.GetInput("");
+
+        if (!int.TryParse(input, out int floorChoice) || floorChoice <= 0 || floorChoice > clearedFloors.Count)
+        {
+            DisplayMessage(Loc.Get("magic_shop.reset_scroll_cancelled"), "gray");
+            return;
+        }
+
+        var selectedFloor = clearedFloors[floorChoice - 1];
+
+        DisplayMessage("");
+        CityControlSystem.Instance.DisplayTaxBreakdown(terminal, Loc.Get("magic_shop.reset_scroll_tax_label"), scrollPrice);
+        DisplayMessage(Loc.Get("magic_shop.reset_scroll_confirm", selectedFloor.Key.ToString(), scrollTotalWithTax.ToString("N0")), "yellow", false);
+        var confirm = (await terminal.GetInput("")).ToUpper();
+
+        if (confirm == "Y")
+        {
+            player.Gold -= scrollTotalWithTax;
+            CityControlSystem.Instance.ProcessSaleTax(scrollPrice);
+
+            // Mark the floor as needing respawn by back-dating LastVisitedAt past
+            // the RESPAWN_HOURS window — ShouldRespawn() checks that field.
+            selectedFloor.Value.LastVisitedAt =
+                DateTime.Now.AddHours(-(DungeonFloorState.RESPAWN_HOURS + 1));
+
+            // Also directly clear room states so monsters are present immediately
+            // on the next visit regardless of the ShouldRespawn path.
+            foreach (var room in selectedFloor.Value.RoomStates.Values)
+                room.IsCleared = false;
+
+            DisplayMessage("");
+            DisplayMessage(Loc.Get("magic_shop.reset_scroll_unfurl1", _ownerName), "gray");
+            DisplayMessage(Loc.Get("magic_shop.reset_scroll_unfurl2"), "magenta");
+            DisplayMessage("");
+            DisplayMessage(Loc.Get("magic_shop.reset_scroll_success", selectedFloor.Key.ToString()), "bright_green");
+            DisplayMessage(Loc.Get("magic_shop.reset_scroll_success_desc"), "cyan");
+            DisplayMessage(Loc.Get("magic_shop.reset_scroll_success_flavor"), "gray");
+        }
+        else
+        {
+            DisplayMessage(Loc.Get("magic_shop.reset_scroll_decline"), "gray");
+        }
+    }
+
+    /// <summary>
+    /// Calculate the price of a dungeon reset scroll based on player level.
+    /// Uses a quadratic curve (1000 + level² × 5) so low-level players
+    /// pay a manageable amount while high-level players pay proportionally more.
+    /// Level  10 →   1,500 gold
+    /// Level  20 →   3,000 gold
+    /// Level  50 →  13,500 gold
+    /// Level  83 →  35,445 gold
+    /// Level 100 →  51,000 gold
+    /// </summary>
+    private static long CalculateResetScrollPrice(int playerLevel)
+        => 1000 + (playerLevel * playerLevel * 5L);
 
     /// <summary>
     /// Get current magic shop owner name
